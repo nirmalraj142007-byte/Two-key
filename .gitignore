@@ -1,0 +1,8 @@
+node_modules
+dist
+.env*
+!.env.example
+spikes/results/
+.next
+coverage
+*.tsbuildinfo

@@ -1,0 +1,27 @@
+{
+  "name": "two-key",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "eval"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "check": "npm run lint && npm run typecheck && npm run test",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2",
+    "@types/node": "^24",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}

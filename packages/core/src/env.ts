@@ -1,0 +1,142 @@
+import { z } from 'zod';
+import { AppError, ErrorCode } from './errors.js';
+
+export type ServiceName = 'gateway' | 'web' | 'mcp' | 'agent-runner' | 'eval';
+
+const common = {
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+};
+
+const databaseUrl = z.string().min(1);
+const nonEmpty = z.string().min(1);
+const url = z.url();
+const pem = z.string().refine((v) => v.includes('-----BEGIN'), 'must be a PEM block');
+const hmacKey = z.string().refine((v) => Buffer.from(v, 'base64').length >= 32, {
+  message: 'must be base64 and decode to at least 32 bytes',
+});
+
+const schemas = {
+  gateway: z.object({
+    ...common,
+    DATABASE_URL: databaseUrl,
+    PAYPAL_ENV: z.enum(['sandbox']),
+    PAYPAL_CLIENT_ID: nonEmpty,
+    PAYPAL_CLIENT_SECRET: nonEmpty,
+    PAYPAL_WEBHOOK_ID: nonEmpty.optional(), // required from phase 4
+    RULE_HMAC_KEY: hmacKey,
+    RULE_HMAC_KEY_ID: nonEmpty,
+    HUMAN_ASSERTION_PUBLIC_KEY: pem,
+    AGENT_TOKEN_PEPPER: nonEmpty,
+    CHANNEL3_API_KEY: nonEmpty.optional(),
+    VAPID_PUBLIC_KEY: nonEmpty,
+    VAPID_PRIVATE_KEY: nonEmpty,
+    VAPID_SUBJECT: nonEmpty.optional(), // required from phase 18
+    WEB_ORIGIN: url,
+    PUBLIC_BASE_URL: url,
+    PORT: z.coerce.number().int().positive().default(4000),
+    MERCHANT_REPORTING_CREDENTIALS: z
+      .string()
+      .refine((v) => {
+        try {
+          JSON.parse(v);
+          return true;
+        } catch {
+          return false;
+        }
+      }, 'must be valid JSON')
+      .optional(),
+  }),
+  web: z.object({
+    ...common,
+    DATABASE_URL: databaseUrl,
+    AUTH_SECRET: nonEmpty,
+    HUMAN_ASSERTION_PRIVATE_KEY: pem,
+    GATEWAY_URL: url,
+    ANTHROPIC_API_KEY: nonEmpty,
+    NEXT_PUBLIC_AG_GRID_LICENSE_KEY: nonEmpty.optional(),
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: nonEmpty.optional(),
+    IP_HASH_SALT: nonEmpty,
+  }),
+  mcp: z.object({
+    ...common,
+    DATABASE_URL: databaseUrl.optional(), // mcp talks only to the gateway
+    GATEWAY_URL: url,
+    TWOKEY_AGENT_TOKEN: nonEmpty.optional(), // stdio mode
+    PORT: z.coerce.number().int().positive().default(4100),
+  }),
+  'agent-runner': z.object({
+    ...common,
+    DATABASE_URL: databaseUrl,
+    ANTHROPIC_API_KEY: nonEmpty,
+    OPENROUTER_API_KEY: nonEmpty.optional(),
+    MCP_URL: url,
+    DAILY_BUDGET_USD_LIVE: z.coerce.number().nonnegative().default(5),
+    DAILY_BUDGET_USD_HIJACK: z.coerce.number().nonnegative().default(10),
+    PORT: z.coerce.number().int().positive().default(4200),
+  }),
+  eval: z.object({
+    ...common,
+    DATABASE_URL: databaseUrl,
+    ANTHROPIC_API_KEY: nonEmpty,
+    OPENROUTER_API_KEY: nonEmpty,
+    CHANNEL3_API_KEY: nonEmpty,
+    GATEWAY_URL: url,
+    MCP_URL: url,
+  }),
+} satisfies Record<ServiceName, z.ZodObject>;
+
+export type Env<S extends ServiceName> = z.infer<(typeof schemas)[S]>;
+
+/** Which services may hold each secret. Source of truth for `check:secrets`. */
+export const SECRET_OWNERS: Record<string, ServiceName[]> = {
+  PAYPAL_CLIENT_SECRET: ['gateway'],
+  RULE_HMAC_KEY: ['gateway'],
+  AGENT_TOKEN_PEPPER: ['gateway'],
+  VAPID_PRIVATE_KEY: ['gateway'],
+  CHANNEL3_API_KEY: ['gateway', 'eval'],
+  HUMAN_ASSERTION_PRIVATE_KEY: ['web'],
+  AUTH_SECRET: ['web'],
+  ANTHROPIC_API_KEY: ['web', 'agent-runner', 'eval'],
+  OPENROUTER_API_KEY: ['agent-runner', 'eval'],
+};
+
+export function loadEnv<S extends ServiceName>(
+  service: S,
+  source: Record<string, string | undefined> = process.env,
+): Env<S> {
+  for (const [name, owners] of Object.entries(SECRET_OWNERS)) {
+    const value = source[name];
+    if (value !== undefined && value !== '' && !owners.includes(service)) {
+      throw new AppError(
+        ErrorCode.CONFIG_FORBIDDEN_SECRET,
+        `${name} may only be set on: ${owners.join(', ')}`,
+      );
+    }
+  }
+
+  // Empty strings (as in a copied .env.example) count as unset.
+  const input: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (value !== undefined && value !== '') input[key] = value;
+  }
+
+  const result = schemas[service].safeParse(input);
+  if (!result.success) {
+    const missing = new Set<string>();
+    const invalid = new Set<string>();
+    for (const issue of result.error.issues) {
+      const key = String(issue.path[0] ?? '(root)');
+      (input[key] === undefined ? missing : invalid).add(key);
+    }
+    const parts: string[] = [];
+    if (missing.size) parts.push(`missing: ${[...missing].join(', ')}`);
+    if (invalid.size) parts.push(`invalid: ${[...invalid].join(', ')}`);
+    throw new AppError(
+      ErrorCode.CONFIG_INVALID,
+      `Invalid environment for ${service} (${parts.join('; ')})`,
+      { details: { missing: [...missing], invalid: [...invalid] } },
+    );
+  }
+  return result.data as Env<S>;
+}
