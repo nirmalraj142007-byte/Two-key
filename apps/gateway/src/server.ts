@@ -20,6 +20,11 @@ async function main(): Promise<void> {
   if (!env.PAYPAL_WEBHOOK_ID)
     app.log.warn('PAYPAL_WEBHOOK_ID is not set: /webhooks/paypal answers 503');
 
+  // Hooks, plugins and decorators must all be registered before listen(); after it,
+  // Fastify throws. Only timers and loops start once the server is up.
+  let retryTimer: NodeJS.Timeout | undefined;
+  app.addHook('onClose', async () => clearInterval(retryTimer));
+
   try {
     await app.listen({ port: env.PORT, host: '0.0.0.0' });
   } catch (err) {
@@ -29,7 +34,7 @@ async function main(): Promise<void> {
 
   // Phase 9 moves this to pg-boss.
   let retrying = false;
-  const retryTimer = setInterval(() => {
+  retryTimer = setInterval(() => {
     if (retrying) return;
     retrying = true;
     processPendingWebhooks(app.db, app.log)
@@ -38,7 +43,6 @@ async function main(): Promise<void> {
         retrying = false;
       });
   }, 10_000);
-  app.addHook('onClose', async () => clearInterval(retryTimer));
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
