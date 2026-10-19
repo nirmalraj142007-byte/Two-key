@@ -4,6 +4,7 @@ import {
   AppError,
   createLogger,
   ErrorCode,
+  formatFatal,
   formatUSD,
   loadEnv,
   toCents,
@@ -159,5 +160,16 @@ describe('money', () => {
   it('rejects invalid cents', () => {
     expect(() => toPayPalValue(-1)).toThrowError(AppError);
     expect(() => formatUSD(1.5)).toThrowError(AppError);
+  });
+});
+
+describe('formatFatal', () => {
+  it('names missing and invalid keys from AppError details, never values', () => {
+    const err = new AppError(ErrorCode.CONFIG_INVALID, 'Invalid environment', {
+      details: { missing: ['RULE_HMAC_KEY'], invalid: ['WEB_ORIGIN'], value: 'hunter2' },
+    });
+    expect(formatFatal('gateway', 'startup failed', err)).toBe(
+      'gateway: startup failed: CONFIG_INVALID Invalid environment [missing: RULE_HMAC_KEY; invalid: WEB_ORIGIN]',
+    );
   });
 });
