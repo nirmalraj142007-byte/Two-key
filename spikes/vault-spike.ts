@@ -4,8 +4,14 @@
  *
  *   npm run spike:vault            full run (buyer approves the setup token in a browser)
  *   npm run spike:vault -- --reuse reuse spikes/results/vault.json, skip steps a–c
+ *   --new-honor                    let order D replace spikes/results/honor.json
+ *
+ * Order D only becomes the honor-period test authorization (honor.json) when none exists yet
+ * or --new-honor is passed, so a --reuse run never resets a test that is waiting out its 3 days.
  */
 import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { AppError } from '@twokey/core';
 import { PAYER_ACTION_MESSAGE } from '@twokey/paypal';
@@ -13,6 +19,7 @@ import {
   appendSpikeResults,
   describeError,
   errorDetails,
+  RESULTS_DIR,
   readMerchants,
   readResult,
   setupPayPal,
@@ -37,6 +44,7 @@ const POLL_LIMIT_MS = 5 * 60_000;
 const ONE_DOLLAR = 100;
 
 const reuse = process.argv.includes('--reuse');
+const newHonor = process.argv.includes('--new-honor');
 const startedAt = new Date();
 const runId = `${startedAt.toISOString().replace(/\D/g, '').slice(0, 14)}-${randomBytes(2).toString('hex')}`;
 const lines: StepLine[] = [];
@@ -257,8 +265,12 @@ if (!vaultId) {
   try {
     const dd = await authorize('D');
     const info = await pp.getAuthorization(dd.authorizationId);
-    honorAuthId = dd.authorizationId;
-    writeResult('honor.json', {
+    const honorFile =
+      newHonor || !existsSync(resolve(RESULTS_DIR, 'honor.json'))
+        ? 'honor.json'
+        : `honor-${runId}.json`;
+    if (honorFile === 'honor.json') honorAuthId = dd.authorizationId;
+    writeResult(honorFile, {
       authorizationId: dd.authorizationId,
       orderId: dd.orderId,
       createdAt: new Date().toISOString(),
@@ -267,7 +279,7 @@ if (!vaultId) {
     record(
       'g',
       true,
-      `order D ${dd.orderId}; authorization ${dd.authorizationId} ${info.status} (expires ${info.expirationTime ?? 'n/a'}); saved to spikes/results/honor.json`,
+      `order D ${dd.orderId}; authorization ${dd.authorizationId} ${info.status} (expires ${info.expirationTime ?? 'n/a'}); saved to spikes/results/${honorFile}`,
     );
   } catch (err) {
     fail('g', err);
@@ -303,7 +315,7 @@ const md = [
     return `| ${l.step} | ${l.ok ? 'OK' : 'FAIL'} | ${detail.replaceAll('|', '\\|')} |`;
   }),
   '',
-  `- Honor-period authorization: ${honorAuthId ?? 'none'}`,
+  `- Honor-period authorization: ${honorAuthId ?? 'unchanged (spikes/results/honor.json kept)'}`,
   `- ${ladder}`,
   `- **${verdict}**`,
 ].join('\n');

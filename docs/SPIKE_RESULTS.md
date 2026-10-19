@@ -53,3 +53,52 @@ Read back from PayPal at 2026-10-19T14:08:55.161Z for vault-spike run `202610191
 - C: capture 4J1226984K781532W; seller net_amount 0.48 USD (paypal_fee 0.52 USD)
 - D: authorization 93927348PL797874L; expiration_time 2026-11-17T14:07:27Z
 - **ALL MATCH**
+
+## Vault spike — 2026-10-19T17:40:23.670Z (run `20261019174023-6b7a`, --reuse)
+
+| Step | Result | Detail |
+| --- | --- | --- |
+| a-c | OK | reusing payment token from spikes/results/vault.json (created 2026-10-19T14:03:16.584Z) |
+| d | OK | order A 67N74960AN7290051 COMPLETED; authorization 79S40865HL497812P CREATED |
+| d | OK | capture 7GP3983100027992T COMPLETED |
+| d | OK | replay with same PayPal-Request-Id -> order 67N74960AN7290051 (same order) |
+| e | OK | order B 8D882628XJ880764A COMPLETED; authorization 8KC71839BR426974K CREATED |
+| e | OK | void -> authorization status VOIDED |
+| f | OK | order C 2VX195593H007214E payee Stride Supply; authorization 345384788H105010M CREATED |
+| f | OK | capture 4X736043S9319133B COMPLETED |
+| g | OK | order D 2LL941790B488574S; authorization 2R794194KG4033154 CREATED (expires 2026-11-17T17:44:30Z); saved to spikes/results/honor.json |
+
+- Honor-period authorization: 2R794194KG4033154
+- LADDER_A_OK
+- **GO**
+
+## Phase 5 staging webhook verification 2026-10-19
+
+Staging gateway: `https://gateway-8gn7.onrender.com` (Render free plan, Neon Postgres).
+
+`GET /healthz/deep` → HTTP 200 `{"db":"ok","paypalAuth":"ok","webhookSubscriptions":"ok"}`.
+
+Real sandbox events from vault-spike run `20261019174023-6b7a` (`--reuse`), delivered by PayPal to
+`/webhooks/paypal` and verified with `POST /v1/notifications/verify-webhook-signature`. Read from
+the staging `webhook_events` table (`received_at` is database time):
+
+| event_type | verification | received_at (UTC) |
+| --- | --- | --- |
+| PAYMENT.CAPTURE.COMPLETED | SUCCESS | 2026-10-19T17:44:47.658Z |
+| PAYMENT.AUTHORIZATION.CREATED | SUCCESS | 2026-10-19T17:44:46.939Z |
+| PAYMENT.CAPTURE.COMPLETED | SUCCESS | 2026-10-19T17:44:41.355Z |
+| PAYMENT.AUTHORIZATION.CREATED | SUCCESS | 2026-10-19T17:44:41.052Z |
+| PAYMENT.AUTHORIZATION.CREATED | SUCCESS | 2026-10-19T17:44:36.990Z |
+| PAYMENT.AUTHORIZATION.CREATED | SUCCESS | 2026-10-19T17:44:36.883Z |
+| PAYMENT.AUTHORIZATION.VOIDED | SUCCESS | 2026-10-19T17:44:35.762Z |
+
+- Since 17:39 UTC: 7 rows, all `SUCCESS`, none `FAILURE`. That is orders A–D authorized (4 CREATED),
+  A and C captured (2 CAPTURE.COMPLETED) and B voided (1 VOIDED).
+- `processed_at` is NULL and `attempts` keeps rising (21–23 at read time): the spike created these
+  orders outside Two-Key, so staging has no `payments` rows for them and the processor reports
+  `no_payment`. That is expected. Retries stop at `MAX_WEBHOOK_ATTEMPTS` (60).
+- The local clock was about 3 min 50 s behind database and PayPal time during this run.
+- The `--reuse` run no longer replaces the honor-period test: `spikes/results/honor.json` was
+  restored to authorization 93927348PL797874L (created 2026-10-19T14:07:27Z, which is its
+  expiry 2026-11-17T14:07:27Z minus 29 days). `npm run spike:honor` runs after
+  2026-10-22T15:07:27Z (20:37 IST).
