@@ -1,0 +1,7 @@
+[
+  { "slug": "stride-supply",   "displayName": "Stride Supply",   "paypalMerchantId": "AYT4UTUV3UERE", "role": "allowed_demo" },
+  { "slug": "peak-outfitters", "displayName": "Peak Outfitters", "paypalMerchantId": "8C4RBQX4U6BYL", "role": "allowed_demo" },
+  { "slug": "pacer-goods",     "displayName": "Pacer Goods",     "paypalMerchantId": "VCGXZWWJN77Y6", "role": "allowed_demo" },
+  { "slug": "corner-pantry",   "displayName": "Corner Pantry",   "paypalMerchantId": "KH5CUCCNPQRF8", "role": "allowed_demo" },
+  { "slug": "giftvault",       "displayName": "GiftVault",       "paypalMerchantId": "KJ5QLMZCN224U", "role": "attacker" }
+]
