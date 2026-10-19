@@ -21,7 +21,8 @@
     "check": "npm run lint && npm run typecheck && npm run test && npm run check:secrets",
     "format": "biome format --write .",
     "spike:vault": "dotenv -e .env.gateway -- tsx spikes/vault-spike.ts",
-    "spike:honor": "dotenv -e .env.gateway -- tsx spikes/honor-capture.ts"
+    "spike:honor": "dotenv -e .env.gateway -- tsx spikes/honor-capture.ts",
+    "spike:verify": "dotenv -e .env.gateway -- tsx spikes/verify-spike.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",

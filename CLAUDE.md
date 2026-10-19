@@ -32,6 +32,7 @@ These are the product. A change that weakens any of them is a bug, even if a pro
 11. **Holds always end before PayPal's 3-day honor period.** `holdTimeoutMinutes` is under 4,260 (schema-enforced). Demo users use 15 minutes.
 12. **Every PayPal POST is idempotent.** It carries `PayPal-Request-Id: tk-{proposalId}-{create|capture|void}`. A capture or void is never issued twice for one payment: lock the row with `FOR UPDATE`, check the state, then call PayPal.
 13. **Fail closed.** If the gateway can't persist a decision or reach PayPal, no order is created and the user sees "Not purchased — retry".
+14. Onboarding return pages must check that the returned setup-token ID matches the one created for this user's session; reject stale or foreign approvals (seen in the phase 2 spike).
 
 ## Repository layout
 

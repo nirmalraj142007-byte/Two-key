@@ -39,6 +39,12 @@ export interface CaptureInfo {
   raw: unknown;
 }
 
+export interface OrderInfo {
+  id: string;
+  status: string;
+  raw: unknown;
+}
+
 export interface OrdersApi {
   createVaultedAuthorization(i: VaultedAuthorizationInput): Promise<VaultedAuthorization>;
   capture(i: {
@@ -51,6 +57,7 @@ export interface OrdersApi {
   }): Promise<{ status: 'VOIDED' }>;
   getAuthorization(id: string): Promise<AuthorizationInfo>;
   getCapture(id: string): Promise<CaptureInfo>;
+  getOrder(id: string): Promise<OrderInfo>;
 }
 
 const PREFER = 'return=representation';
@@ -192,6 +199,13 @@ export function createOrdersApi(ctx: PayPalContext): OrdersApi {
         ...(expirationTime ? { expirationTime } : {}),
         raw,
       };
+    },
+
+    async getOrder(id) {
+      const { raw } = await ctx.exec({ method: 'GET', path: `/v2/checkout/orders/${id}` }, () =>
+        ctx.orders.getOrder({ id }),
+      );
+      return { id: str(raw.id), status: str(raw.status), raw };
     },
 
     async getCapture(id) {

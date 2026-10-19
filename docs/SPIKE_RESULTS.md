@@ -36,3 +36,20 @@ Appended by `npm run spike:vault` and `npm run spike:honor`. Vault and payment-t
 - Honor-period authorization: 93927348PL797874L
 - LADDER_A_OK
 - **GO**
+
+## PayPal-side verification 2026-10-19
+
+Read back from PayPal at 2026-10-19T14:08:55.161Z for vault-spike run `20261019140102-5b57` (`npm run spike:verify`).
+
+| order | PayPal status | amount | payee merchant_id | expected | result |
+| --- | --- | --- | --- | --- | --- |
+| A | order COMPLETED / capture COMPLETED | 1.00 USD | VV4V2YAUNBQHJ | order COMPLETED / capture COMPLETED, 1.00 USD, platform payee (not a registry merchant) | MATCH |
+| B | authorization VOIDED | 1.00 USD | VV4V2YAUNBQHJ | authorization VOIDED, 1.00 USD | MATCH |
+| C | capture COMPLETED | 1.00 USD | AYT4UTUV3UERE | capture COMPLETED, 1.00 USD, AYT4UTUV3UERE (Stride Supply) | MATCH |
+| D | authorization CREATED | 1.00 USD | VV4V2YAUNBQHJ | authorization CREATED, 1.00 USD, expiration in the future | MATCH |
+
+- A: order 21P1158010424021J, capture 9B960828VW625451S
+- B: authorization 5E990482LF9493607
+- C: capture 4J1226984K781532W; seller net_amount 0.48 USD (paypal_fee 0.52 USD)
+- D: authorization 93927348PL797874L; expiration_time 2026-11-17T14:07:27Z
+- **ALL MATCH**
