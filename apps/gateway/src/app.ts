@@ -1,18 +1,21 @@
 import { randomUUID } from 'node:crypto';
-import { createRequire } from 'node:module';
 import { AppError, createLogger, type Env, ErrorCode, toHttp } from '@twokey/core';
 import type { VerifyWebhookSignature } from '@twokey/paypal';
+import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import { dbPlugin } from './plugins/db.js';
+import { type HealthPayPal, healthRoutes } from './routes/health.js';
 import { webhookRoutes } from './routes/webhooks.js';
 
-const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
-
 export type AppEnv = Pick<Env<'gateway'>, 'LOG_LEVEL'> &
-  Partial<Pick<Env<'gateway'>, 'DATABASE_URL' | 'PAYPAL_WEBHOOK_ID'>>;
+  Partial<Pick<Env<'gateway'>, 'DATABASE_URL' | 'PAYPAL_WEBHOOK_ID' | 'PUBLIC_BASE_URL'>>;
 
 export interface AppDeps {
   verifyWebhookSignature?: VerifyWebhookSignature;
+  /** PayPal calls behind /healthz/deep. */
+  paypalHealth?: HealthPayPal;
+  /** Replaces the `select 1` DB check (tests). */
+  checkDb?: () => Promise<void>;
 }
 
 /** Fastify's own 4xx errors (bad JSON, wrong content type, body too large). */
@@ -51,14 +54,19 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
     return reply.status(status).send(body);
   });
 
-  app.get('/healthz', async () => ({
-    ok: true,
-    service: 'gateway',
-    version,
-    commit: process.env.RENDER_GIT_COMMIT ?? 'dev',
-  }));
-
   if (env.DATABASE_URL) app.register(dbPlugin, { url: env.DATABASE_URL });
+  app.register(healthRoutes, {
+    checkDb:
+      deps.checkDb ??
+      (env.DATABASE_URL
+        ? async () => {
+            await app.db.execute(sql`select 1`);
+          }
+        : undefined),
+    paypal: deps.paypalHealth,
+    webhookId: env.PAYPAL_WEBHOOK_ID,
+    publicBaseUrl: env.PUBLIC_BASE_URL,
+  });
   app.register(webhookRoutes, {
     webhookId: env.PAYPAL_WEBHOOK_ID,
     verify: deps.verifyWebhookSignature,

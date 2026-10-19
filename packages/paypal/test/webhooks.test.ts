@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { AppError, ErrorCode } from '@twokey/core';
 import { describe, expect, it, vi } from 'vitest';
-import { createWebhookVerifier } from '../src/webhooks.js';
+import { createWebhookApi, createWebhookVerifier } from '../src/webhooks.js';
 
 const headers = {
   'paypal-auth-algo': 'SHA256withRSA',
@@ -99,5 +99,51 @@ describe('verifyWebhookSignature', () => {
     });
     const err = await verify({ headers, rawBody, webhookId: 'WH-ID' }).catch((e: unknown) => e);
     expect(err).toMatchObject({ code: ErrorCode.UPSTREAM_PAYPAL, retryable: true });
+  });
+});
+
+describe('createWebhookApi', () => {
+  function apiWith(handler: (url: string, init?: RequestInit) => Response) {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) =>
+      String(input).endsWith('/v1/oauth2/token')
+        ? json(200, { access_token: 'A21', expires_in: 32400 })
+        : handler(String(input), init),
+    );
+    return {
+      api: createWebhookApi({ clientId: 'id', clientSecret: 's', env: 'sandbox', fetch }),
+      fetch,
+    };
+  }
+
+  it('lists webhooks with their event type names', async () => {
+    const { api } = apiWith(() =>
+      json(200, {
+        webhooks: [
+          {
+            id: 'WH-1',
+            url: 'https://gw.example.test/webhooks/paypal',
+            event_types: [{ name: 'PAYMENT.CAPTURE.COMPLETED', description: 'x' }],
+          },
+        ],
+      }),
+    );
+    await expect(api.listWebhooks()).resolves.toEqual([
+      {
+        id: 'WH-1',
+        url: 'https://gw.example.test/webhooks/paypal',
+        eventTypes: ['PAYMENT.CAPTURE.COMPLETED'],
+      },
+    ]);
+  });
+
+  it('replaces event types with a JSON Patch', async () => {
+    const { api, fetch } = apiWith(() => json(200, { id: 'WH-1', url: 'u', event_types: [] }));
+    await api.updateWebhookEvents('WH-1', ['PAYMENT.CAPTURE.DENIED']);
+    const [url, init] = fetch.mock.calls.at(-1) ?? [];
+    expect(String(url)).toBe('https://api-m.sandbox.paypal.com/v1/notifications/webhooks/WH-1');
+    expect(init?.method).toBe('PATCH');
+    expect(JSON.parse(String(init?.body))).toEqual([
+      { op: 'replace', path: '/event_types', value: [{ name: 'PAYMENT.CAPTURE.DENIED' }] },
+    ]);
   });
 });

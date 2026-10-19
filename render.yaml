@@ -1,12 +1,24 @@
-# Render Blueprint. Env var values are never stored here (sync: false).
-# Secret ownership is enforced by `npm run check:secrets` (SECRET_OWNERS in packages/core/src/env.ts).
+# Render Blueprint for Two-Key STAGING.
+#
+# - Staging deploys from the `main` branch. Production (deploying from `release`) is added in
+#   phase 30; until then this file describes staging only.
+# - Every service runs on Render's free plan. Free services sleep after 15 minutes without
+#   traffic and take about a minute to wake (see docs/DEPLOY.md).
+# - No Render database: DATABASE_URL is an external Neon Postgres connection string (direct,
+#   non-pooled, sslmode=require), pasted by hand into each service that needs it.
+# - Free plans can't run a preDeployCommand, so the gateway applies migrations (forward-only,
+#   idempotent) at the start of its startCommand, before it begins serving.
+# - `npm ci --include=dev` installs the whole workspace, including tsx, even when
+#   NODE_ENV=production. Services run TypeScript source through their workspace start script.
+# - Env var values are never stored here (sync: false). Secret ownership is enforced by
+#   `npm run check:secrets` (SECRET_OWNERS in packages/core/src/env.ts).
 services:
   - type: web
     name: web
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
-    buildCommand: npm ci && npm run build -w @twokey/web
+    buildCommand: npm ci --include=dev && npm run build -w @twokey/web
     startCommand: npm run start -w @twokey/web
     healthCheckPath: /api/healthz
     envVars:
@@ -33,10 +45,10 @@ services:
   - type: web
     name: gateway
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
-    buildCommand: npm ci
-    startCommand: npm run start -w @twokey/gateway
+    buildCommand: npm ci --include=dev
+    startCommand: npm run db:migrate -w @twokey/db && npm run start -w @twokey/gateway
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
@@ -80,9 +92,9 @@ services:
   - type: web
     name: twokey-mcp
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
-    buildCommand: npm ci
+    buildCommand: npm ci --include=dev
     startCommand: npm run start -w @twokey/mcp
     healthCheckPath: /healthz
     envVars:
@@ -98,13 +110,14 @@ services:
         sync: false
       - key: PORT
         sync: false
-  - type: worker
+  - type: web
     name: agent-runner
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
-    buildCommand: npm ci
+    buildCommand: npm ci --include=dev
     startCommand: npm run start -w @twokey/agent-runner
+    healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
         sync: false
@@ -124,8 +137,3 @@ services:
         sync: false
       - key: PORT
         sync: false
-databases:
-  - name: twokey-db
-    databaseName: twokey
-    plan: basic-256mb
-    region: oregon

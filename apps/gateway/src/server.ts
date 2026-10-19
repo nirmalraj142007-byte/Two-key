@@ -1,5 +1,5 @@
 import { loadEnv } from '@twokey/core';
-import { createWebhookVerifier } from '@twokey/paypal';
+import { createWebhookApi, createWebhookVerifier } from '@twokey/paypal';
 import { buildApp } from './app.js';
 import { processPendingWebhooks } from './services/webhook-apply.js';
 
@@ -11,12 +11,14 @@ try {
   process.exit(1);
 }
 
+const paypalCfg = {
+  clientId: env.PAYPAL_CLIENT_ID,
+  clientSecret: env.PAYPAL_CLIENT_SECRET,
+  env: env.PAYPAL_ENV,
+};
 const app = buildApp(env, {
-  verifyWebhookSignature: createWebhookVerifier({
-    clientId: env.PAYPAL_CLIENT_ID,
-    clientSecret: env.PAYPAL_CLIENT_SECRET,
-    env: env.PAYPAL_ENV,
-  }),
+  verifyWebhookSignature: createWebhookVerifier(paypalCfg),
+  paypalHealth: createWebhookApi(paypalCfg),
 });
 
 if (!env.PAYPAL_WEBHOOK_ID)

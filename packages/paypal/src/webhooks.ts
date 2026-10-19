@@ -1,7 +1,7 @@
 import { AppError, ErrorCode } from '@twokey/core';
 import { PAYPAL_BASE_URL } from './client.js';
 import { mapPayPalError } from './errors.js';
-import { str } from './raw.js';
+import { obj, str } from './raw.js';
 
 export interface VerifyWebhookInput {
   /** Request headers, lower-cased (as Node delivers them). */
@@ -36,13 +36,13 @@ function unreachable(cause: unknown): AppError {
   });
 }
 
-/**
- * Builds `verifyWebhookSignature`, which asks PayPal (POST /v1/notifications/verify-webhook-signature)
- * whether an event really came from PayPal. Network failures and 5xx throw a retryable
- * AppError(UPSTREAM_PAYPAL); a request missing any paypal-* signature header is a FAILURE
- * without calling PayPal.
- */
-export function createWebhookVerifier(cfg: WebhookVerifierConfig): VerifyWebhookSignature {
+interface RestClient {
+  call(path: string, init: RequestInit): Promise<Record<string, unknown>>;
+  accessToken(): Promise<string>;
+}
+
+/** Small fetch client for the REST endpoints the Server SDK doesn't cover (notifications). */
+function createRestClient(cfg: WebhookVerifierConfig): RestClient {
   const base = PAYPAL_BASE_URL[cfg.env];
   const doFetch = cfg.fetch ?? fetch;
   const timeoutMs = cfg.timeoutMs ?? 10_000;
@@ -65,6 +65,7 @@ export function createWebhookVerifier(cfg: WebhookVerifierConfig): VerifyWebhook
         text,
       );
     }
+    if (text.trim() === '') return {};
     try {
       const parsed: unknown = JSON.parse(text);
       return parsed !== null && typeof parsed === 'object'
@@ -93,6 +94,18 @@ export function createWebhookVerifier(cfg: WebhookVerifierConfig): VerifyWebhook
     return value;
   }
 
+  return { call, accessToken };
+}
+
+/**
+ * Builds `verifyWebhookSignature`, which asks PayPal (POST /v1/notifications/verify-webhook-signature)
+ * whether an event really came from PayPal. Network failures and 5xx throw a retryable
+ * AppError(UPSTREAM_PAYPAL); a request missing any paypal-* signature header is a FAILURE
+ * without calling PayPal.
+ */
+export function createWebhookVerifier(cfg: WebhookVerifierConfig): VerifyWebhookSignature {
+  const { call, accessToken } = createRestClient(cfg);
+
   return async ({ headers, rawBody, webhookId }) => {
     let fields = '';
     for (const [field, header] of Object.entries(SIGNATURE_HEADERS)) {
@@ -112,5 +125,71 @@ export function createWebhookVerifier(cfg: WebhookVerifierConfig): VerifyWebhook
       body,
     });
     return raw.verification_status === 'SUCCESS' ? 'SUCCESS' : 'FAILURE';
+  };
+}
+
+export interface WebhookSubscription {
+  id: string;
+  url: string;
+  eventTypes: string[];
+}
+
+export interface WebhookApi {
+  /** Fetches (or reuses) an OAuth token; throws if PayPal rejects the credentials. */
+  checkAuth(): Promise<void>;
+  listWebhooks(): Promise<WebhookSubscription[]>;
+  createWebhook(i: { url: string; eventTypes: string[] }): Promise<WebhookSubscription>;
+  updateWebhookEvents(id: string, eventTypes: string[]): Promise<WebhookSubscription>;
+}
+
+function toSubscription(raw: Record<string, unknown>): WebhookSubscription {
+  const types = Array.isArray(raw.event_types) ? raw.event_types : [];
+  return {
+    id: str(raw.id),
+    url: str(raw.url),
+    eventTypes: types.map((t) => str(obj(t).name)).filter((n) => n !== ''),
+  };
+}
+
+const eventTypesBody = (eventTypes: string[]) => eventTypes.map((name) => ({ name }));
+
+/** Webhook subscription management (GET/POST/PATCH /v1/notifications/webhooks). */
+export function createWebhookApi(cfg: WebhookVerifierConfig): WebhookApi {
+  const { call, accessToken } = createRestClient(cfg);
+  const json = async () => ({
+    authorization: `Bearer ${await accessToken()}`,
+    'content-type': 'application/json',
+  });
+
+  return {
+    async checkAuth() {
+      await accessToken();
+    },
+    async listWebhooks() {
+      const raw = await call('/v1/notifications/webhooks', {
+        method: 'GET',
+        headers: await json(),
+      });
+      const list = Array.isArray(raw.webhooks) ? raw.webhooks : [];
+      return list.map((w) => toSubscription(obj(w)));
+    },
+    async createWebhook({ url, eventTypes }) {
+      const raw = await call('/v1/notifications/webhooks', {
+        method: 'POST',
+        headers: await json(),
+        body: JSON.stringify({ url, event_types: eventTypesBody(eventTypes) }),
+      });
+      return toSubscription(raw);
+    },
+    async updateWebhookEvents(id, eventTypes) {
+      const raw = await call(`/v1/notifications/webhooks/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: await json(),
+        body: JSON.stringify([
+          { op: 'replace', path: '/event_types', value: eventTypesBody(eventTypes) },
+        ]),
+      });
+      return toSubscription(raw);
+    },
   };
 }
