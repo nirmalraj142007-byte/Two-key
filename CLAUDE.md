@@ -63,7 +63,7 @@ docs/             BLUEPRINT, SCHEDULE, SPIKE_RESULTS, DEPLOY, JUDGE_GAP_AUDIT, T
 | `agent-runner` | 4200 | Anthropic and OpenRouter keys | Any PayPal or signing credential |
 | `eval` CLI | — | LLM keys, Channel3 key, `EVAL_ADMIN_TOKEN` | PayPal credentials |
 
-Deployment: Render Blueprint (`render.yaml`). Staging deploys from `main`, production from `release`. Migrations run in the gateway's `preDeployCommand` and are forward-only and additive after Nov 4.
+Deployment: Render Blueprint (`render.yaml`). Staging deploys from `main`, production from `release`. Render free plans have no `preDeployCommand`, so migrations run at the start of the gateway's `startCommand` (`npm run db:migrate -w @twokey/db && npm run start -w @twokey/gateway`); they are forward-only and additive after Nov 4.
 
 ## Commands
 

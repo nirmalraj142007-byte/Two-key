@@ -6,3 +6,5 @@ spikes/results/
 .next
 coverage
 *.tsbuildinfo
+*.pem
+*.key
