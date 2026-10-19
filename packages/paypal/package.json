@@ -1,0 +1,13 @@
+{
+  "name": "@twokey/paypal",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@paypal/paypal-server-sdk": "^1",
+    "@twokey/core": "*"
+  }
+}

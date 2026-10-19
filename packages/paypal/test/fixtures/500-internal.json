@@ -1,0 +1,12 @@
+{
+  "name": "INTERNAL_SERVER_ERROR",
+  "message": "An internal server error has occurred.",
+  "debug_id": "90957fca61718",
+  "links": [
+    {
+      "href": "https://developer.paypal.com/docs/api/orders/v2/#error-INTERNAL_SERVER_ERROR",
+      "rel": "information_link",
+      "method": "GET"
+    }
+  ]
+}

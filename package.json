@@ -6,6 +6,7 @@
     "apps/*",
     "packages/*",
     "scripts",
+    "spikes",
     "eval"
   ],
   "engines": {
@@ -18,7 +19,9 @@
     "test": "vitest run",
     "check:secrets": "tsx scripts/check-secret-isolation.ts",
     "check": "npm run lint && npm run typecheck && npm run test && npm run check:secrets",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "spike:vault": "dotenv -e .env.gateway -- tsx spikes/vault-spike.ts",
+    "spike:honor": "dotenv -e .env.gateway -- tsx spikes/honor-capture.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",

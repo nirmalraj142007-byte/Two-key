@@ -1,0 +1,19 @@
+{
+  "name": "UNPROCESSABLE_ENTITY",
+  "details": [
+    {
+      "field": "/purchase_units/@reference_id=='default'/payee",
+      "issue": "PAYEE_ACCOUNT_RESTRICTED",
+      "description": "The merchant account is restricted."
+    }
+  ],
+  "message": "The requested action could not be performed, semantically incorrect, or failed business validation.",
+  "debug_id": "f2a5b0c3d4e61",
+  "links": [
+    {
+      "href": "https://developer.paypal.com/docs/api/orders/v2/#error-PAYEE_ACCOUNT_RESTRICTED",
+      "rel": "information_link",
+      "method": "GET"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@twokey/spikes",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@twokey/core": "*",
+    "@twokey/paypal": "*"
+  }
+}
