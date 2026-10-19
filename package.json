@@ -16,7 +16,7 @@
     "dev": "concurrently -n web,gw,mcp,run -c cyan,green,magenta,yellow \"npm run dev -w @twokey/web\" \"npm run dev -w @twokey/gateway\" \"npm run dev -w @twokey/mcp\" \"npm run dev -w @twokey/agent-runner\"",
     "lint": "biome check .",
     "typecheck": "tsc -b && npm run typecheck -w @twokey/web",
-    "test": "dotenv -e .env.gateway -- vitest run",
+    "test": "vitest run",
     "check:secrets": "tsx scripts/check-secret-isolation.ts",
     "check": "npm run lint && npm run typecheck && npm run test && npm run check:secrets",
     "format": "biome format --write .",

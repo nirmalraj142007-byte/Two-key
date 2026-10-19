@@ -12,7 +12,7 @@ export function testDatabaseUrl(): string | undefined {
   const url = process.env.DATABASE_URL;
   if (url) return url;
   if (process.env.CI) {
-    throw new Error('DATABASE_URL is not set: database tests must not skip in CI');
+    throw new Error('DATABASE_URL is required in CI: database tests must not skip');
   }
   process.stderr.write('database tests skipped: DATABASE_URL is not set\n');
   return undefined;

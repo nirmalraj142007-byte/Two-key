@@ -6,7 +6,8 @@ import { str } from './raw.js';
 export interface VerifyWebhookInput {
   /** Request headers, lower-cased (as Node delivers them). */
   headers: Record<string, string>;
-  event: unknown;
+  /** The request body exactly as PayPal sent it; PayPal signed these bytes. */
+  rawBody: string;
   webhookId: string;
 }
 
@@ -92,20 +93,23 @@ export function createWebhookVerifier(cfg: WebhookVerifierConfig): VerifyWebhook
     return value;
   }
 
-  return async ({ headers, event, webhookId }) => {
-    const signature: Record<string, string> = {};
+  return async ({ headers, rawBody, webhookId }) => {
+    let fields = '';
     for (const [field, header] of Object.entries(SIGNATURE_HEADERS)) {
       const value = headers[header];
       if (!value) return 'FAILURE';
-      signature[field] = value;
+      fields += `${JSON.stringify(field)}:${JSON.stringify(value)},`;
     }
+    // Splice the event in as raw text: re-serializing it (1.10 -> 1.1, \u00e9 -> é) would
+    // change the bytes PayPal signed and make a genuine event fail verification.
+    const body = `{${fields}"webhook_id":${JSON.stringify(webhookId)},"webhook_event":${rawBody}}`;
     const raw = await call('/v1/notifications/verify-webhook-signature', {
       method: 'POST',
       headers: {
         authorization: `Bearer ${await accessToken()}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ ...signature, webhook_id: webhookId, webhook_event: event }),
+      body,
     });
     return raw.verification_status === 'SUCCESS' ? 'SUCCESS' : 'FAILURE';
   };

@@ -14,7 +14,7 @@ import {
   webhookEvents,
 } from '@twokey/db';
 import { createTestDatabase, runSeed, testDatabaseUrl } from '@twokey/db/testing';
-import type { VerifyWebhookSignature } from '@twokey/paypal';
+import { createWebhookVerifier, type VerifyWebhookSignature } from '@twokey/paypal';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -162,7 +162,12 @@ describe.skipIf(!baseUrl)('POST /webhooks/paypal', () => {
   }
 
   const post = (payload: unknown, headers: Record<string, string> = SIGNATURE_HEADERS) =>
-    app.inject({ method: 'POST', url: '/webhooks/paypal', headers, payload: payload as object });
+    app.inject({
+      method: 'POST',
+      url: '/webhooks/paypal',
+      headers: { ...headers, 'content-type': 'application/json' },
+      payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
+    });
 
   async function paymentRow(id: string) {
     const [row] = await conn.db.select().from(payments).where(eq(payments.id, id));
@@ -297,8 +302,72 @@ describe.skipIf(!baseUrl)('POST /webhooks/paypal', () => {
     await post(body);
     expect(verify).toHaveBeenCalledWith({
       headers: expect.objectContaining(SIGNATURE_HEADERS),
-      event: body,
+      rawBody: JSON.stringify(body),
       webhookId: 'WH-ID-TEST',
     });
+  });
+
+  it('rejects a body that is not valid JSON with 400 VALIDATION and stores nothing', async () => {
+    const res = await post('{"id":"WH-BROKEN","event_type":');
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION');
+    expect(verify).not.toHaveBeenCalled();
+    expect(await webhookRows('WH-BROKEN')).toHaveLength(0);
+  });
+
+  it('sends PayPal the exact bytes received (1.10 and \\u escapes intact)', async () => {
+    const { paymentId, authId } = await newPayment('authorized');
+    const eventId = `WH-RAW-${randomBytes(6).toString('hex').toUpperCase()}`;
+    const raw = readFileSync(
+      new URL('./fixtures/capture-completed-raw.json', import.meta.url),
+      'utf8',
+    )
+      .trim()
+      .replaceAll('WH-58D329510W468432D-8HN650336L201105X', eventId)
+      .replaceAll(FIXTURE_AUTH_ID, authId)
+      .replaceAll(FIXTURE_CAPTURE_ID, `CAP${randomBytes(6).toString('hex')}`);
+    expect(raw).toContain('"exchange_rate":1.10');
+    expect(raw).toContain(String.raw`Caf\u00e9`);
+
+    // The real verifier, with only PayPal's HTTP endpoints stubbed.
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) =>
+      Response.json(
+        String(input).endsWith('/v1/oauth2/token')
+          ? { access_token: 'A21', expires_in: 32400 }
+          : { verification_status: 'SUCCESS' },
+      ),
+    );
+    const rawApp = buildApp(
+      { LOG_LEVEL: 'silent', DATABASE_URL: url, PAYPAL_WEBHOOK_ID: 'WH-ID-TEST' },
+      {
+        verifyWebhookSignature: createWebhookVerifier({
+          clientId: 'id',
+          clientSecret: 's',
+          env: 'sandbox',
+          fetch,
+        }),
+      },
+    );
+    try {
+      const res = await rawApp.inject({
+        method: 'POST',
+        url: '/webhooks/paypal',
+        headers: { ...SIGNATURE_HEADERS, 'content-type': 'application/json' },
+        payload: raw,
+      });
+      expect(res.json()).toEqual({ result: 'applied' });
+    } finally {
+      await rawApp.close();
+    }
+
+    const sent = String(
+      fetch.mock.calls.find(([u]) => String(u).endsWith('/verify-webhook-signature'))?.[1]?.body,
+    );
+    expect(sent).toContain(raw);
+    expect(sent.endsWith(`"webhook_event":${raw}}`)).toBe(true);
+    expect((await paymentRow(paymentId))?.state).toBe('captured');
+    const [row] = await webhookRows(eventId);
+    expect(row?.raw).toMatchObject({ resource: { exchange_rate: 1.1 } });
+    expect((row?.raw as { summary?: string } | undefined)?.summary).toContain('Café Runner');
   });
 });

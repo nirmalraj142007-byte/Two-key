@@ -11,7 +11,7 @@ export interface WebhookRouteOptions {
   verify?: VerifyWebhookSignature | undefined;
 }
 
-// Only checks the envelope; the untouched body is what PayPal verifies and what we store.
+// Only checks the envelope; the untouched raw body is what PayPal verifies and what we store.
 const envelope = z.looseObject({
   id: z.string().min(1),
   event_type: z.string().min(1),
@@ -29,17 +29,30 @@ function stringHeaders(headers: Record<string, string | string[] | undefined>) {
  * endpoint is ever called here, so we answer well inside PayPal's delivery timeout.
  */
 export const webhookRoutes: FastifyPluginAsync<WebhookRouteOptions> = async (app, opts) => {
+  // PayPal signs the exact bytes it sent, so keep the body as a string. This plugin is
+  // encapsulated, so the override applies to these routes only.
+  app.removeContentTypeParser('application/json');
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) =>
+    done(null, body),
+  );
+
   app.post('/webhooks/paypal', async (req, reply) => {
     const { webhookId, verify } = opts;
     if (!webhookId || !verify || !app.hasDecorator('db')) {
       throw new AppError(ErrorCode.CONFIG_INVALID, 'webhook not configured', { httpStatus: 503 });
     }
 
-    const parsed = envelope.safeParse(req.body);
+    const rawBody = typeof req.body === 'string' ? req.body : '';
+    let body: unknown;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      throw new AppError(ErrorCode.VALIDATION, 'Webhook body must be JSON');
+    }
+    const parsed = envelope.safeParse(body);
     if (!parsed.success) {
       throw new AppError(ErrorCode.VALIDATION, 'Webhook body needs id and event_type');
     }
-    const event = req.body as Record<string, unknown>;
     const meta = {
       eventId: parsed.data.id,
       eventType: parsed.data.event_type,
@@ -48,7 +61,11 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRouteOptions> = async (app
 
     let verification: 'SUCCESS' | 'FAILURE';
     try {
-      verification = await verify({ headers: stringHeaders(req.headers), event, webhookId });
+      verification = await verify({
+        headers: stringHeaders(req.headers),
+        rawBody,
+        webhookId,
+      });
     } catch (err) {
       req.log.warn({ ...meta, err }, 'paypal webhook verification unavailable');
       throw new AppError(ErrorCode.UPSTREAM_PAYPAL, 'Webhook verification unavailable, retry', {
@@ -62,7 +79,8 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRouteOptions> = async (app
       eventType: meta.eventType,
       resourceId: meta.resourceId,
       verification,
-      raw: event,
+      // Postgres parses the raw text itself (already checked as valid JSON above).
+      raw: sql`${rawBody}::jsonb`,
     };
 
     if (verification === 'FAILURE') {
@@ -82,7 +100,7 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRouteOptions> = async (app
           eventType: row.eventType,
           resourceId: row.resourceId,
           verification: 'SUCCESS',
-          raw: row.raw,
+          raw: sql`excluded.raw`,
           receivedAt: sql`now()`,
         },
         setWhere: ne(webhookEvents.verification, 'SUCCESS'),

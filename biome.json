@@ -34,7 +34,11 @@
   },
   "overrides": [
     {
-      "includes": ["config/merchants.json"],
+      "includes": [
+        "config/merchants.json",
+        "**/test/fixtures/raw-event.json",
+        "**/test/fixtures/capture-completed-raw.json"
+      ],
       "formatter": {
         "enabled": false
       }
