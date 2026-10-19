@@ -1,0 +1,131 @@
+# Render Blueprint. Env var values are never stored here (sync: false).
+# Secret ownership is enforced by `npm run check:secrets` (SECRET_OWNERS in packages/core/src/env.ts).
+services:
+  - type: web
+    name: web
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm ci && npm run build -w @twokey/web
+    startCommand: npm run start -w @twokey/web
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_ENV
+        sync: false
+      - key: LOG_LEVEL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+      - key: HUMAN_ASSERTION_PRIVATE_KEY
+        sync: false
+      - key: GATEWAY_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: NEXT_PUBLIC_AG_GRID_LICENSE_KEY
+        sync: false
+      - key: NEXT_PUBLIC_VAPID_PUBLIC_KEY
+        sync: false
+      - key: IP_HASH_SALT
+        sync: false
+  - type: web
+    name: gateway
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm ci
+    startCommand: npm run start -w @twokey/gateway
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        sync: false
+      - key: LOG_LEVEL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: PAYPAL_ENV
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: RULE_HMAC_KEY
+        sync: false
+      - key: RULE_HMAC_KEY_ID
+        sync: false
+      - key: HUMAN_ASSERTION_PUBLIC_KEY
+        sync: false
+      - key: AGENT_TOKEN_PEPPER
+        sync: false
+      - key: CHANNEL3_API_KEY
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: WEB_ORIGIN
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: PORT
+        sync: false
+      - key: MERCHANT_REPORTING_CREDENTIALS
+        sync: false
+  - type: web
+    name: twokey-mcp
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm ci
+    startCommand: npm run start -w @twokey/mcp
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        sync: false
+      - key: LOG_LEVEL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GATEWAY_URL
+        sync: false
+      - key: TWOKEY_AGENT_TOKEN
+        sync: false
+      - key: PORT
+        sync: false
+  - type: worker
+    name: agent-runner
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm ci
+    startCommand: npm run start -w @twokey/agent-runner
+    envVars:
+      - key: NODE_ENV
+        sync: false
+      - key: LOG_LEVEL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: MCP_URL
+        sync: false
+      - key: DAILY_BUDGET_USD_LIVE
+        sync: false
+      - key: DAILY_BUDGET_USD_HIJACK
+        sync: false
+      - key: PORT
+        sync: false
+databases:
+  - name: twokey-db
+    databaseName: twokey
+    plan: basic-256mb
+    region: oregon

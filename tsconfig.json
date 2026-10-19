@@ -1,4 +1,10 @@
 {
   "files": [],
-  "references": [{ "path": "packages/core" }]
+  "references": [
+    { "path": "packages/core" },
+    { "path": "apps/gateway" },
+    { "path": "apps/mcp" },
+    { "path": "apps/agent-runner" },
+    { "path": "scripts" }
+  ]
 }

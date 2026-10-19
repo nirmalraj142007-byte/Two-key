@@ -1,0 +1,13 @@
+{
+  "name": "@twokey/agent-runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -e ../../.env.agent-runner -- tsx watch src/index.ts",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@twokey/core": "*"
+  }
+}

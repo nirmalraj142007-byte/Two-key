@@ -1,0 +1,24 @@
+{
+  "name": "@twokey/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "dotenv -e ../../.env.web -- next dev --port 3000",
+    "build": "next build",
+    "typecheck": "next typegen && tsc --noEmit",
+    "start": "next start --port 3000"
+  },
+  "dependencies": {
+    "next": "16.4.2",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "@twokey/core": "*"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

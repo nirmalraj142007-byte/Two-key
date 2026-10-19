@@ -5,23 +5,29 @@
   "workspaces": [
     "apps/*",
     "packages/*",
+    "scripts",
     "eval"
   ],
   "engines": {
     "node": ">=24"
   },
   "scripts": {
+    "dev": "concurrently -n web,gw,mcp,run -c cyan,green,magenta,yellow \"npm run dev -w @twokey/web\" \"npm run dev -w @twokey/gateway\" \"npm run dev -w @twokey/mcp\" \"npm run dev -w @twokey/agent-runner\"",
     "lint": "biome check .",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && npm run typecheck -w @twokey/web",
     "test": "vitest run",
-    "check": "npm run lint && npm run typecheck && npm run test",
+    "check:secrets": "tsx scripts/check-secret-isolation.ts",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run check:secrets",
     "format": "biome format --write ."
   },
   "devDependencies": {
     "@biomejs/biome": "^2",
     "@types/node": "^24",
+    "concurrently": "^9",
+    "dotenv-cli": "^8",
     "tsx": "^4",
     "typescript": "^5",
-    "vitest": "^3"
+    "vitest": "^3",
+    "yaml": "^2"
   }
 }
