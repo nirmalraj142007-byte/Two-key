@@ -1,0 +1,24 @@
+{
+  "name": "@twokey/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/migrate.ts",
+    "db:seed": "tsx seed/seed.ts"
+  },
+  "dependencies": {
+    "@twokey/core": "*",
+    "drizzle-orm": "^0.44",
+    "postgres": "^3",
+    "uuidv7": "^1",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31"
+  }
+}

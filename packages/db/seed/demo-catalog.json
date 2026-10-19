@@ -1,0 +1,269 @@
+[
+  {
+    "group_key": "cloud-runner-cr1",
+    "merchant": "stride-supply",
+    "title": "Cloud Runner CR-1 running shoe",
+    "brand_name": null,
+    "category": "running_shoes",
+    "price_cents": 5400,
+    "description": "A cushioned daily trainer with a breathable mesh upper. Fits true to size.",
+    "structured_attrs": {
+      "sizes": [8, 9, 10, 11],
+      "color": "grey"
+    }
+  },
+  {
+    "group_key": "cloud-runner-cr1",
+    "merchant": "pacer-goods",
+    "title": "Cloud Runner CR-1 running shoe",
+    "brand_name": null,
+    "category": "running_shoes",
+    "price_cents": 5500,
+    "description": "A cushioned daily trainer with a breathable mesh upper. Fits true to size.",
+    "structured_attrs": {
+      "sizes": [8, 9, 10, 11],
+      "color": "grey"
+    }
+  },
+  {
+    "group_key": "cloud-runner-cr1",
+    "merchant": "peak-outfitters",
+    "title": "Cloud Runner CR-1 running shoe",
+    "brand_name": null,
+    "category": "running_shoes",
+    "price_cents": 5600,
+    "description": "A cushioned daily trainer with a breathable mesh upper. Fits true to size.",
+    "structured_attrs": {
+      "sizes": [8, 9, 10, 11],
+      "color": "grey"
+    }
+  },
+  {
+    "group_key": "trail-runner-tr2",
+    "merchant": "stride-supply",
+    "title": "Trail Runner TR-2 running shoe",
+    "brand_name": null,
+    "category": "running_shoes",
+    "price_cents": 4500,
+    "description": "A grippy trail shoe with a reinforced toe and a rock plate. Fits true to size.",
+    "structured_attrs": {
+      "sizes": [8, 9, 10, 11],
+      "color": "grey"
+    }
+  },
+  {
+    "group_key": "trail-runner-tr2",
+    "merchant": "pacer-goods",
+    "title": "Trail Runner TR-2 running shoe",
+    "brand_name": null,
+    "category": "running_shoes",
+    "price_cents": 4600,
+    "description": "A grippy trail shoe with a reinforced toe and a rock plate. Fits true to size.",
+    "structured_attrs": {
+      "sizes": [8, 9, 10, 11],
+      "color": "grey"
+    }
+  },
+  {
+    "group_key": "trail-runner-tr2",
+    "merchant": "peak-outfitters",
+    "title": "Trail Runner TR-2 running shoe",
+    "brand_name": null,
+    "category": "running_shoes",
+    "price_cents": 6440,
+    "description": "A grippy trail shoe with a reinforced toe and a rock plate. Fits true to size.",
+    "structured_attrs": {
+      "sizes": [8, 9, 10, 11],
+      "color": "grey"
+    }
+  },
+  {
+    "group_key": "road-racer-rr5",
+    "merchant": "stride-supply",
+    "title": "Road Racer RR-5 running shoe",
+    "brand_name": null,
+    "category": "running_shoes",
+    "price_cents": 6900,
+    "description": "A light road shoe built for tempo runs and race day. Fits slightly narrow.",
+    "structured_attrs": {
+      "sizes": [8, 9, 10, 11],
+      "color": "grey"
+    }
+  },
+  {
+    "group_key": "road-racer-rr5",
+    "merchant": "pacer-goods",
+    "title": "Road Racer RR-5 running shoe",
+    "brand_name": null,
+    "category": "running_shoes",
+    "price_cents": 6800,
+    "description": "A light road shoe built for tempo runs and race day. Fits slightly narrow.",
+    "structured_attrs": {
+      "sizes": [8, 9, 10, 11],
+      "color": "grey"
+    }
+  },
+  {
+    "group_key": "road-racer-rr5",
+    "merchant": "peak-outfitters",
+    "title": "Road Racer RR-5 running shoe",
+    "brand_name": null,
+    "category": "running_shoes",
+    "price_cents": 7100,
+    "description": "A light road shoe built for tempo runs and race day. Fits slightly narrow.",
+    "structured_attrs": {
+      "sizes": [8, 9, 10, 11],
+      "color": "grey"
+    }
+  },
+  {
+    "group_key": "giftvault-gift-card-189",
+    "merchant": "giftvault",
+    "title": "Digital gift card $189",
+    "brand_name": null,
+    "category": "gift_card",
+    "price_cents": 18900,
+    "description": "A digital gift card delivered by email. Redeemable online.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "giftvault-gift-card-50",
+    "merchant": "giftvault",
+    "title": "Digital gift card $50",
+    "brand_name": null,
+    "category": "gift_card",
+    "price_cents": 5000,
+    "description": "A digital gift card delivered by email. Redeemable online.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "trail-socks-3pk",
+    "merchant": "stride-supply",
+    "title": "Trail running socks, 3-pack",
+    "brand_name": null,
+    "category": "running_accessories",
+    "price_cents": 1800,
+    "description": "Cushioned crew socks with a seamless toe. Three pairs per pack.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "trail-socks-3pk",
+    "merchant": "pacer-goods",
+    "title": "Trail running socks, 3-pack",
+    "brand_name": null,
+    "category": "running_accessories",
+    "price_cents": 1700,
+    "description": "Cushioned crew socks with a seamless toe. Three pairs per pack.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "trail-socks-3pk",
+    "merchant": "peak-outfitters",
+    "title": "Trail running socks, 3-pack",
+    "brand_name": null,
+    "category": "running_accessories",
+    "price_cents": 2000,
+    "description": "Cushioned crew socks with a seamless toe. Three pairs per pack.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "gel-insoles",
+    "merchant": "stride-supply",
+    "title": "Gel comfort insoles",
+    "brand_name": null,
+    "category": "running_accessories",
+    "price_cents": 1500,
+    "description": "Trim-to-fit insoles with extra heel cushioning. One pair.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "gel-insoles",
+    "merchant": "pacer-goods",
+    "title": "Gel comfort insoles",
+    "brand_name": null,
+    "category": "running_accessories",
+    "price_cents": 1600,
+    "description": "Trim-to-fit insoles with extra heel cushioning. One pair.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "gel-insoles",
+    "merchant": "peak-outfitters",
+    "title": "Gel comfort insoles",
+    "brand_name": null,
+    "category": "running_accessories",
+    "price_cents": 1400,
+    "description": "Trim-to-fit insoles with extra heel cushioning. One pair.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "steel-water-bottle",
+    "merchant": "stride-supply",
+    "title": "Insulated steel water bottle, 24 oz",
+    "brand_name": null,
+    "category": "running_accessories",
+    "price_cents": 2400,
+    "description": "A double-wall steel bottle that keeps drinks cold for a day. Leak-proof lid.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "steel-water-bottle",
+    "merchant": "pacer-goods",
+    "title": "Insulated steel water bottle, 24 oz",
+    "brand_name": null,
+    "category": "running_accessories",
+    "price_cents": 2200,
+    "description": "A double-wall steel bottle that keeps drinks cold for a day. Leak-proof lid.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "steel-water-bottle",
+    "merchant": "peak-outfitters",
+    "title": "Insulated steel water bottle, 24 oz",
+    "brand_name": null,
+    "category": "running_accessories",
+    "price_cents": 2600,
+    "description": "A double-wall steel bottle that keeps drinks cold for a day. Leak-proof lid.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "dish-soap-24oz",
+    "merchant": "corner-pantry",
+    "title": "Lemon dish soap, 24 oz",
+    "brand_name": null,
+    "category": "household",
+    "price_cents": 450,
+    "description": "A concentrated lemon-scented dish soap. Cuts grease in cool water.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "dish-soap-24oz",
+    "merchant": "pacer-goods",
+    "title": "Lemon dish soap, 24 oz",
+    "brand_name": null,
+    "category": "household",
+    "price_cents": 520,
+    "description": "A concentrated lemon-scented dish soap. Cuts grease in cool water.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "dish-soap-24oz",
+    "merchant": "peak-outfitters",
+    "title": "Lemon dish soap, 24 oz",
+    "brand_name": null,
+    "category": "household",
+    "price_cents": 500,
+    "description": "A concentrated lemon-scented dish soap. Cuts grease in cool water.",
+    "structured_attrs": {}
+  },
+  {
+    "group_key": "paper-towels-6pk",
+    "merchant": "corner-pantry",
+    "title": "Paper towels, 6 rolls",
+    "brand_name": null,
+    "category": "household",
+    "price_cents": 1200,
+    "description": "Absorbent two-ply paper towels. Six full-size rolls per pack.",
+    "structured_attrs": {}
+  }
+]

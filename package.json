@@ -22,7 +22,9 @@
     "format": "biome format --write .",
     "spike:vault": "dotenv -e .env.gateway -- tsx spikes/vault-spike.ts",
     "spike:honor": "dotenv -e .env.gateway -- tsx spikes/honor-capture.ts",
-    "spike:verify": "dotenv -e .env.gateway -- tsx spikes/verify-spike.ts"
+    "spike:verify": "dotenv -e .env.gateway -- tsx spikes/verify-spike.ts",
+    "db:migrate": "dotenv -e .env.gateway -- npm run db:migrate -w @twokey/db",
+    "db:seed": "dotenv -e .env.gateway -- npm run db:seed -w @twokey/db"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",
