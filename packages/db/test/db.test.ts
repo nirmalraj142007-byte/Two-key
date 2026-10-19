@@ -1,44 +1,21 @@
-import { randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runSeed } from '../seed/seed.js';
 import { createDb, listings, merchants, ruleCards, users } from '../src/index.js';
-import { runMigrations } from '../src/migrate.js';
+import { createTestDatabase, testDatabaseUrl } from '../src/testing.js';
 
-const baseUrl = process.env.DATABASE_URL;
-if (!baseUrl) {
-  process.stderr.write('db tests skipped: DATABASE_URL is not set\n');
-}
-
-function withDatabase(url: string, name: string): string {
-  const u = new URL(url);
-  u.pathname = `/${name}`;
-  return u.toString();
-}
+const baseUrl = testDatabaseUrl();
 
 describe.skipIf(!baseUrl)('db', () => {
-  const dbName = `twokey_test_${randomBytes(4).toString('hex')}`;
   let testUrl = '';
+  let drop = async () => {};
 
   beforeAll(async () => {
-    const admin = postgres(withDatabase(baseUrl as string, 'postgres'), { max: 1 });
-    try {
-      await admin.unsafe(`create database ${dbName}`);
-    } finally {
-      await admin.end();
-    }
-    testUrl = withDatabase(baseUrl as string, dbName);
-    await runMigrations(testUrl);
+    ({ url: testUrl, drop } = await createTestDatabase(baseUrl as string));
   });
 
   afterAll(async () => {
-    const admin = postgres(withDatabase(baseUrl as string, 'postgres'), { max: 1 });
-    try {
-      await admin.unsafe(`drop database if exists ${dbName} with (force)`);
-    } finally {
-      await admin.end();
-    }
+    await drop();
   });
 
   it('seeds idempotently', async () => {

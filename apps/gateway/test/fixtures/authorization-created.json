@@ -1,0 +1,58 @@
+{
+  "id": "WH-4SW78779LY2325805-07E03580SX1414828",
+  "create_time": "2026-10-19T09:12:45.000Z",
+  "resource_type": "authorization",
+  "event_version": "1.0",
+  "event_type": "PAYMENT.AUTHORIZATION.CREATED",
+  "summary": "A payment authorization was created",
+  "resource_version": "2.0",
+  "resource": {
+    "id": "0VF52814937998046",
+    "status": "CREATED",
+    "amount": { "currency_code": "USD", "value": "54.00" },
+    "invoice_id": "tk-0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b",
+    "custom_id": "0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b",
+    "seller_protection": {
+      "status": "ELIGIBLE",
+      "dispute_categories": ["ITEM_NOT_RECEIVED", "UNAUTHORIZED_TRANSACTION"]
+    },
+    "supplementary_data": { "related_ids": { "order_id": "5O190127TN364715T" } },
+    "expiration_time": "2026-11-17T09:12:44Z",
+    "create_time": "2026-10-19T09:12:44Z",
+    "update_time": "2026-10-19T09:12:44Z",
+    "links": [
+      {
+        "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/0VF52814937998046",
+        "rel": "self",
+        "method": "GET"
+      },
+      {
+        "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/0VF52814937998046/capture",
+        "rel": "capture",
+        "method": "POST"
+      },
+      {
+        "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/0VF52814937998046/void",
+        "rel": "void",
+        "method": "POST"
+      },
+      {
+        "href": "https://api.sandbox.paypal.com/v2/checkout/orders/5O190127TN364715T",
+        "rel": "up",
+        "method": "GET"
+      }
+    ]
+  },
+  "links": [
+    {
+      "href": "https://api.sandbox.paypal.com/v1/notifications/webhooks-events/WH-4SW78779LY2325805-07E03580SX1414828",
+      "rel": "self",
+      "method": "GET"
+    },
+    {
+      "href": "https://api.sandbox.paypal.com/v1/notifications/webhooks-events/WH-4SW78779LY2325805-07E03580SX1414828/resend",
+      "rel": "resend",
+      "method": "POST"
+    }
+  ]
+}
