@@ -155,6 +155,8 @@ npm run smoke -- --env staging|prod
 3. Run the phase's acceptance test and paste the output.
 4. `npm run check` must be green. The app must run.
 5. Commit as `phase N: <name>`.
+6. Never pipe `npm run check` (or any verification command) through `tail`/`head`; if you must, use `set -o pipefail`. A phase is done only when the unpiped command exits 0.
+7. After pushing, confirm CI with `gh run watch --exit-status` before declaring a phase done.
 
 ## Schedule gates
 
