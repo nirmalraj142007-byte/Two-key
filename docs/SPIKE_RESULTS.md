@@ -102,3 +102,18 @@ the staging `webhook_events` table (`received_at` is database time):
   restored to authorization 93927348PL797874L (created 2026-10-19T14:07:27Z, which is its
   expiry 2026-11-17T14:07:27Z minus 29 days). `npm run spike:honor` runs after
   2026-10-22T15:07:27Z (20:37 IST).
+
+## Phase 7 product-path payee verification 2026-10-20
+
+Orders created by `npm run e2e:purchase` (gateway product path, real sandbox, local DB), then
+fetched back from PayPal with the `packages/paypal` wrapper's `getOrder`.
+
+| Proposal | Merchant | Local state | PayPal order | Order status | `purchase_units[0].payee.merchant_id` | Payment status | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Cloud Runner CR-1, $54.00 | stride-supply | captured | 5L537972F06439239 | COMPLETED | AYT4UTUV3UERE (Stride Supply) | captures[0] COMPLETED | MATCH |
+| Trail Runner TR-2, $64.40 | peak-outfitters | held | 8LJ743018L229433A | COMPLETED | 8C4RBQX4U6BYL (Peak Outfitters) | authorizations[0] CREATED | MATCH |
+
+- Both payees equal the registry IDs in `config/merchants.json`; the agent never supplies a payee.
+- The $189 GiftVault gift card proposal (01a1573f-f5ba-73a7-90d0-6e8c45131740) has a G4
+  `block` decision (`gates-v1`, first failing rule `merchant_allowlist`; also `per_item_cap`,
+  `per_order_cap`) and no `payments` row: no PayPal order was created.
