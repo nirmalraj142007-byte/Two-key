@@ -1,14 +1,31 @@
 import { randomUUID } from 'node:crypto';
 import { AppError, createLogger, type Env, ErrorCode, toHttp } from '@twokey/core';
-import type { VerifyWebhookSignature } from '@twokey/paypal';
+import type { OrdersApi, VerifyWebhookSignature } from '@twokey/paypal';
 import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import { dbPlugin } from './plugins/db.js';
+import { agentRoutes } from './routes/agent.js';
 import { type HealthPayPal, healthRoutes } from './routes/health.js';
 import { webhookRoutes } from './routes/webhooks.js';
+import { loadRuleKeys } from './services/keys.js';
+import { getPayPal } from './services/paypal.js';
 
 export type AppEnv = Pick<Env<'gateway'>, 'LOG_LEVEL'> &
-  Partial<Pick<Env<'gateway'>, 'DATABASE_URL' | 'PAYPAL_WEBHOOK_ID' | 'PUBLIC_BASE_URL'>>;
+  Partial<
+    Pick<
+      Env<'gateway'>,
+      | 'DATABASE_URL'
+      | 'PAYPAL_WEBHOOK_ID'
+      | 'PUBLIC_BASE_URL'
+      | 'PAYPAL_ENV'
+      | 'PAYPAL_CLIENT_ID'
+      | 'PAYPAL_CLIENT_SECRET'
+      | 'RULE_HMAC_KEY'
+      | 'RULE_HMAC_KEY_ID'
+      | 'AGENT_TOKEN_PEPPER'
+      | 'DEMO_HOLD_MINUTES'
+    >
+  >;
 
 export interface AppDeps {
   verifyWebhookSignature?: VerifyWebhookSignature;
@@ -16,6 +33,9 @@ export interface AppDeps {
   paypalHealth?: HealthPayPal;
   /** Replaces the `select 1` DB check (tests). */
   checkDb?: () => Promise<void>;
+  /** Replaces the process-wide PayPal client (tests). */
+  paypal?: Pick<OrdersApi, 'createVaultedAuthorization' | 'capture'>;
+  now?: () => Date;
 }
 
 /** Fastify's own 4xx errors (bad JSON, wrong content type, body too large). */
@@ -71,6 +91,34 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
     webhookId: env.PAYPAL_WEBHOOK_ID,
     verify: deps.verifyWebhookSignature,
   });
+
+  // Agent routes need the database, the rule key, the token pepper and PayPal; without all of
+  // them they are not mounted (and answer 404).
+  const { DATABASE_URL, RULE_HMAC_KEY, RULE_HMAC_KEY_ID, AGENT_TOKEN_PEPPER } = env;
+  const paypal =
+    deps.paypal ??
+    (env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET && env.PAYPAL_ENV
+      ? getPayPal(
+          {
+            PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID,
+            PAYPAL_CLIENT_SECRET: env.PAYPAL_CLIENT_SECRET,
+            PAYPAL_ENV: env.PAYPAL_ENV,
+          },
+          app.log as unknown as Parameters<typeof getPayPal>[1],
+        )
+      : undefined);
+  if (DATABASE_URL && RULE_HMAC_KEY && RULE_HMAC_KEY_ID && AGENT_TOKEN_PEPPER && paypal) {
+    app.register(async (scope) => {
+      await scope.register(agentRoutes, {
+        db: app.db,
+        paypal,
+        keys: loadRuleKeys({ RULE_HMAC_KEY, RULE_HMAC_KEY_ID }),
+        agentTokenPepper: AGENT_TOKEN_PEPPER,
+        demoHoldMinutes: env.DEMO_HOLD_MINUTES,
+        ...(deps.now ? { now: deps.now } : {}),
+      });
+    });
+  }
 
   return app;
 }

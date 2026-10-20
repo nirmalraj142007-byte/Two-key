@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AppError, ErrorCode } from './errors.js';
+import { HONOR_PERIOD_MINUTES } from './rules/schema.js';
 
 export type ServiceName = 'gateway' | 'web' | 'mcp' | 'agent-runner' | 'eval';
 
@@ -35,6 +36,13 @@ const schemas = {
     WEB_ORIGIN: url,
     PUBLIC_BASE_URL: url,
     PORT: z.coerce.number().int().positive().default(4000),
+    /** Hold timeout for demo and hijack sessions; overrides the card's holdTimeoutMinutes. */
+    DEMO_HOLD_MINUTES: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(HONOR_PERIOD_MINUTES - 60)
+      .optional(),
     MERCHANT_REPORTING_CREDENTIALS: z
       .string()
       .refine((v) => {

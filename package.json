@@ -25,7 +25,8 @@
     "spike:verify": "dotenv -e .env.gateway -- tsx spikes/verify-spike.ts",
     "paypal:webhook": "dotenv -e .env.gateway -- tsx scripts/register-webhook.ts",
     "db:migrate": "dotenv -e .env.gateway -- npm run db:migrate -w @twokey/db",
-    "db:seed": "dotenv -e .env.gateway -- npm run db:seed -w @twokey/db"
+    "db:seed": "dotenv -e .env.gateway -- npm run db:seed -w @twokey/db",
+    "e2e:purchase": "dotenv -e .env.gateway -- tsx scripts/e2e-purchase.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",

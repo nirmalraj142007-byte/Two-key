@@ -16,5 +16,11 @@
     "fastify-plugin": "^5",
     "postgres": "^3",
     "zod": "^4"
+  },
+  "devDependencies": {
+    "nock": "^14.0.17"
+  },
+  "exports": {
+    ".": "./src/index.ts"
   }
 }
