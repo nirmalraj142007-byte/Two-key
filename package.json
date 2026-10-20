@@ -28,6 +28,8 @@
     "db:seed": "dotenv -e .env.gateway -- npm run db:seed -w @twokey/db",
     "db:seed-users": "dotenv -e .env.gateway -- tsx scripts/seed-users.ts",
     "e2e:purchase": "dotenv -e .env.gateway -- tsx scripts/e2e-purchase.ts",
+    "e2e:login": "playwright test -c apps/web/playwright.config.ts",
+    "e2e:tenancy": "tsx scripts/live-tenancy.ts",
     "keys:gen": "tsx scripts/gen-keys.ts"
   },
   "devDependencies": {

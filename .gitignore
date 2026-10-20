@@ -8,3 +8,5 @@ coverage
 *.tsbuildinfo
 *.pem
 *.key
+test-results/
+playwright-report/
