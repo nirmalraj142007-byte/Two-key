@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { AppError, createLogger, type Env, ErrorCode, toHttp } from '@twokey/core';
-import type { OrdersApi, VerifyWebhookSignature } from '@twokey/paypal';
+import type { OrdersApi, VaultApi, VerifyWebhookSignature } from '@twokey/paypal';
 import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import { createHumanAssertionVerifier } from './auth/human-assertion.js';
 import { dbPlugin } from './plugins/db.js';
 import { agentRoutes } from './routes/agent.js';
 import { type HealthPayPal, healthRoutes } from './routes/health.js';
+import { humanRoutes } from './routes/human.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { loadRuleKeys } from './services/keys.js';
 import { getPayPal } from './services/paypal.js';
@@ -24,6 +26,8 @@ export type AppEnv = Pick<Env<'gateway'>, 'LOG_LEVEL'> &
       | 'RULE_HMAC_KEY_ID'
       | 'AGENT_TOKEN_PEPPER'
       | 'DEMO_HOLD_MINUTES'
+      | 'HUMAN_ASSERTION_PUBLIC_KEY'
+      | 'WEB_ORIGIN'
     >
   >;
 
@@ -35,6 +39,8 @@ export interface AppDeps {
   checkDb?: () => Promise<void>;
   /** Replaces the process-wide PayPal client (tests). */
   paypal?: Pick<OrdersApi, 'createVaultedAuthorization' | 'capture'>;
+  /** Replaces the process-wide PayPal vault client (tests). */
+  vault?: Pick<VaultApi, 'createSetupToken' | 'createPaymentToken' | 'deletePaymentToken'>;
   now?: () => Date;
 }
 
@@ -95,9 +101,8 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
   // Agent routes need the database, the rule key, the token pepper and PayPal; without all of
   // them they are not mounted (and answer 404).
   const { DATABASE_URL, RULE_HMAC_KEY, RULE_HMAC_KEY_ID, AGENT_TOKEN_PEPPER } = env;
-  const paypal =
-    deps.paypal ??
-    (env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET && env.PAYPAL_ENV
+  const shared =
+    env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET && env.PAYPAL_ENV
       ? getPayPal(
           {
             PAYPAL_CLIENT_ID: env.PAYPAL_CLIENT_ID,
@@ -106,7 +111,9 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
           },
           app.log as unknown as Parameters<typeof getPayPal>[1],
         )
-      : undefined);
+      : undefined;
+  const paypal = deps.paypal ?? shared;
+  const vault = deps.vault ?? shared;
   if (DATABASE_URL && RULE_HMAC_KEY && RULE_HMAC_KEY_ID && AGENT_TOKEN_PEPPER && paypal) {
     app.register(async (scope) => {
       await scope.register(agentRoutes, {
@@ -115,6 +122,34 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
         keys: loadRuleKeys({ RULE_HMAC_KEY, RULE_HMAC_KEY_ID }),
         agentTokenPepper: AGENT_TOKEN_PEPPER,
         demoHoldMinutes: env.DEMO_HOLD_MINUTES,
+        ...(deps.now ? { now: deps.now } : {}),
+      });
+    });
+  }
+
+  // Human routes additionally need the assertion public key and the web origin.
+  const { HUMAN_ASSERTION_PUBLIC_KEY, WEB_ORIGIN } = env;
+  if (
+    DATABASE_URL &&
+    RULE_HMAC_KEY &&
+    RULE_HMAC_KEY_ID &&
+    AGENT_TOKEN_PEPPER &&
+    HUMAN_ASSERTION_PUBLIC_KEY &&
+    WEB_ORIGIN &&
+    vault
+  ) {
+    app.register(async (scope) => {
+      await scope.register(humanRoutes, {
+        db: app.db,
+        vault,
+        verifier: createHumanAssertionVerifier(
+          HUMAN_ASSERTION_PUBLIC_KEY,
+          deps.now ? { now: deps.now } : {},
+        ),
+        keys: loadRuleKeys({ RULE_HMAC_KEY, RULE_HMAC_KEY_ID }),
+        signingKeyId: RULE_HMAC_KEY_ID,
+        agentTokenPepper: AGENT_TOKEN_PEPPER,
+        webOrigin: WEB_ORIGIN,
         ...(deps.now ? { now: deps.now } : {}),
       });
     });

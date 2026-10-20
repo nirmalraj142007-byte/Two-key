@@ -26,7 +26,9 @@
     "paypal:webhook": "dotenv -e .env.gateway -- tsx scripts/register-webhook.ts",
     "db:migrate": "dotenv -e .env.gateway -- npm run db:migrate -w @twokey/db",
     "db:seed": "dotenv -e .env.gateway -- npm run db:seed -w @twokey/db",
-    "e2e:purchase": "dotenv -e .env.gateway -- tsx scripts/e2e-purchase.ts"
+    "db:seed-users": "dotenv -e .env.gateway -- tsx scripts/seed-users.ts",
+    "e2e:purchase": "dotenv -e .env.gateway -- tsx scripts/e2e-purchase.ts",
+    "keys:gen": "tsx scripts/gen-keys.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",
