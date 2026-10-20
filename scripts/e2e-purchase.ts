@@ -3,18 +3,20 @@
  *
  *   npm run e2e:purchase
  *
- * Bootstraps (idempotently) maya@twokey.demo, her vaulted wallet from spikes/results/vault.json,
- * a signed rule card and a fresh demo agent session, starts the gateway in-process and proposes
- * three purchases: one captured, one blocked (no PayPal order) and one held.
+ * Bootstraps (idempotently) its own test user e2e@twokey.demo, the vaulted wallet from
+ * spikes/results/vault.json, a signed rule card and a fresh demo agent session, starts the
+ * gateway in-process and proposes three purchases: one captured, one blocked (no PayPal order)
+ * and one held. The held row prints its approval ID for POST /human/approvals/:id.
  *
- * Needs `docker compose up -d`, `npm run db:migrate` and `npm run db:seed` first. Maya's card
- * allows 5 purchases per 24 h and each run makes 2, so a third run within a day is blocked by
- * the frequency rule (as it should be).
+ * Needs `docker compose up -d`, `npm run db:migrate` and `npm run db:seed` first. The card
+ * allows 50 purchases per 24 h, so repeated runs never hit the frequency rule. The hold's
+ * timer is queued in pg-boss; a running gateway (`npm run dev`) voids it at the deadline.
  */
 import { readFileSync } from 'node:fs';
 import { AppError, ErrorCode, loadEnv, type RuleCard, signCard, verifyCard } from '@twokey/core';
 import {
   agentSessions,
+  approvals,
   catalogSnapshots,
   createDb,
   listings,
@@ -28,7 +30,8 @@ import { buildApp, loadRuleKeys, mintAgentToken } from '@twokey/gateway';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { z } from 'zod';
 
-const EMAIL = 'maya@twokey.demo';
+const EMAIL = 'e2e@twokey.demo';
+const MAX_PURCHASES = 50;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const VaultFile = z.object({ paymentTokenId: z.string().min(1), customerId: z.string().min(1) });
@@ -57,7 +60,7 @@ async function bootstrap() {
 
   await db
     .insert(users)
-    .values({ email: EMAIL, displayName: 'Maya' })
+    .values({ email: EMAIL, displayName: 'E2E purchase' })
     .onConflictDoNothing({ target: users.email });
   const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, EMAIL));
   if (!user) throw new AppError(ErrorCode.INTERNAL, 'Could not create the demo user');
@@ -110,7 +113,12 @@ async function bootstrap() {
         keys,
         new Date(now.getTime() + DAY_MS),
       );
-      if ([...card.allowedMerchantIds].sort().join() === allowed.join()) cardId = latest.id;
+      if (
+        [...card.allowedMerchantIds].sort().join() === allowed.join() &&
+        card.frequency.maxPurchases === MAX_PURCHASES
+      ) {
+        cardId = latest.id;
+      }
     } catch {
       // stale or signed with another key: sign a new version below
     }
@@ -124,7 +132,7 @@ async function bootstrap() {
       perOrderCapCents: 7000,
       allowedMerchantIds: allowed,
       maxQtyPerOrder: 1,
-      frequency: { maxPurchases: 5, windowHours: 24 },
+      frequency: { maxPurchases: MAX_PURCHASES, windowHours: 24 },
       holdTimeoutMinutes: 15,
       anomaly: { priceRatioThreshold: 1.3 },
       expiresAt: new Date(now.getTime() + 7 * DAY_MS).toISOString(),
@@ -213,7 +221,17 @@ try {
     const parsed = ProposalResult.safeParse(json);
     if (!res.ok || !parsed.success) {
       exitCode = 1;
-      rows.push([p.title, p.slug, `HTTP ${res.status}`, '-', '-', '-', JSON.stringify(json)]);
+      rows.push([
+        p.title,
+        p.slug,
+        `HTTP ${res.status}`,
+        '-',
+        '-',
+        '-',
+        '-',
+        '-',
+        JSON.stringify(json),
+      ]);
       continue;
     }
     const r = parsed.data;
@@ -222,13 +240,18 @@ try {
         order: payments.paypalOrderId,
         auth: payments.paypalAuthorizationId,
         capture: payments.paypalCaptureId,
+        state: payments.state,
+        approval: approvals.id,
       })
       .from(payments)
+      .leftJoin(approvals, eq(approvals.paymentId, payments.id))
       .where(eq(payments.proposalId, r.proposalId));
     rows.push([
       p.title,
       p.slug,
       r.decision,
+      pay?.state ?? '-',
+      pay?.approval ?? '-',
       pay?.order ?? '-',
       pay?.auth ?? '-',
       pay?.capture ?? '-',
@@ -240,6 +263,8 @@ try {
     'product',
     'merchant',
     'decision',
+    'state',
+    'approval',
     'paypal order',
     'authorization',
     'capture',

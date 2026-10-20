@@ -1,7 +1,7 @@
 import { installCrashHandlers, loadEnv, reportStartupFailure } from '@twokey/core';
 import { createWebhookApi, createWebhookVerifier } from '@twokey/paypal';
 import { buildApp } from './app.js';
-import { processPendingWebhooks } from './services/webhook-apply.js';
+import { startJobs } from './jobs/boss.js';
 
 installCrashHandlers('gateway');
 
@@ -21,10 +21,7 @@ async function main(): Promise<void> {
     app.log.warn('PAYPAL_WEBHOOK_ID is not set: /webhooks/paypal answers 503');
 
   // Hooks, plugins and decorators must all be registered before listen(); after it,
-  // Fastify throws. Only timers and loops start once the server is up.
-  let retryTimer: NodeJS.Timeout | undefined;
-  app.addHook('onClose', async () => clearInterval(retryTimer));
-
+  // Fastify throws. Only the job workers start once the server is up (pg-boss stops on close).
   try {
     await app.listen({ port: env.PORT, host: '0.0.0.0' });
   } catch (err) {
@@ -32,17 +29,7 @@ async function main(): Promise<void> {
     throw err;
   }
 
-  // Phase 9 moves this to pg-boss.
-  let retrying = false;
-  retryTimer = setInterval(() => {
-    if (retrying) return;
-    retrying = true;
-    processPendingWebhooks(app.db, app.log)
-      .catch((err) => app.log.error({ err }, 'webhook retry loop failed'))
-      .finally(() => {
-        retrying = false;
-      });
-  }, 10_000);
+  await startJobs(app);
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {

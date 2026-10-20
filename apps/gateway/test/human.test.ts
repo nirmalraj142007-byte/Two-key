@@ -176,7 +176,13 @@ describe.skipIf(!baseUrl)('/human/*', () => {
         WEB_ORIGIN,
       },
       {
-        paypal: { createVaultedAuthorization: noPayPal, capture: noPayPal },
+        paypal: {
+          createVaultedAuthorization: noPayPal,
+          capture: noPayPal,
+          voidAuthorization: noPayPal,
+          getAuthorization: noPayPal,
+          getCapture: noPayPal,
+        },
         vault: {
           async createSetupToken() {
             vaultCalls.push('createSetupToken');

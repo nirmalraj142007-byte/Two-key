@@ -2,19 +2,20 @@ import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { createTestDatabase } from '@twokey/db/testing';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const SERVER = fileURLToPath(new URL('../src/server.ts', import.meta.url));
 
 // A complete, valid gateway env built from scratch (nothing inherited from .env.gateway
-// except the test database). PayPal values are dummies: booting never calls PayPal.
+// except the database server). Booting starts the job workers and a sweep, so the gateway gets
+// a throwaway database of its own: never the dev database. PayPal values are dummies.
 const env: Record<string, string> = {
   PATH: process.env.PATH ?? '',
   ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
   NODE_ENV: 'test',
   LOG_LEVEL: 'info',
-  DATABASE_URL: process.env.DATABASE_URL || 'postgres://twokey:twokey@localhost:5432/twokey',
   PAYPAL_ENV: 'sandbox',
   PAYPAL_CLIENT_ID: 'dummy-client-id',
   PAYPAL_CLIENT_SECRET: 'dummy-client-secret',
@@ -38,6 +39,17 @@ function freePort(): Promise<number> {
     });
   });
 }
+
+const baseUrl = process.env.DATABASE_URL || 'postgres://twokey:twokey@localhost:5432/twokey';
+let drop = async () => {};
+beforeAll(async () => {
+  let url: string;
+  ({ url, drop } = await createTestDatabase(baseUrl));
+  env.DATABASE_URL = url;
+});
+afterAll(async () => {
+  await drop();
+});
 
 let child: ChildProcessWithoutNullStreams | undefined;
 afterEach(() => {
@@ -87,6 +99,7 @@ describe('gateway boot', () => {
     await sleep(3_000);
     expect(p.exitCode, out).toBeNull();
     expect(out).not.toContain('startup failed');
+    expect(out).toContain('jobs started');
 
     p.kill('SIGTERM');
     const code = await exited;

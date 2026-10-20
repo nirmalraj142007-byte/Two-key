@@ -28,6 +28,7 @@ import type { OrdersApi } from '@twokey/paypal';
 import { and, count, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import type { AgentSession } from '../auth/agent-token.js';
+import { type Jobs, scheduleHoldTimeout } from '../jobs/queue.js';
 import { resolveListing } from './catalog.js';
 import type { RuleKeys } from './keys.js';
 import { NOTIFY_CHANNEL } from './webhook-apply.js';
@@ -53,6 +54,8 @@ export interface PurchaseDeps {
   paypal: Pick<OrdersApi, 'createVaultedAuthorization' | 'capture'>;
   keys: RuleKeys;
   log: Logger;
+  /** hold.timeout is sent here when a purchase is held. */
+  jobs: Jobs;
   now?: () => Date;
   /** Overrides the card's holdTimeoutMinutes for demo and hijack sessions. */
   demoHoldMinutes?: number | undefined;
@@ -617,6 +620,8 @@ export async function proposePurchase(
         });
       },
     });
+    // The timer voids the hold at its deadline; if this send fails, the sweep still voids it.
+    await scheduleHoldTimeout(deps, payment.id, deadline);
     return loadProposalResult(db, proposalId);
   }
 

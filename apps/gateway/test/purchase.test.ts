@@ -167,6 +167,9 @@ describe.skipIf(!baseUrl)('POST /agent/proposals', () => {
         paypal: {
           createVaultedAuthorization: (i) => paypal.createVaultedAuthorization(i),
           capture: (i) => paypal.capture(i),
+          voidAuthorization: (i) => paypal.voidAuthorization(i),
+          getAuthorization: (id) => paypal.getAuthorization(id),
+          getCapture: (id) => paypal.getCapture(id),
         },
       },
     );

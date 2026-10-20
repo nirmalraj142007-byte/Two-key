@@ -23,6 +23,7 @@
     "spike:vault": "dotenv -e .env.gateway -- tsx spikes/vault-spike.ts",
     "spike:honor": "dotenv -e .env.gateway -- tsx spikes/honor-capture.ts",
     "spike:verify": "dotenv -e .env.gateway -- tsx spikes/verify-spike.ts",
+    "spike:expiry": "dotenv -e .env.gateway -- tsx scripts/expiry-mock-check.ts",
     "paypal:webhook": "dotenv -e .env.gateway -- tsx scripts/register-webhook.ts",
     "db:migrate": "dotenv -e .env.gateway -- npm run db:migrate -w @twokey/db",
     "db:seed": "dotenv -e .env.gateway -- npm run db:seed -w @twokey/db",

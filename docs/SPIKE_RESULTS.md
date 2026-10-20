@@ -117,3 +117,40 @@ fetched back from PayPal with the `packages/paypal` wrapper's `getOrder`.
 - The $189 GiftVault gift card proposal (01a1573f-f5ba-73a7-90d0-6e8c45131740) has a G4
   `block` decision (`gates-v1`, first failing rule `merchant_allowlist`; also `per_item_cap`,
   `per_order_cap`) and no `payments` row: no PayPal order was created.
+
+## Phase 9 authorization-expiry mock check 2026-10-20
+
+`npm run spike:expiry` (real sandbox): vaulted $1.00 authorization at Stride Supply, then
+`POST /v2/payments/authorizations/{id}/capture` with
+`PayPal-Mock-Response: {"mock_application_codes":"AUTHORIZATION_EXPIRED"}`.
+
+| Step | Result |
+| --- | --- |
+| Authorization | 0PJ5308318124953G (order 7AL63618J8848180G), CREATED |
+| Capture with mock header | HTTP 422, name `UNPROCESSABLE_ENTITY`, issues `AUTHORIZATION_EXPIRED`, debug_id `70c28ae654da` |
+| Issue descriptions | AUTHORIZATION_EXPIRED: An expired authorization cannot be captured. |
+| Void afterwards | PayPal 403: NOT_AUTHORIZED / PERMISSION_DENIED; authorization status CREATED |
+| Outcome | **expired** |
+
+- PayPal simulates the expired-authorization capture on this endpoint. The gateway maps it to `expired` with no retry (`captureHeld`), and lifecycle test (6) uses the same body shape.
+
+## Phase 9 hold lifecycle against the sandbox 2026-10-20 — third-party void is DENIED
+
+`npm run e2e:purchase` (user e2e@twokey.demo), then `POST /human/approvals/:id` on the running
+gateway with an assertion from `scripts/mint-assertion.ts`.
+
+| Hold (TR-2, $64.40, payee Peak Outfitters 8C4RBQX4U6BYL) | PayPal call | Result | Local state |
+| --- | --- | --- | --- |
+| approval 01a158fd-4308-…, authorization 56Y81711FH049664U | capture | 201 COMPLETED, capture 5A923343PK334191X | held → captured, approval approved/web; second approve 409 "Already decided"; `openAuthorizations` 1 → 0 |
+| approval 01a158fe-96e3-…, authorization 7HN92471117681234 | void | **403 NOT_AUTHORIZED / PERMISSION_DENIED** (debug_id ca4d794bfbf33) | held → void_requested (stays; no money moved) |
+
+- The spike authorization above (payee Stride Supply) gave the same 403 on void.
+- Retrying both voids with a `PayPal-Auth-Assertion` header (`iss` = our client ID, `payer_id` =
+  the payee) returned 400 `invalid_request` "No permissions to set target_client_id": the app
+  has no third-party (partner) permissions on the merchant accounts.
+- The phase 2 void (order B) worked because its payee was the platform account itself
+  (VV4V2YAUNBQHJ). No earlier test voided a third-party-payee authorization.
+- So, as configured, the platform can **capture** but not **void** an authorization whose payee is
+  a registry merchant. Deny and hold timeout therefore end in `void_requested` with the
+  authorization still CREATED at PayPal (it lapses on its own after 29 days; nothing is charged).
+  This needs a decision before the hold demo (invariant 11).

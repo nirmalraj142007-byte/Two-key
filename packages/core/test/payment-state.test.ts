@@ -7,13 +7,14 @@ import {
   webhookTarget,
 } from '../src/payment-state.js';
 
-/** The table from the phase 4 spec, written out independently of the implementation. */
+/** The table from the phase 4 spec (phase 9 adds the two *_requested -> expired exits),
+ * written out independently of the implementation. */
 const ALLOWED: Record<PaymentState, PaymentState[]> = {
   authorizing: ['authorized', 'held', 'failed', 'voided', 'captured'],
   authorized: ['held', 'capture_requested', 'captured', 'void_requested', 'voided', 'expired'],
   held: ['capture_requested', 'captured', 'void_requested', 'voided', 'expired'],
-  capture_requested: ['captured', 'denied', 'failed'],
-  void_requested: ['voided'],
+  capture_requested: ['captured', 'denied', 'failed', 'expired'],
+  void_requested: ['voided', 'expired'],
   captured: [],
   voided: [],
   expired: [],

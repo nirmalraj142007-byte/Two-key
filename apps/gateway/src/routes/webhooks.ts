@@ -4,11 +4,13 @@ import type { VerifyWebhookSignature } from '@twokey/paypal';
 import { ne, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { type Jobs, scheduleWebhookRetry } from '../jobs/queue.js';
 import { applyWebhookEvent } from '../services/webhook-apply.js';
 
 export interface WebhookRouteOptions {
   webhookId?: string | undefined;
   verify?: VerifyWebhookSignature | undefined;
+  jobs?: Jobs | undefined;
 }
 
 // Only checks the envelope; the untouched raw body is what PayPal verifies and what we store.
@@ -114,6 +116,9 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRouteOptions> = async (app
 
     const result = await applyWebhookEvent(app.db, inserted);
     req.log.info({ ...meta, result }, 'paypal webhook received');
+    // Usually the API response that writes the payment row is a moment behind the webhook.
+    if (result === 'no_payment' && opts.jobs)
+      await scheduleWebhookRetry({ jobs: opts.jobs, log: req.log });
     return reply.send({ result });
   });
 };

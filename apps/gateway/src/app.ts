@@ -4,10 +4,13 @@ import type { OrdersApi, VaultApi, VerifyWebhookSignature } from '@twokey/paypal
 import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import { createHumanAssertionVerifier } from './auth/human-assertion.js';
+import { createJobRunner } from './jobs/boss.js';
+import type { Jobs } from './jobs/queue.js';
 import { dbPlugin } from './plugins/db.js';
 import { agentRoutes } from './routes/agent.js';
 import { type HealthPayPal, healthRoutes } from './routes/health.js';
 import { humanRoutes } from './routes/human.js';
+import { humanApprovalRoutes } from './routes/human-approvals.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { loadRuleKeys } from './services/keys.js';
 import { getPayPal } from './services/paypal.js';
@@ -38,11 +41,18 @@ export interface AppDeps {
   /** Replaces the `select 1` DB check (tests). */
   checkDb?: () => Promise<void>;
   /** Replaces the process-wide PayPal client (tests). */
-  paypal?: Pick<OrdersApi, 'createVaultedAuthorization' | 'capture'>;
+  paypal?: PayPalOps;
   /** Replaces the process-wide PayPal vault client (tests). */
   vault?: Pick<VaultApi, 'createSetupToken' | 'createPaymentToken' | 'deletePaymentToken'>;
+  /** Replaces the pg-boss job runner (tests record sends instead). */
+  jobs?: Jobs;
   now?: () => Date;
 }
+
+export type PayPalOps = Pick<
+  OrdersApi,
+  'createVaultedAuthorization' | 'capture' | 'voidAuthorization' | 'getAuthorization' | 'getCapture'
+>;
 
 /** Fastify's own 4xx errors (bad JSON, wrong content type, body too large). */
 function isClientError(err: unknown): err is { statusCode: number } {
@@ -93,9 +103,21 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
     webhookId: env.PAYPAL_WEBHOOK_ID,
     publicBaseUrl: env.PUBLIC_BASE_URL,
   });
+  // pg-boss connects lazily (first send, or startJobs on boot) and stops with the app.
+  const runner = !deps.jobs && env.DATABASE_URL ? createJobRunner(env.DATABASE_URL, app.log) : null;
+  const jobs: Jobs = deps.jobs ??
+    runner ?? {
+      send: async () => {
+        throw new AppError(ErrorCode.CONFIG_INVALID, 'Jobs need DATABASE_URL');
+      },
+    };
+  app.decorate('jobs', jobs);
+  if (runner) app.addHook('onClose', () => runner.stop());
+
   app.register(webhookRoutes, {
     webhookId: env.PAYPAL_WEBHOOK_ID,
     verify: deps.verifyWebhookSignature,
+    jobs,
   });
 
   // Agent routes need the database, the rule key, the token pepper and PayPal; without all of
@@ -114,6 +136,21 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
       : undefined;
   const paypal = deps.paypal ?? shared;
   const vault = deps.vault ?? shared;
+  const now = deps.now ? { now: deps.now } : {};
+  app.decorate(
+    'jobDeps',
+    env.DATABASE_URL && paypal
+      ? {
+          get db() {
+            return app.db;
+          },
+          paypal,
+          jobs,
+          log: app.log,
+          ...now,
+        }
+      : null,
+  );
   if (DATABASE_URL && RULE_HMAC_KEY && RULE_HMAC_KEY_ID && AGENT_TOKEN_PEPPER && paypal) {
     app.register(async (scope) => {
       await scope.register(agentRoutes, {
@@ -122,7 +159,8 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
         keys: loadRuleKeys({ RULE_HMAC_KEY, RULE_HMAC_KEY_ID }),
         agentTokenPepper: AGENT_TOKEN_PEPPER,
         demoHoldMinutes: env.DEMO_HOLD_MINUTES,
-        ...(deps.now ? { now: deps.now } : {}),
+        jobs,
+        ...now,
       });
     });
   }
@@ -138,21 +176,25 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
     WEB_ORIGIN &&
     vault
   ) {
+    // One verifier for every /human/* route, so each assertion's jti is accepted only once.
+    const verifier = createHumanAssertionVerifier(HUMAN_ASSERTION_PUBLIC_KEY, now);
     app.register(async (scope) => {
       await scope.register(humanRoutes, {
         db: app.db,
         vault,
-        verifier: createHumanAssertionVerifier(
-          HUMAN_ASSERTION_PUBLIC_KEY,
-          deps.now ? { now: deps.now } : {},
-        ),
+        verifier,
         keys: loadRuleKeys({ RULE_HMAC_KEY, RULE_HMAC_KEY_ID }),
         signingKeyId: RULE_HMAC_KEY_ID,
         agentTokenPepper: AGENT_TOKEN_PEPPER,
         webOrigin: WEB_ORIGIN,
-        ...(deps.now ? { now: deps.now } : {}),
+        ...now,
       });
     });
+    if (paypal) {
+      app.register(async (scope) => {
+        await scope.register(humanApprovalRoutes, { db: app.db, paypal, jobs, verifier, ...now });
+      });
+    }
   }
 
   return app;

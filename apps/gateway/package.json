@@ -16,6 +16,7 @@
     "fastify-plugin": "^5",
     "jose": "^6.2.13",
     "lru-cache": "^11.5.3",
+    "pg-boss": "~12.33.7",
     "postgres": "^3",
     "zod": "^4"
   },

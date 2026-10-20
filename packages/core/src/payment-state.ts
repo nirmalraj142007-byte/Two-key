@@ -31,13 +31,16 @@ export const TERMINAL: ReadonlySet<PaymentState> = new Set<PaymentState>([
   'failed',
 ]);
 
-/** Forward-only transitions. Anything not listed is invalid; terminal states have no exits. */
+/**
+ * Forward-only transitions. Anything not listed is invalid; terminal states have no exits.
+ * A requested capture or void can still find the authorization expired (PayPal 422).
+ */
 const TRANSITIONS: Readonly<Partial<Record<PaymentState, readonly PaymentState[]>>> = {
   authorizing: ['authorized', 'held', 'failed', 'voided', 'captured'],
   authorized: ['held', 'capture_requested', 'captured', 'void_requested', 'voided', 'expired'],
   held: ['capture_requested', 'captured', 'void_requested', 'voided', 'expired'],
-  capture_requested: ['captured', 'denied', 'failed'],
-  void_requested: ['voided'],
+  capture_requested: ['captured', 'denied', 'failed', 'expired'],
+  void_requested: ['voided', 'expired'],
 };
 
 export function canTransition(from: PaymentState, to: PaymentState): boolean {
