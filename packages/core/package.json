@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "canonicalize": "^2.1.0",
     "pino": "^9",
     "zod": "^4"
   }
