@@ -59,6 +59,34 @@ describe('decideGate', () => {
     expect(r.hits.some((h) => h.rule === 'anomaly')).toBe(false);
   });
 
+  it('G4: a merchant not on the allowlist blocks at any price', () => {
+    for (const priceCents of [1, 4600, 5400, 7000, 18900]) {
+      const r = decideGate('G4', { ...base, listing: { ...GIFT_CARD, priceCents } });
+      expect(r.outcome).toBe('block');
+      expect(r.hits.find((h) => h.rule === 'merchant_allowlist')?.passed).toBe(false);
+    }
+  });
+
+  it('G4: advisory entries never change outcomes', () => {
+    const advisory = [
+      { key: 'size', value: '10', label: "Agent's job — not checked by Two-Key" },
+      { key: 'colour', value: 'blue', label: "Agent's job — not checked by Two-Key" },
+    ];
+    const withAdvisory = { ...base, card: demoCard({ advisory }) };
+    const cases = [CR1, TR2, GIFT_CARD, listing({ priceCents: 7001 })];
+    expect(cases.map((l) => decideGate('G4', { ...withAdvisory, listing: l }).outcome)).toEqual([
+      'capture',
+      'hold',
+      'block',
+      'block',
+    ]);
+    for (const l of cases) {
+      expect(decideGate('G4', { ...withAdvisory, listing: l })).toEqual(
+        decideGate('G4', { ...base, listing: l }),
+      );
+    }
+  });
+
   it.each<[Gate, keyof typeof base]>([
     ['G1', 'taskCapCents'],
     ['G2', 'staticCapCents'],
