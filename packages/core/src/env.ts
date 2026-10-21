@@ -69,7 +69,7 @@ const schemas = {
     COMPILER_PROVIDER: z.enum(['openai-compatible', 'anthropic']).default('openai-compatible'),
     COMPILER_BASE_URL: url.default('https://api.groq.com/openai/v1'),
     COMPILER_API_KEY: nonEmpty.optional(),
-    COMPILER_MODEL: nonEmpty.default('llama-3.3-70b-versatile'),
+    COMPILER_MODEL: nonEmpty.default('openai/gpt-oss-120b'),
     DAILY_BUDGET_USD_LIVE: z.coerce.number().nonnegative().default(2),
     NEXT_PUBLIC_AG_GRID_LICENSE_KEY: nonEmpty.optional(),
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: nonEmpty.optional(),

@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { type CompilerClient, type ToolCallParams, withRetry } from './llm';
 
 /** Default model name; the live one comes from COMPILER_MODEL. */
-export const COMPILER_MODEL = 'llama-3.3-70b-versatile';
+export const COMPILER_MODEL = 'openai/gpt-oss-120b';
 
 const SYSTEM_PROMPT = [
   'You convert a shopping request into spending rules by calling the emit_rules tool.',

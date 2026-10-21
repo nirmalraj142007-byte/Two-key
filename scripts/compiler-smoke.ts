@@ -1,6 +1,6 @@
 /* Real API: compiles five requests once each. Run with `npm run compiler:smoke`. */
 import { randomUUID } from 'node:crypto';
-import { AppError, formatUSD } from '@twokey/core';
+import { formatUSD } from '@twokey/core';
 import { spend } from '@twokey/db';
 import { db } from '../apps/web/lib/db';
 import { webEnv } from '../apps/web/lib/env';
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
       out(`  needsInput: ${JSON.stringify(r.needsInput)}`);
     } catch (err) {
       out(
-        `  ERROR ${err instanceof AppError ? err.code : 'unknown'}: ${err instanceof Error ? err.message : ''}`,
+        `  ERROR ${(err as { code?: string }).code ?? 'unknown'}: ${err instanceof Error ? err.message : ''}`,
       );
     }
   }
