@@ -31,6 +31,7 @@
     "e2e:purchase": "dotenv -e .env.gateway -- tsx scripts/e2e-purchase.ts",
     "e2e:login": "playwright test -c apps/web/playwright.config.ts",
     "e2e:tenancy": "tsx scripts/live-tenancy.ts",
+    "compiler:smoke": "dotenv -e .env.web -- tsx scripts/compiler-smoke.ts",
     "keys:gen": "tsx scripts/gen-keys.ts"
   },
   "devDependencies": {

@@ -8,6 +8,13 @@
       "when": 1792420033101,
       "tag": "0000_graceful_albert_cleary",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792563818359,
+      "tag": "0001_budget_ledger",
+      "breakpoints": true
     }
   ]
 }

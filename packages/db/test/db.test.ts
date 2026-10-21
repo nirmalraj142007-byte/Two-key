@@ -1,7 +1,16 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runSeed } from '../seed/seed.js';
-import { createDb, listings, merchants, ruleCards, users } from '../src/index.js';
+import {
+  budgetLedger,
+  createDb,
+  listings,
+  merchants,
+  remaining,
+  ruleCards,
+  spend,
+  users,
+} from '../src/index.js';
 import { createTestDatabase, testDatabaseUrl } from '../src/testing.js';
 
 const baseUrl = testDatabaseUrl();
@@ -57,6 +66,22 @@ describe.skipIf(!baseUrl)('db', () => {
         enforcement: {},
       });
       await expect(insert).rejects.toThrow();
+    } finally {
+      await sql.end();
+    }
+  });
+
+  it('spend() adds atomically, records free calls, and trips at the cap', async () => {
+    const { db, sql } = createDb(testUrl);
+    try {
+      await spend(db, 'live', 0, 1);
+      await Promise.all([spend(db, 'live', 0.4, 1), spend(db, 'live', 0.4, 1)]);
+      expect(await remaining(db, 'live', 1)).toBeCloseTo(0.2, 6);
+      await expect(spend(db, 'live', 0.3, 1)).rejects.toMatchObject({ code: 'BUDGET_EXCEEDED' });
+      expect(await remaining(db, 'live', 1)).toBeCloseTo(0.2, 6);
+      const [row] = await db.select().from(budgetLedger).where(eq(budgetLedger.scope, 'live'));
+      expect(row?.trippedAt).not.toBeNull();
+      await expect(spend(db, 'eval', 5, 1)).rejects.toMatchObject({ code: 'BUDGET_EXCEEDED' });
     } finally {
       await sql.end();
     }

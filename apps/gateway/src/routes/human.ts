@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { AppError, ErrorCode, fingerprint, RuleCardSchema, signCard } from '@twokey/core';
 import { agentSessions, type Db, ruleCards, vaultTokens } from '@twokey/db';
 import type { VaultApi } from '@twokey/paypal';
-import { and, desc, eq, gt, max, ne } from 'drizzle-orm';
+import { and, desc, eq, gt } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { LRUCache } from 'lru-cache';
 import { z } from 'zod';
@@ -205,11 +205,8 @@ export const humanRoutes: FastifyPluginAsync<HumanRouteOptions> = async (app, op
         throw new AppError(ErrorCode.CONFLICT, 'Only draft rules can be signed');
       }
 
-      const [prev] = await tx
-        .select({ version: max(ruleCards.version) })
-        .from(ruleCards)
-        .where(and(eq(ruleCards.userId, userId), ne(ruleCards.id, id)));
-      const version = (prev?.version ?? 0) + 1;
+      // The compiler assigned the version when it created the draft; signing keeps it.
+      const { version } = draft;
 
       // The asserted user is the only possible owner, whatever the draft says.
       const draftRules =

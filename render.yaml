@@ -36,6 +36,16 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: COMPILER_PROVIDER
+        sync: false
+      - key: COMPILER_BASE_URL
+        sync: false
+      - key: COMPILER_API_KEY
+        sync: false
+      - key: COMPILER_MODEL
+        sync: false
+      - key: DAILY_BUDGET_USD_LIVE
+        sync: false
       - key: NEXT_PUBLIC_AG_GRID_LICENSE_KEY
         sync: false
       - key: NEXT_PUBLIC_VAPID_PUBLIC_KEY

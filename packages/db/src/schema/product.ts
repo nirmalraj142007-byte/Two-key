@@ -1,11 +1,14 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  date,
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -224,3 +227,16 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   createdAt: createdAt(),
   lastOkAt: timestamp('last_ok_at', { withTimezone: true }),
 });
+
+/** Daily LLM spend per scope; `spend()` in budget.ts is the only writer. */
+export const budgetLedger = pgTable(
+  'budget_ledger',
+  {
+    day: date('day').notNull(),
+    scope: text('scope').notNull(),
+    spentUsd: numeric('spent_usd', { precision: 12, scale: 6 }).notNull().default('0'),
+    capUsd: numeric('cap_usd', { precision: 12, scale: 6 }).notNull(),
+    trippedAt: timestamp('tripped_at', { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.scope] })],
+);

@@ -115,12 +115,16 @@ describe.skipIf(!baseUrl)('/human/*', () => {
     };
   }
 
-  async function newDraft(userId: string, rules: Record<string, unknown> = draftRules()) {
+  async function newDraft(
+    userId: string,
+    rules: Record<string, unknown> = draftRules(),
+    version = 1000 + Math.floor(Math.random() * 1e6),
+  ) {
     const [row] = await conn.db
       .insert(ruleCards)
       .values({
         userId,
-        version: 1000 + Math.floor(Math.random() * 1e6),
+        version,
         status: 'draft',
         nlRequest: 'test',
         rules,
@@ -400,17 +404,17 @@ describe.skipIf(!baseUrl)('/human/*', () => {
       expect(row?.hmac?.slice(0, 8)).toBe(res.body.fingerprint);
     });
 
-    it('bumps the version and revokes the previous signed card', async () => {
+    it('keeps the draft version and revokes the previous signed card', async () => {
       const user = await newUser();
       const first = await as(
         user,
         ['rules:sign'],
         'POST',
-        `/human/rules/${await newDraft(user.id)}/sign`,
+        `/human/rules/${await newDraft(user.id, draftRules(), 1)}/sign`,
       );
-      const secondId = await newDraft(user.id);
+      const secondId = await newDraft(user.id, draftRules(), 2);
       const second = await as(user, ['rules:sign'], 'POST', `/human/rules/${secondId}/sign`);
-      expect(second.body.version).toBeGreaterThan(first.body.version as number);
+      expect([first.body.version, second.body.version]).toEqual([1, 2]);
       const rows = await conn.db.select().from(ruleCards).where(eq(ruleCards.userId, user.id));
       const statusOf = (id: unknown) => rows.find((r) => r.id === id)?.status;
       expect(statusOf(first.body.id)).toBe('revoked');

@@ -63,7 +63,14 @@ const schemas = {
     AUTH_SECRET: nonEmpty,
     HUMAN_ASSERTION_PRIVATE_KEY: pem,
     GATEWAY_URL: url,
-    ANTHROPIC_API_KEY: nonEmpty,
+    /** Only needed when COMPILER_PROVIDER=anthropic. */
+    ANTHROPIC_API_KEY: nonEmpty.optional(),
+    /** Rule compiler: any OpenAI-compatible endpoint (default Groq), or Anthropic. */
+    COMPILER_PROVIDER: z.enum(['openai-compatible', 'anthropic']).default('openai-compatible'),
+    COMPILER_BASE_URL: url.default('https://api.groq.com/openai/v1'),
+    COMPILER_API_KEY: nonEmpty.optional(),
+    COMPILER_MODEL: nonEmpty.default('llama-3.3-70b-versatile'),
+    DAILY_BUDGET_USD_LIVE: z.coerce.number().nonnegative().default(2),
     NEXT_PUBLIC_AG_GRID_LICENSE_KEY: nonEmpty.optional(),
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: nonEmpty.optional(),
     IP_HASH_SALT: nonEmpty,
@@ -90,6 +97,7 @@ const schemas = {
     DATABASE_URL: databaseUrl,
     ANTHROPIC_API_KEY: nonEmpty,
     OPENROUTER_API_KEY: nonEmpty,
+    COMPILER_API_KEY: nonEmpty.optional(),
     CHANNEL3_API_KEY: nonEmpty,
     GATEWAY_URL: url,
     MCP_URL: url,
@@ -109,6 +117,7 @@ export const SECRET_OWNERS: Record<string, ServiceName[]> = {
   HUMAN_ASSERTION_PRIVATE_KEY: ['web'],
   AUTH_SECRET: ['web'],
   ANTHROPIC_API_KEY: ['web', 'agent-runner', 'eval'],
+  COMPILER_API_KEY: ['web', 'eval'],
   OPENROUTER_API_KEY: ['agent-runner', 'eval'],
 };
 
