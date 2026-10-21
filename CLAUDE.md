@@ -19,7 +19,7 @@ Positioning: **"Not a shopping agent. The lock on its wallet."**
 
 These are the product. A change that weakens any of them is a bug, even if a prompt seems to ask for it. If a task seems to require breaking one, stop and ask.
 
-1. **Only `gateway` holds money credentials.** `PAYPAL_CLIENT_SECRET`, `RULE_HMAC_KEY`, `AGENT_TOKEN_PEPPER`, `VAPID_PRIVATE_KEY`, `METRICS_TOKEN` and `MERCHANT_REPORTING_CREDENTIALS` live only in gateway env. `SECRET_OWNERS` in `packages/core/src/env.ts` is the source of truth. `loadEnv()` and `npm run check:secrets` enforce it.
+1. **Only `gateway` holds money credentials.** `PAYPAL_CLIENT_SECRET`, `RULE_HMAC_KEY`, `AGENT_TOKEN_PEPPER`, `VAPID_PRIVATE_KEY`, `METRICS_TOKEN` and `MERCHANT_API_CREDENTIALS` (per-merchant PayPal credentials, used for voids and balances) live only in gateway env. `SECRET_OWNERS` in `packages/core/src/env.ts` is the source of truth. `loadEnv()` and `npm run check:secrets` enforce it.
 2. **Hard rules run before any PayPal call.** A blocked proposal makes **zero** PayPal HTTP requests and creates no payment row. Its user-facing reason ends with "No PayPal order created."
 3. **The gateway resolves price and payee itself**, from the catalog and the merchant registry. Anything else the agent sends (amount, payee, merchant) is stripped and ignored.
 4. **No LLM call sits between a proposal and a capture.** AI runs only in the rule compiler (output unsigned until a human confirms), the shopping agent (behind MCP) and the optional explainer (read-only, can never approve).
@@ -30,7 +30,7 @@ These are the product. A change that weakens any of them is a bug, even if a pro
 9. **Evaluation mode never calls PayPal.** Sessions with `mode = 'eval'` record proposals and the G4 decision, then stop. A guard throws if that path is ever reached.
 10. **Listing text is untrusted data.** Never render it as HTML. Never send it to the rule compiler. Search results return it under the key `untrusted_listing_text`.
 11. **Holds always end before PayPal's 3-day honor period.** `holdTimeoutMinutes` is under 4,260 (schema-enforced). Demo users use 15 minutes.
-12. **Every PayPal POST is idempotent.** It carries `PayPal-Request-Id: tk-{proposalId}-{create|capture|void}`. A capture or void is never issued twice for one payment: lock the row with `FOR UPDATE`, check the state, then call PayPal.
+12. **Every PayPal POST is idempotent.** It carries `PayPal-Request-Id: tk-{proposalId}-{create|capture|void}`. Never issue a capture or void with a NEW request ID for the same payment; resending the SAME request ID after a crash is allowed (PayPal returns the original result). Lock the row with `FOR UPDATE`, check the state, then call PayPal. Voids use the payee merchant's own credentials (`MERCHANT_API_CREDENTIALS`); captures use the platform's.
 13. **Fail closed.** If the gateway can't persist a decision or reach PayPal, no order is created and the user sees "Not purchased — retry".
 14. Onboarding return pages must check that the returned setup-token ID matches the one created for this user's session; reject stale or foreign approvals (seen in the phase 2 spike).
 

@@ -46,6 +46,8 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
   let app: FastifyInstance;
   let conn: ReturnType<typeof createDb>;
   let paypal: PayPal;
+  /** Peak Outfitters' own client; null simulates a merchant without credentials. */
+  let peak: PayPal | null;
   let privateKey: Awaited<ReturnType<typeof generateKeyPair>>['privateKey'];
   let noMatch: string[] = [];
   const onNoMatch = (req: { method?: string; path?: string }) => {
@@ -139,11 +141,26 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
     return { id: userId, token };
   }
 
+  const basic = (id: string, secret: string) =>
+    `Basic ${Buffer.from(`${id}:${secret}`).toString('base64')}`;
+
+  /** The platform app's token. */
   function mockOAuth() {
     nock(PAYPAL)
       .post('/v1/oauth2/token')
+      .matchHeader('authorization', basic('test-client', 'test-secret'))
       .once()
       .reply(200, { access_token: 'A21-test', token_type: 'Bearer', expires_in: 32400 });
+  }
+
+  /** Peak Outfitters' own app token: voids must use it, never the platform's. */
+  function mockVoid(authId: string, seen: unknown[], reply: [number, unknown?] = [204]) {
+    nock(PAYPAL)
+      .post('/v1/oauth2/token')
+      .matchHeader('authorization', basic('peak-client', 'peak-secret'))
+      .once()
+      .reply(200, { access_token: 'A21-peak', token_type: 'Bearer', expires_in: 32400 });
+    mockPost(`/v2/payments/authorizations/${authId}/void`, seen, reply, { bearer: 'A21-peak' });
   }
 
   /** TR-2 at Peak Outfitters ($64.40 vs a $46.00 median): authorized, then held. */
@@ -184,10 +201,11 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
     path: string,
     seen: unknown[],
     reply: [number, unknown?],
-    opts: { times?: number; delayMs?: number } = {},
+    opts: { times?: number; delayMs?: number; bearer?: string } = {},
   ) {
     nock(PAYPAL)
       .post(path)
+      .matchHeader('authorization', `Bearer ${opts.bearer ?? 'A21-test'}`)
       .times(opts.times ?? 1)
       .delay(opts.delayMs ?? 0)
       .reply(function () {
@@ -273,7 +291,6 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
         paypal: {
           createVaultedAuthorization: (i) => paypal.createVaultedAuthorization(i),
           capture: (i) => paypal.capture(i),
-          voidAuthorization: (i) => paypal.voidAuthorization(i),
           getAuthorization: (id) => paypal.getAuthorization(id),
           getCapture: (id) => paypal.getCapture(id),
         },
@@ -282,6 +299,13 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
           createPaymentToken: noPayPal,
           deletePaymentToken: noPayPal,
         },
+        merchantPayPal: (slug) =>
+          slug === 'peak-outfitters' && peak
+            ? {
+                voidAuthorization: (i) => (peak as PayPal).voidAuthorization(i),
+                getAuthorization: (id) => (peak as PayPal).getAuthorization(id),
+              }
+            : undefined,
         jobs,
       },
     );
@@ -302,6 +326,12 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
   beforeEach(async () => {
     noMatch = [];
     sent.length = 0;
+    peak = createPayPal({
+      clientId: 'peak-client',
+      clientSecret: 'peak-secret',
+      env: 'sandbox',
+      logger: createLogger('gateway', 'silent'),
+    });
     paypal = createPayPal({
       clientId: 'test-client',
       clientSecret: 'test-secret',
@@ -380,7 +410,7 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
     expect(foreign.status).toBe(404);
 
     const seen: unknown[] = [];
-    mockPost(`/v2/payments/authorizations/${h.authId}/void`, seen, [204]);
+    mockVoid(h.authId, seen);
     const res = await human('POST', `/human/approvals/${h.approvalId}`, {
       decision: 'deny',
       via: 'phone',
@@ -389,13 +419,32 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
     expect(seen).toEqual([`tk-${h.proposalId}-void`]);
     expect((await state(h.paymentId))?.state).toBe('voided');
     expect(await approvalOf(h.paymentId)).toMatchObject({ status: 'denied', via: 'phone' });
+    expect(sent).toContainEqual(
+      expect.objectContaining({ name: 'payment.reconcile', data: { paymentId: h.paymentId } }),
+    );
+
+    // The VOIDED webhook goes to the merchant's app, so the reconciler confirms by GET, once.
+    nock(PAYPAL)
+      .get(`/v2/payments/authorizations/${h.authId}`)
+      .matchHeader('authorization', 'Bearer A21-test')
+      .once()
+      .reply(200, { id: h.authId, status: 'VOIDED' });
+    expect(await reconcilePayment(deps(), h.paymentId)).toBe('confirmed');
+    expect(await reconcilePayment(deps(), h.paymentId)).toBe('skipped');
+    const confirmed = (await eventsOf(h.paymentId)).filter((e) => e.type === 'reconcile.confirmed');
+    expect(confirmed).toEqual([
+      expect.objectContaining({
+        source: 'reconciler',
+        payload: { authorizationStatus: 'VOIDED', matches: true },
+      }),
+    ]);
     expect(noMatch).toEqual([]);
   });
 
   it('(3) timeout job: voided, approval timed_out; running it again is a no-op', async () => {
     const h = await hold();
     const seen: unknown[] = [];
-    mockPost(`/v2/payments/authorizations/${h.authId}/void`, seen, [204]);
+    mockVoid(h.authId, seen);
     expect(await handleHoldTimeout(deps(), { paymentId: h.paymentId })).toBe('voided');
     expect(seen).toEqual([`tk-${h.proposalId}-void`]);
     expect((await state(h.paymentId))?.state).toBe('voided');
@@ -423,7 +472,7 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
 
     // The timer then voids it (timer voids ignore the deadline).
     const seen: unknown[] = [];
-    mockPost(`/v2/payments/authorizations/${h.authId}/void`, seen, [204]);
+    mockVoid(h.authId, seen);
     expect(await handleHoldTimeout(deps(), { paymentId: h.paymentId })).toBe('voided');
     expect(seen).toHaveLength(1);
   });
@@ -550,7 +599,7 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
       expect.objectContaining({
         fromState: 'capture_requested',
         toState: 'captured',
-        payload: { authorizationStatus: 'CAPTURED' },
+        payload: { authorizationStatus: 'CAPTURED', settledBy: 'reconciler' },
       }),
     ]);
     // Settled: a second run reads nothing and records nothing.
@@ -563,12 +612,142 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
     const h = await hold();
     await backdateDeadline(h.paymentId);
     const seen: unknown[] = [];
-    mockPost(`/v2/payments/authorizations/${h.authId}/void`, seen, [204]);
+    mockVoid(h.authId, seen);
     const result = await runSweep(deps());
     expect(result).toEqual({ voided: 1, reconciled: 0, openAuthorizations: 0 });
     expect(seen).toEqual([`tk-${h.proposalId}-void`]);
     expect((await state(h.paymentId))?.state).toBe('voided');
     expect(await approvalOf(h.paymentId)).toMatchObject({ status: 'timed_out' });
     expect(noMatch).toEqual([]);
+  });
+
+  /** Simulates a crash right after the claim: requested state committed, PayPal never answered. */
+  async function crashAfterClaim(
+    h: { paymentId: string; proposalId: string },
+    kind: 'capture' | 'void',
+    ageMs: number,
+  ) {
+    const to = kind === 'capture' ? 'capture_requested' : 'void_requested';
+    await conn.db
+      .update(payments)
+      .set({ state: to, updatedAt: new Date(Date.now() - ageMs) })
+      .where(eq(payments.id, h.paymentId));
+    await conn.db.insert(paymentEvents).values({
+      paymentId: h.paymentId,
+      source: 'human',
+      type: `${kind}.requested`,
+      fromState: 'held',
+      toState: to,
+      requestId: `tk-${h.proposalId}-${kind}`,
+      payload: { via: 'web', reason: 'human_denied' },
+    });
+  }
+
+  function mockGetAuthorization(authId: string, status: string) {
+    nock(PAYPAL)
+      .get(`/v2/payments/authorizations/${authId}`)
+      .matchHeader('authorization', 'Bearer A21-test')
+      .once()
+      .reply(200, { id: authId, status });
+  }
+
+  it('(10) a hold at a merchant without credentials is blocked before any PayPal call', async () => {
+    peak = null;
+    const res = await app.inject({
+      method: 'POST',
+      url: '/agent/proposals',
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { product_id: ids.tr2, qty: 1 },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { proposalId: string };
+    expect(body).toMatchObject({
+      decision: 'blocked',
+      blockedBy: 'hold_unavailable',
+      paypalOrderCreated: false,
+      reason: "Two-Key can't hold purchases at Peak Outfitters yet. No PayPal order created.",
+    });
+    const rows = await conn.db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(eq(payments.proposalId, body.proposalId));
+    expect(rows).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(nock.pendingMocks()).toEqual([]);
+    expect(noMatch).toEqual([]); // zero PayPal requests, not even OAuth
+  });
+
+  it('(11) stuck void_requested: resent with the SAME request ID by the merchant, voided', async () => {
+    const h = await hold();
+    await crashAfterClaim(h, 'void', 30_000);
+
+    // Under 2 minutes it may still be in flight: no resend, look again later.
+    mockGetAuthorization(h.authId, 'CREATED');
+    sent.length = 0;
+    expect(await reconcilePayment(deps(), h.paymentId)).toBe('unchanged');
+    const again = sent.find((x) => x.name === 'payment.reconcile');
+    expect(again?.opts?.startAfter).toBeGreaterThanOrEqual(90);
+    expect(again?.opts?.startAfter).toBeLessThanOrEqual(95);
+
+    await conn.db
+      .update(payments)
+      .set({ updatedAt: new Date(Date.now() - 3 * MINUTE_MS) })
+      .where(eq(payments.id, h.paymentId));
+    mockGetAuthorization(h.authId, 'CREATED');
+    const seen: unknown[] = [];
+    mockVoid(h.authId, seen);
+    expect(await reconcilePayment(deps(), h.paymentId)).toBe('resent');
+    expect(seen).toEqual([`tk-${h.proposalId}-void`]);
+    expect((await state(h.paymentId))?.state).toBe('voided');
+    expect(await approvalOf(h.paymentId)).toMatchObject({ status: 'denied', via: 'web' });
+    const completed = (await eventsOf(h.paymentId)).find((e) => e.type === 'void.completed');
+    expect(completed).toMatchObject({
+      source: 'reconciler',
+      requestId: `tk-${h.proposalId}-void`,
+      fromState: 'void_requested',
+      toState: 'voided',
+    });
+    expect(noMatch).toEqual([]);
+  });
+
+  it('(12) stuck capture_requested: resent with the SAME request ID by the platform, captured', async () => {
+    const h = await hold();
+    await crashAfterClaim(h, 'capture', 3 * MINUTE_MS);
+    mockGetAuthorization(h.authId, 'CREATED');
+    const seen: unknown[] = [];
+    mockPost(`/v2/payments/authorizations/${h.authId}/capture`, seen, [
+      201,
+      { id: 'CAP-12', status: 'COMPLETED' },
+    ]);
+    expect(await reconcilePayment(deps(), h.paymentId)).toBe('resent');
+    expect(seen).toEqual([`tk-${h.proposalId}-capture`]);
+    expect(await state(h.paymentId)).toEqual({ state: 'captured', captureId: 'CAP-12' });
+    expect(await approvalOf(h.paymentId)).toMatchObject({ status: 'approved', via: 'web' });
+    const completed = (await eventsOf(h.paymentId)).find((e) => e.type === 'capture.completed');
+    expect(completed).toMatchObject({
+      source: 'reconciler',
+      requestId: `tk-${h.proposalId}-capture`,
+    });
+    expect(noMatch).toEqual([]);
+  });
+
+  it('(13) stuck but already settled at PayPal: no resend, state synced by the reconciler', async () => {
+    const h = await hold();
+    await crashAfterClaim(h, 'void', 3 * MINUTE_MS);
+    mockGetAuthorization(h.authId, 'VOIDED');
+    expect(await reconcilePayment(deps(), h.paymentId)).toBe('changed');
+    expect((await state(h.paymentId))?.state).toBe('voided');
+    const synced = (await eventsOf(h.paymentId)).filter((e) => e.source === 'reconciler');
+    expect(synced).toEqual([
+      expect.objectContaining({
+        type: 'reconcile',
+        fromState: 'void_requested',
+        toState: 'voided',
+        payload: { authorizationStatus: 'VOIDED', settledBy: 'reconciler' },
+      }),
+    ]);
+    expect(await approvalOf(h.paymentId)).toMatchObject({ status: 'denied' });
+    expect(nock.pendingMocks()).toEqual([]);
+    expect(noMatch).toEqual([]); // no void was sent
   });
 });

@@ -1,14 +1,23 @@
 import { AppError, canTransition, ErrorCode, type PaymentState, TERMINAL } from '@twokey/core';
-import { agentSessions, approvals, type Db, paymentEvents, payments, proposals } from '@twokey/db';
+import {
+  agentSessions,
+  approvals,
+  type Db,
+  merchants,
+  paymentEvents,
+  payments,
+  proposals,
+} from '@twokey/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { type JobDeps, scheduleReconcile } from '../jobs/queue.js';
 import { NOTIFY_CHANNEL } from './webhook-apply.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
-export type SettleDeps = Pick<JobDeps, 'db' | 'jobs' | 'log' | 'now'> & {
-  paypal: Pick<JobDeps['paypal'], 'capture' | 'voidAuthorization'>;
+export type SettleDeps = Pick<JobDeps, 'db' | 'jobs' | 'log' | 'now' | 'merchantPayPal'> & {
+  paypal: Pick<JobDeps['paypal'], 'capture'>;
 };
+type EventSource = 'api_response' | 'reconciler';
 export type Via = 'web' | 'phone' | 'timer';
 type ApprovalStatus = 'approved' | 'denied' | 'timed_out';
 
@@ -40,12 +49,18 @@ export function isAuthorizationExpired(err: unknown): boolean {
   );
 }
 
-interface Claimed {
+export interface Claimed {
   paymentId: string;
   proposalId: string;
   userId: string;
   authorizationId: string;
+  /** The payee merchant: its own credentials void the authorization. */
+  payeeSlug: string;
   requestId: string;
+}
+
+export function noMerchantCredentials(slug: string): AppError {
+  return new AppError(ErrorCode.CONFIG_INVALID, `No PayPal credentials for merchant ${slug}`);
 }
 
 /**
@@ -70,9 +85,11 @@ async function claim(
         userId: approvals.userId,
         approval: approvals.status,
         deadlineAt: approvals.deadlineAt,
+        payeeSlug: merchants.slug,
       })
       .from(payments)
       .innerJoin(approvals, eq(approvals.paymentId, payments.id))
+      .innerJoin(merchants, eq(merchants.id, payments.payeeMerchantId))
       .where(eq(payments.id, paymentId))
       .for('update', { of: [payments, approvals] });
     if (!row) throw new AppError(ErrorCode.NOT_FOUND, 'Hold not found');
@@ -86,6 +103,11 @@ async function claim(
     }
     if (!row.authorizationId) {
       throw new AppError(ErrorCode.INTERNAL, 'Held payment has no authorization');
+    }
+
+    // Checked before the state moves: a void we could not send must leave the hold untouched.
+    if (to === 'void_requested' && !deps.merchantPayPal(row.payeeSlug)) {
+      throw noMerchantCredentials(row.payeeSlug);
     }
 
     const kind = to === 'capture_requested' ? 'capture' : 'void';
@@ -115,6 +137,7 @@ async function claim(
       proposalId: row.proposalId,
       userId: row.userId,
       authorizationId: row.authorizationId,
+      payeeSlug: row.payeeSlug,
       requestId,
     };
   });
@@ -129,6 +152,7 @@ interface Finish {
   set?: Partial<typeof payments.$inferInsert>;
   approval: ApprovalStatus;
   via: Via;
+  source: EventSource;
 }
 
 /**
@@ -155,7 +179,7 @@ async function finish(deps: SettleDeps, c: Claimed, f: Finish): Promise<PaymentS
     }
     await tx.insert(paymentEvents).values({
       paymentId: c.paymentId,
-      source: 'api_response',
+      source: f.source,
       type: f.type,
       fromState: current.state,
       toState: state,
@@ -183,34 +207,38 @@ async function finish(deps: SettleDeps, c: Claimed, f: Finish): Promise<PaymentS
   });
 }
 
-/** The human approved a held payment: capture it. */
-export async function captureHeld(
+/**
+ * Sends the capture for a claimed payment on the platform client and applies PayPal's answer.
+ * The reconciler calls it again after a crash with the SAME request ID (PayPal then returns the
+ * original result); a new request ID is never minted for the same payment.
+ */
+export async function sendCapture(
   deps: SettleDeps,
-  paymentId: string,
-  via: Exclude<Via, 'timer'>,
-): Promise<{ state: PaymentState }> {
-  const c = await claim(deps, paymentId, 'capture_requested', via, {});
+  c: Claimed,
+  via: Via,
+  source: EventSource,
+): Promise<PaymentState> {
   const from = 'capture_requested';
+  const approval: ApprovalStatus = 'approved';
   let state: PaymentState;
   try {
     const res = await deps.paypal.capture({
       authorizationId: c.authorizationId,
       requestId: c.requestId,
     });
-    const payload = { captureId: res.captureId, status: res.status };
-    const set = { paypalCaptureId: res.captureId || null };
     state = await finish(deps, c, {
       from,
       // PENDING (or anything else) stays in capture_requested: the webhook or reconciler ends it.
       ...(res.status === 'COMPLETED' ? { to: 'captured' as const } : {}),
       type: res.status === 'COMPLETED' ? 'capture.completed' : 'capture.pending',
-      payload,
-      set,
-      approval: 'approved',
+      payload: { captureId: res.captureId, status: res.status },
+      set: { paypalCaptureId: res.captureId || null },
+      approval,
       via,
+      source,
     });
   } catch (err) {
-    deps.log.warn({ paymentId, err: errorPayload(err) }, 'held capture failed');
+    deps.log.warn({ paymentId: c.paymentId, err: errorPayload(err) }, 'capture failed');
     if (isAuthorizationExpired(err)) {
       state = await finish(deps, c, {
         from,
@@ -219,6 +247,7 @@ export async function captureHeld(
         payload: { issue: 'AUTHORIZATION_EXPIRED', ...errorPayload(err) },
         approval: 'timed_out',
         via,
+        source,
       });
     } else {
       const retryable = err instanceof AppError && err.retryable;
@@ -228,13 +257,73 @@ export async function captureHeld(
         ...(retryable ? {} : { to: 'failed' as const }),
         type: 'paypal.error',
         payload: errorPayload(err),
-        approval: 'approved',
+        approval,
         via,
+        source,
       });
     }
   }
-  await scheduleReconcile(deps, paymentId);
-  return { state };
+  await scheduleReconcile(deps, c.paymentId);
+  return state;
+}
+
+/**
+ * Sends the void for a claimed payment with the PAYEE merchant's own credentials (PayPal refuses
+ * a platform void on a third-party payee's authorization) and applies the answer. Afterwards the
+ * reconciler confirms the result by GET: the VOIDED webhook may go to the merchant's app.
+ */
+export async function sendVoid(
+  deps: SettleDeps,
+  c: Claimed,
+  via: Via,
+  reason: string,
+  source: EventSource,
+): Promise<PaymentState> {
+  const from = 'void_requested';
+  const approval: ApprovalStatus = via === 'timer' ? 'timed_out' : 'denied';
+  const merchant = deps.merchantPayPal(c.payeeSlug);
+  if (!merchant) throw noMerchantCredentials(c.payeeSlug);
+  let state: PaymentState;
+  try {
+    const res = await merchant.voidAuthorization({
+      authorizationId: c.authorizationId,
+      requestId: c.requestId,
+    });
+    state = await finish(deps, c, {
+      from,
+      to: 'voided',
+      type: 'void.completed',
+      payload: { status: res.status, reason, caller: `merchant:${c.payeeSlug}` },
+      approval,
+      via,
+      source,
+    });
+  } catch (err) {
+    deps.log.warn({ paymentId: c.paymentId, err: errorPayload(err) }, 'void failed');
+    const expired = isAuthorizationExpired(err);
+    // Anything else stays in void_requested; the reconciler settles it from GET authorization.
+    state = await finish(deps, c, {
+      from,
+      ...(expired ? { to: 'expired' as const } : {}),
+      type: expired ? 'void.authorization_expired' : 'paypal.error',
+      payload: { ...(expired ? { issue: 'AUTHORIZATION_EXPIRED' } : {}), ...errorPayload(err) },
+      approval,
+      via,
+      source,
+    });
+  }
+  await scheduleReconcile(deps, c.paymentId);
+  return state;
+}
+
+/** The human approved a held payment: capture it. */
+export async function captureHeld(
+  deps: SettleDeps,
+  paymentId: string,
+  via: Exclude<Via, 'timer'>,
+): Promise<{ state: PaymentState }> {
+  const c = await claim(deps, paymentId, 'capture_requested', via, {});
+  return { state: await sendCapture(deps, c, via, 'api_response') };
 }
 
 /** The human denied a held payment, or its timer ran out: void the authorization. */
@@ -245,37 +334,7 @@ export async function voidHeld(
   reason: string,
 ): Promise<{ state: PaymentState }> {
   const c = await claim(deps, paymentId, 'void_requested', via, { reason });
-  const from = 'void_requested';
-  const approval: ApprovalStatus = via === 'timer' ? 'timed_out' : 'denied';
-  let state: PaymentState;
-  try {
-    const res = await deps.paypal.voidAuthorization({
-      authorizationId: c.authorizationId,
-      requestId: c.requestId,
-    });
-    state = await finish(deps, c, {
-      from,
-      to: 'voided',
-      type: 'void.completed',
-      payload: { status: res.status, reason },
-      approval,
-      via,
-    });
-  } catch (err) {
-    deps.log.warn({ paymentId, err: errorPayload(err) }, 'held void failed');
-    const expired = isAuthorizationExpired(err);
-    // Anything else stays in void_requested; the reconciler settles it from GET authorization.
-    state = await finish(deps, c, {
-      from,
-      ...(expired ? { to: 'expired' as const } : {}),
-      type: expired ? 'void.authorization_expired' : 'paypal.error',
-      payload: { ...(expired ? { issue: 'AUTHORIZATION_EXPIRED' } : {}), ...errorPayload(err) },
-      approval,
-      via,
-    });
-  }
-  await scheduleReconcile(deps, paymentId);
-  return { state };
+  return { state: await sendVoid(deps, c, via, reason, 'api_response') };
 }
 
 /** Closes a still-pending approval once its payment reached a terminal state some other way. */

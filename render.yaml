@@ -87,7 +87,7 @@ services:
         sync: false
       - key: PORT
         sync: false
-      - key: MERCHANT_REPORTING_CREDENTIALS
+      - key: MERCHANT_API_CREDENTIALS
         sync: false
   - type: web
     name: twokey-mcp

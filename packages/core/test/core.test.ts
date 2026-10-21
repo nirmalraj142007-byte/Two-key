@@ -70,6 +70,38 @@ describe('loadEnv secret ownership', () => {
   });
 });
 
+describe('MERCHANT_API_CREDENTIALS', () => {
+  const creds = JSON.stringify({
+    'peak-outfitters': { clientId: 'peak-id', clientSecret: 'peak-secret-value' },
+  });
+
+  it('parses into credentials by merchant slug on gateway', () => {
+    const env = loadEnv('gateway', { ...gatewayEnv, MERCHANT_API_CREDENTIALS: creds });
+    expect(env.MERCHANT_API_CREDENTIALS).toEqual({
+      'peak-outfitters': { clientId: 'peak-id', clientSecret: 'peak-secret-value' },
+    });
+  });
+
+  it('is gateway-only', () => {
+    expect(() => loadEnv('web', { MERCHANT_API_CREDENTIALS: creds })).toThrowError(
+      /MERCHANT_API_CREDENTIALS may only be set on: gateway/,
+    );
+  });
+
+  it('rejects bad JSON or a missing secret without printing the value', () => {
+    for (const bad of ['{not json', JSON.stringify({ peak: { clientId: 'peak-id' } })]) {
+      try {
+        loadEnv('gateway', { ...gatewayEnv, MERCHANT_API_CREDENTIALS: bad });
+        expect.unreachable();
+      } catch (e) {
+        expect((e as AppError).code).toBe(ErrorCode.CONFIG_INVALID);
+        expect((e as AppError).message).toContain('MERCHANT_API_CREDENTIALS');
+        expect((e as AppError).message).not.toContain('peak-id');
+      }
+    }
+  });
+});
+
 describe('loadEnv validation', () => {
   it('lists missing keys and never a value', () => {
     try {

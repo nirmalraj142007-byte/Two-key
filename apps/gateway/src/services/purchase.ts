@@ -24,7 +24,7 @@ import {
   ruleCards,
   vaultTokens,
 } from '@twokey/db';
-import type { OrdersApi } from '@twokey/paypal';
+import type { MerchantPayPalLookup, OrdersApi } from '@twokey/paypal';
 import { and, count, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import type { AgentSession } from '../auth/agent-token.js';
@@ -37,7 +37,7 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type Logger = Pick<FastifyBaseLogger, 'info' | 'warn' | 'error'>;
 
 export type Decision = 'captured' | 'held' | 'blocked' | 'failed' | 'recorded';
-export type BlockedBy = RuleId | 'rule_card_invalid';
+export type BlockedBy = RuleId | 'rule_card_invalid' | 'hold_unavailable';
 
 export interface ProposalResult {
   proposalId: string;
@@ -56,6 +56,8 @@ export interface PurchaseDeps {
   log: Logger;
   /** hold.timeout is sent here when a purchase is held. */
   jobs: Jobs;
+  /** A hold can only be released with the payee's own credentials; no credentials, no hold. */
+  merchantPayPal: MerchantPayPalLookup;
   now?: () => Date;
   /** Overrides the card's holdTimeoutMinutes for demo and hijack sessions. */
   demoHoldMinutes?: number | undefined;
@@ -88,7 +90,9 @@ export const NO_ORDER = 'No PayPal order created.';
 export const CONNECT_PAYPAL = 'Connect PayPal first';
 export const PAYPAL_DECLINED = 'PayPal declined — no money moved';
 
-type StoredHit = Omit<RuleHit, 'rule'> & { rule: RuleHit['rule'] | 'rule_card_invalid' };
+type StoredHit = Omit<RuleHit, 'rule'> & {
+  rule: RuleHit['rule'] | 'rule_card_invalid' | 'hold_unavailable';
+};
 
 // ---------------------------------------------------------------------------------------------
 // Reasons. Built only from stored rows, so a replayed idempotent request reads the same.
@@ -104,6 +108,8 @@ function blockSentence(hit: StoredHit, merchantName: string, category: string): 
       return 'Your spending rules have expired.';
     case 'rule_card_invalid':
       return "Your spending rules couldn't be verified.";
+    case 'hold_unavailable':
+      return `Two-Key can't hold purchases at ${merchantName} yet.`;
     case 'merchant_allowlist':
       return `${merchantName} isn't in your stores.`;
     case 'per_item_cap':
@@ -444,6 +450,19 @@ export async function proposePurchase(
       } else {
         outcome = 'block';
         hits = [cardCheck.hit];
+      }
+      // Fail safe: a hold we could not void later is never created. Evaluation sessions never
+      // reach PayPal, so their recorded G4 decision stays the pure gate's.
+      if (outcome === 'hold' && session.mode !== 'eval' && !deps.merchantPayPal(merchant.slug)) {
+        outcome = 'block';
+        hits = [
+          {
+            rule: 'hold_unavailable',
+            passed: false,
+            detail: { expected: 'merchant_credentials', actual: 'missing' },
+          },
+          ...hits,
+        ];
       }
 
       const [proposal] = await tx

@@ -154,3 +154,49 @@ gateway with an assertion from `scripts/mint-assertion.ts`.
   a registry merchant. Deny and hold timeout therefore end in `void_requested` with the
   authorization still CREATED at PayPal (it lapses on its own after 29 days; nothing is charged).
   This needs a decision before the hold demo (invariant 11).
+
+## Phase 9 merchant-scoped void 2026-10-21 — WORKS
+
+**Experiment.** Peak Outfitters authorization 7HN92471117681234 (the one the platform void
+refused with 403). Peak Outfitters' own REST app credentials, separate OAuth token:
+
+| Call | Credentials | HTTP | Status | debug_id |
+| --- | --- | --- | --- | --- |
+| GET authorization | platform | 200 | CREATED | f9113786b4e8a |
+| POST .../void | peak-outfitters | **204** | — | f75380679f7ab |
+| GET authorization | peak-outfitters | 200 | VOIDED | f3974092fe7d7 |
+| GET authorization | platform | 200 | **VOIDED** | f8184553860c5 |
+
+**Design.** PayPal lets the platform capture a third-party payee's authorization but refuses
+the void (403 PERMISSION_DENIED); the payee merchant's own app may void it. As a sandbox
+stand-in for PayPal partner permissions, the gateway holds each merchant's REST credentials
+in `MERCHANT_API_CREDENTIALS` (gateway-only, by slug) and:
+
+- voids (deny and hold timeout) with the PAYEE merchant's client; captures stay on the platform;
+- refuses to create a hold for a payee without credentials: the proposal is `blocked`
+  ("Two-Key can't hold purchases at <store> yet. No PayPal order created."), with no PayPal call;
+- confirms every void by a platform GET (`reconcile.confirmed`), because the VOIDED webhook goes
+  to the merchant's app, not ours;
+- recovers from crashes: a payment in capture_requested / void_requested for over 2 minutes whose
+  authorization PayPal still shows CREATED gets the SAME request resent with its ORIGINAL
+  `PayPal-Request-Id`, by the same caller. A new request ID is never minted (CLAUDE.md rule 12).
+
+**Clean-up** (boot sweep of the dev gateway, through the new path):
+
+| Payment | User | Before | Action | After |
+| --- | --- | --- | --- | --- |
+| 01a1573f-f5eb-… (6FD54906U52766445) | maya | void_requested, approval pending | void resent, same request ID, peak credentials: 204 | voided, timed_out, confirmed VOIDED |
+| 01a1589a-c97a-… (7538381915098912J) | maya | void_requested, approval timed_out | void resent, same request ID, peak credentials: 204 | voided, timed_out, confirmed VOIDED |
+| 01a158fe-8e09-… (7HN92471117681234) | e2e | void_requested, approval denied | GET: already VOIDED, no resend | voided (reconciler) |
+
+Sweep: `voided 0, reconciled 3, openAuthorizations 0`. `/human/stats`: maya 0, e2e 0.
+
+**Live proof** (real sandbox, e2e@twokey.demo, TR-2 $64.40 at Peak Outfitters):
+
+| Path | Approval | Authorization | Result | PayPal GET (platform) |
+| --- | --- | --- | --- | --- |
+| Deny via `/human/approvals/:id` | 01a15c93-6189-… | 8LL77206XP182000X | `{"state":"voided"}`, approval denied/web | VOIDED |
+| Timeout (`DEMO_HOLD_MINUTES=1`) | 01a15c94-1776-… | 32K559525A746413C | hold.timeout ran 3 s after the deadline: voided, approval timed_out; events timer void.requested → api_response void.completed → reconciler reconcile.confirmed | VOIDED |
+| Approve | 01a15c96-0da8-… | 91L452271J227460B | `{"state":"captured"}`, capture 3UM14945353040635, approval approved/web | CAPTURED |
+
+`/human/stats` for e2e after each: `{"openAuthorizations":0}`.

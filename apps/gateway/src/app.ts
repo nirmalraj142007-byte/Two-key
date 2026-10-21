@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { AppError, createLogger, type Env, ErrorCode, toHttp } from '@twokey/core';
-import type { OrdersApi, VaultApi, VerifyWebhookSignature } from '@twokey/paypal';
+import {
+  createMerchantPayPal,
+  type MerchantPayPalLookup,
+  type OrdersApi,
+  type VaultApi,
+  type VerifyWebhookSignature,
+} from '@twokey/paypal';
 import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import { createHumanAssertionVerifier } from './auth/human-assertion.js';
@@ -31,6 +37,7 @@ export type AppEnv = Pick<Env<'gateway'>, 'LOG_LEVEL'> &
       | 'DEMO_HOLD_MINUTES'
       | 'HUMAN_ASSERTION_PUBLIC_KEY'
       | 'WEB_ORIGIN'
+      | 'MERCHANT_API_CREDENTIALS'
     >
   >;
 
@@ -44,6 +51,8 @@ export interface AppDeps {
   paypal?: PayPalOps;
   /** Replaces the process-wide PayPal vault client (tests). */
   vault?: Pick<VaultApi, 'createSetupToken' | 'createPaymentToken' | 'deletePaymentToken'>;
+  /** Replaces the per-merchant clients built from MERCHANT_API_CREDENTIALS (tests). */
+  merchantPayPal?: MerchantPayPalLookup;
   /** Replaces the pg-boss job runner (tests record sends instead). */
   jobs?: Jobs;
   now?: () => Date;
@@ -51,7 +60,7 @@ export interface AppDeps {
 
 export type PayPalOps = Pick<
   OrdersApi,
-  'createVaultedAuthorization' | 'capture' | 'voidAuthorization' | 'getAuthorization' | 'getCapture'
+  'createVaultedAuthorization' | 'capture' | 'getAuthorization' | 'getCapture'
 >;
 
 /** Fastify's own 4xx errors (bad JSON, wrong content type, body too large). */
@@ -137,6 +146,15 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
   const paypal = deps.paypal ?? shared;
   const vault = deps.vault ?? shared;
   const now = deps.now ? { now: deps.now } : {};
+  // Voids go out with the payee merchant's own credentials; a merchant without them can't hold.
+  const merchantPayPal: MerchantPayPalLookup =
+    deps.merchantPayPal ??
+    (env.MERCHANT_API_CREDENTIALS && env.PAYPAL_ENV
+      ? createMerchantPayPal(env.MERCHANT_API_CREDENTIALS, {
+          env: env.PAYPAL_ENV,
+          logger: app.log as unknown as Parameters<typeof getPayPal>[1],
+        })
+      : () => undefined);
   app.decorate(
     'jobDeps',
     env.DATABASE_URL && paypal
@@ -145,6 +163,7 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
             return app.db;
           },
           paypal,
+          merchantPayPal,
           jobs,
           log: app.log,
           ...now,
@@ -159,6 +178,7 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
         keys: loadRuleKeys({ RULE_HMAC_KEY, RULE_HMAC_KEY_ID }),
         agentTokenPepper: AGENT_TOKEN_PEPPER,
         demoHoldMinutes: env.DEMO_HOLD_MINUTES,
+        merchantPayPal,
         jobs,
         ...now,
       });
@@ -192,7 +212,14 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
     });
     if (paypal) {
       app.register(async (scope) => {
-        await scope.register(humanApprovalRoutes, { db: app.db, paypal, jobs, verifier, ...now });
+        await scope.register(humanApprovalRoutes, {
+          db: app.db,
+          paypal,
+          merchantPayPal,
+          jobs,
+          verifier,
+          ...now,
+        });
       });
     }
   }

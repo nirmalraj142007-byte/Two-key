@@ -1,5 +1,5 @@
 import type { Db } from '@twokey/db';
-import type { OrdersApi } from '@twokey/paypal';
+import type { MerchantPayPalLookup, OrdersApi } from '@twokey/paypal';
 import type { FastifyBaseLogger } from 'fastify';
 
 export const QUEUES = {
@@ -25,7 +25,10 @@ export interface Jobs {
 /** Everything the job handlers and the settle service need. */
 export interface JobDeps {
   db: Db;
-  paypal: Pick<OrdersApi, 'capture' | 'voidAuthorization' | 'getAuthorization' | 'getCapture'>;
+  /** The platform client: captures and reads. It never voids (PayPal answers 403). */
+  paypal: Pick<OrdersApi, 'capture' | 'getAuthorization' | 'getCapture'>;
+  /** The payee merchant's own client, by slug: voids its authorizations. */
+  merchantPayPal: MerchantPayPalLookup;
   jobs: Jobs;
   log: Logger;
   now?: () => Date;
@@ -48,12 +51,16 @@ export async function sendSafely(
   }
 }
 
-export function scheduleReconcile(deps: Pick<JobDeps, 'jobs' | 'log'>, paymentId: string) {
+export function scheduleReconcile(
+  deps: Pick<JobDeps, 'jobs' | 'log'>,
+  paymentId: string,
+  delaySeconds = RECONCILE_DELAY_S,
+) {
   return sendSafely(
     deps,
     QUEUES.reconcile,
     { paymentId },
-    { startAfter: RECONCILE_DELAY_S, singletonKey: paymentId },
+    { startAfter: delaySeconds, singletonKey: paymentId },
   );
 }
 

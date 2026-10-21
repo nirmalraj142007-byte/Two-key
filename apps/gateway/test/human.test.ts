@@ -179,7 +179,6 @@ describe.skipIf(!baseUrl)('/human/*', () => {
         paypal: {
           createVaultedAuthorization: noPayPal,
           capture: noPayPal,
-          voidAuthorization: noPayPal,
           getAuthorization: noPayPal,
           getCapture: noPayPal,
         },

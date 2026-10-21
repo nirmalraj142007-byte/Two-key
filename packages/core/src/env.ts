@@ -43,16 +43,18 @@ const schemas = {
       .min(1)
       .max(HONOR_PERIOD_MINUTES - 60)
       .optional(),
-    MERCHANT_REPORTING_CREDENTIALS: z
+    /** Per-merchant PayPal REST credentials, by merchant slug: voids (phase 9), balances (phase 19). */
+    MERCHANT_API_CREDENTIALS: z
       .string()
-      .refine((v) => {
+      .transform((v, ctx) => {
         try {
-          JSON.parse(v);
-          return true;
+          return JSON.parse(v) as unknown;
         } catch {
-          return false;
+          ctx.addIssue({ code: 'custom', message: 'must be valid JSON' });
+          return z.NEVER;
         }
-      }, 'must be valid JSON')
+      })
+      .pipe(z.record(z.string().min(1), z.object({ clientId: nonEmpty, clientSecret: nonEmpty })))
       .optional(),
   }),
   web: z.object({
@@ -102,6 +104,7 @@ export const SECRET_OWNERS: Record<string, ServiceName[]> = {
   RULE_HMAC_KEY: ['gateway'],
   AGENT_TOKEN_PEPPER: ['gateway'],
   VAPID_PRIVATE_KEY: ['gateway'],
+  MERCHANT_API_CREDENTIALS: ['gateway'],
   CHANNEL3_API_KEY: ['gateway', 'eval'],
   HUMAN_ASSERTION_PRIVATE_KEY: ['web'],
   AUTH_SECRET: ['web'],

@@ -1,6 +1,6 @@
 import type { PaymentState } from '@twokey/core';
 import { payments } from '@twokey/db';
-import { and, count, eq, inArray, lt, lte } from 'drizzle-orm';
+import { and, count, eq, inArray, lt, lte, or } from 'drizzle-orm';
 import { handleHoldTimeout } from './hold-timeout.js';
 import type { JobDeps } from './queue.js';
 import { reconcilePayment } from './reconcile.js';
@@ -13,18 +13,16 @@ export const OPEN_STATES: PaymentState[] = [
   'capture_requested',
   'void_requested',
 ];
-const IN_FLIGHT: PaymentState[] = [
-  'authorizing',
-  'authorized',
-  'capture_requested',
-  'void_requested',
-];
+const IN_FLIGHT: PaymentState[] = ['authorizing', 'authorized'];
+/** Requested captures and voids: the reconciler resends them once stuck for 2 minutes. */
+const REQUESTED: PaymentState[] = ['capture_requested', 'void_requested'];
 const STALE_MS = 10 * 60 * 1000;
 
 /**
  * sweep.open-auths (daily, and once on boot): voids every hold past its deadline (the timer is
- * the primary path; this catches lost timers), reconciles every in-flight payment untouched for
- * 10 minutes, and logs how many authorizations are still open. One bad payment never stops it.
+ * the primary path; this catches lost timers), reconciles every requested capture or void (on
+ * boot, that is crash recovery) and every other in-flight payment untouched for 10 minutes, and
+ * logs how many authorizations are still open. One bad payment never stops it.
  */
 export async function runSweep(
   deps: JobDeps,
@@ -47,15 +45,19 @@ export async function runSweep(
     .select({ id: payments.id })
     .from(payments)
     .where(
-      and(
-        inArray(payments.state, IN_FLIGHT),
-        lt(payments.updatedAt, new Date(now.getTime() - STALE_MS)),
+      or(
+        inArray(payments.state, REQUESTED),
+        and(
+          inArray(payments.state, IN_FLIGHT),
+          lt(payments.updatedAt, new Date(now.getTime() - STALE_MS)),
+        ),
       ),
     );
   let reconciled = 0;
   for (const { id } of stale) {
     try {
-      if ((await reconcilePayment(deps, id)) === 'changed') reconciled += 1;
+      const result = await reconcilePayment(deps, id);
+      if (result === 'changed' || result === 'resent') reconciled += 1;
     } catch (err) {
       deps.log.error({ paymentId: id, err }, 'sweep: reconcile failed');
     }

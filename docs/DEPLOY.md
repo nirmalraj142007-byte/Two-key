@@ -80,7 +80,7 @@ Generate the values on your machine. Nothing below is committed.
 | `WEB_ORIGIN` | `https://<web service>.onrender.com` |
 | `PUBLIC_BASE_URL` | `https://<gateway service>.onrender.com` (no trailing slash) |
 | `PORT` | *blank* (Render supplies `PORT`) |
-| `MERCHANT_REPORTING_CREDENTIALS` | *blank* |
+| `MERCHANT_API_CREDENTIALS` | *blank* |
 
 ### web
 
