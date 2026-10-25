@@ -209,6 +209,17 @@ Sweep: `voided 0, reconciled 3, openAuthorizations 0`. `/human/stats`: maya 0, e
 
 ## R19 Channel3 structured attributes
 
-R19 Channel3 finding: pending (no key)
+Live check 2026-10-25, `npm run channel3:smoke` (search "running shoes", limit 3), one call.
 
-- The gateway search service and `npm run channel3:smoke` are built (phase 11). The smoke script has not been run because `CHANNEL3_API_KEY` is not set. Live-mode search fails cleanly with `UPSTREAM_CHANNEL3` until it is.
+- **Structured size/variant attributes: no.** `variants` is empty (no option names), and `structured_attributes` has no size key.
+  Its keys are: activity, pattern, ankle-collar-style, sneaker-style, shoe-collar-height, shoe-features,
+  footwear-cut, occasion-style, closure-type, upper-material, footwear-material, heel-height-type, toe-style, shoe-fit.
+  So "size 10" stays advisory ("Agent's job - not checked by Two-Key") in live mode.
+- Product keys: id, title, description, brands, images, category, gender, age, materials, key_features, colors, offers, variants, structured_attributes, ratings.
+- Offer fields used: `domain`, `url`, `price.price` (dollars), `price.currency`, `availability` (InStock / OutOfStock). The response matched the SDK 4.5.0 types; no code change was needed.
+- Offers returned (3 products, one offer each):
+  - 1FesGXD | shoebacca.com | 44.95 USD | InStock
+  - 1V6FAZV | shoebacca.com | 46.95 USD | InStock
+  - uNq4uPA | kickscrew.com | 56.16 USD | InStock
+- Credits: the smoke script did not capture usage headers and the response body carries no credit field, so the cost of one search is not recorded here (see the Channel3 dashboard).
+- Every offer is a real retailer, so none maps to a sandbox merchant. Live-mode search lists only offers whose website is in `merchants.channel3_website_ids`.
