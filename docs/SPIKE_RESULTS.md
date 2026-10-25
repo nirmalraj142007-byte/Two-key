@@ -206,3 +206,9 @@ Sweep: `voided 0, reconciled 3, openAuthorizations 0`. `/human/stats`: maya 0, e
 - Authorization 93927348PL797874L, created 2026-10-19T14:07:27.000Z (age 141 h)
 - Status before capture: CREATED
 - **Captured**: capture 60V562579S8279723 status COMPLETED
+
+## R19 Channel3 structured attributes
+
+R19 Channel3 finding: pending (no key)
+
+- The gateway search service and `npm run channel3:smoke` are built (phase 11). The smoke script has not been run because `CHANNEL3_API_KEY` is not set. Live-mode search fails cleanly with `UPSTREAM_CHANNEL3` until it is.

@@ -18,6 +18,7 @@ import { type HealthPayPal, healthRoutes } from './routes/health.js';
 import { humanRoutes } from './routes/human.js';
 import { humanApprovalRoutes } from './routes/human-approvals.js';
 import { webhookRoutes } from './routes/webhooks.js';
+import { type Channel3Service, createChannel3Service } from './services/channel3.js';
 import { loadRuleKeys } from './services/keys.js';
 import { getPayPal } from './services/paypal.js';
 
@@ -34,6 +35,7 @@ export type AppEnv = Pick<Env<'gateway'>, 'LOG_LEVEL'> &
       | 'RULE_HMAC_KEY'
       | 'RULE_HMAC_KEY_ID'
       | 'AGENT_TOKEN_PEPPER'
+      | 'CHANNEL3_API_KEY'
       | 'DEMO_HOLD_MINUTES'
       | 'HUMAN_ASSERTION_PUBLIC_KEY'
       | 'WEB_ORIGIN'
@@ -55,6 +57,8 @@ export interface AppDeps {
   merchantPayPal?: MerchantPayPalLookup;
   /** Replaces the pg-boss job runner (tests record sends instead). */
   jobs?: Jobs;
+  /** Replaces the Channel3 live search (tests). */
+  channel3?: Channel3Service;
   now?: () => Date;
 }
 
@@ -177,6 +181,7 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
         paypal,
         keys: loadRuleKeys({ RULE_HMAC_KEY, RULE_HMAC_KEY_ID }),
         agentTokenPepper: AGENT_TOKEN_PEPPER,
+        channel3: deps.channel3 ?? createChannel3Service(env.CHANNEL3_API_KEY),
         demoHoldMinutes: env.DEMO_HOLD_MINUTES,
         merchantPayPal,
         jobs,

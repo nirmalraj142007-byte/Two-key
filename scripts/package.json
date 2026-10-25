@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@node-rs/argon2": "^2.2.2",
     "@twokey/core": "*",
     "@twokey/db": "*",

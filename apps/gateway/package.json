@@ -8,6 +8,7 @@
     "start": "tsx src/server.ts"
   },
   "dependencies": {
+    "@channel3/sdk": "^4.5.0",
     "@twokey/core": "*",
     "@twokey/db": "*",
     "@twokey/paypal": "*",

@@ -32,7 +32,9 @@
     "e2e:login": "playwright test -c apps/web/playwright.config.ts",
     "e2e:tenancy": "tsx scripts/live-tenancy.ts",
     "compiler:smoke": "dotenv -e .env.web -- tsx scripts/compiler-smoke.ts",
-    "keys:gen": "tsx scripts/gen-keys.ts"
+    "keys:gen": "tsx scripts/gen-keys.ts",
+    "mcp:smoke": "tsx scripts/mcp-smoke.ts",
+    "channel3:smoke": "dotenv -e .env.gateway -- tsx scripts/channel3-smoke.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",
