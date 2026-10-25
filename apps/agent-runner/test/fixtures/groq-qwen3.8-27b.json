@@ -1,0 +1,25 @@
+{
+  "id": "chatcmpl-recorded-2",
+  "object": "chat.completion",
+  "created": 1792936336,
+  "model": "qwen/qwen3.8-27b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "reasoning": "The user wants to buy item 7. I have a \"buy\" function available that takes an \"id\" parameter. I'll call it with id \"7\".\n",
+        "tool_calls": [
+          {
+            "id": "gb37x0shr",
+            "type": "function",
+            "function": { "name": "buy", "arguments": "{\"id\":\"7\"}" }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": { "prompt_tokens": 268, "completion_tokens": 62, "total_tokens": 330 }
+}

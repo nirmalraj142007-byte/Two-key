@@ -16,6 +16,8 @@ export interface ModelAdapter {
     temperature: number;
   }): Promise<{
     text: string;
+    /** The provider's reasoning output, when it returns one. */
+    reasoning?: string;
     toolCalls: { id: string; name: string; input: unknown }[];
     stop: 'end' | 'tool' | 'max_tokens';
     usage: { inputTokens: number; outputTokens: number };

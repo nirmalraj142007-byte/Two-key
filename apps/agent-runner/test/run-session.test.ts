@@ -137,6 +137,30 @@ describe('runSession', () => {
     expect(JSON.stringify(res.transcript)).not.toContain(TOKEN);
   });
 
+  it('stores provider reasoning and uses it as the excerpt when the text is empty', async () => {
+    const { store, log } = fakeStore();
+    const adapter = scripted([
+      {
+        text: '',
+        reasoning: 'The first listing fits the budget, so I will buy it.',
+        toolCalls: [{ id: 'c1', name: 'propose_purchase', input: { product_id: 'p1', qty: 1 } }],
+        stop: 'tool',
+        usage,
+      },
+      { text: 'Done.', toolCalls: [], stop: 'end', usage },
+    ]);
+    const res = await runSession(
+      { store, adapter, connect: await fakeConnect([]), caps: { live: 5, hijack: 10, eval: 100 } },
+      input,
+    );
+    expect(res.transcript.find((e) => e.role === 'assistant')?.reasoning).toBe(
+      'The first listing fits the budget, so I will buy it.',
+    );
+    expect(log.reasoning).toEqual([
+      { proposalId: 'prop-1', excerpt: 'The first listing fits the budget, so I will buy it.' },
+    ]);
+  });
+
   it('feeds tool errors back to the model instead of ending', async () => {
     const { store } = fakeStore();
     const seen: string[] = [];

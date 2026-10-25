@@ -32,6 +32,13 @@ export function toChatMessages(system: string, messages: Msg[]): ChatMsg[] {
   return out;
 }
 
+/** Groq uses message.reasoning; some compatible servers use reasoning_content. */
+function reasoningOf(message: object): string {
+  const m = message as { reasoning?: unknown; reasoning_content?: unknown };
+  const r = m.reasoning ?? m.reasoning_content;
+  return typeof r === 'string' ? r.trim() : '';
+}
+
 function parseArguments(raw: string): unknown {
   try {
     return raw.trim() === '' ? {} : JSON.parse(raw);
@@ -64,6 +71,8 @@ export function createOpenAICompatibleAdapter(
             messages: toChatMessages(i.system, i.messages),
             max_tokens: i.maxOutputTokens,
             temperature: i.temperature,
+            // Groq returns message.reasoning for gpt-oss by default and for qwen only above "default".
+            reasoning_effort: 'medium',
             tools: i.tools.map((t) => ({
               type: 'function' as const,
               function: {
@@ -82,8 +91,10 @@ export function createOpenAICompatibleAdapter(
           ? [{ id: c.id, name: c.function.name, input: parseArguments(c.function.arguments) }]
           : [],
       );
+      const reasoning = reasoningOf(choice.message);
       return {
         text: (choice.message.content ?? '').trim(),
+        ...(reasoning ? { reasoning } : {}),
         toolCalls,
         stop:
           toolCalls.length > 0

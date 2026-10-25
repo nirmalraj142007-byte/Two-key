@@ -13,6 +13,8 @@ export interface TranscriptEntry {
   turn: number;
   role: 'user' | 'assistant' | 'tool' | 'error';
   text: string;
+  /** Provider reasoning for this turn, when the model returns one. */
+  reasoning?: string;
   toolCalls?: { id: string; name: string; input: unknown }[];
   toolCallId?: string;
   toolName?: string;
@@ -60,6 +62,7 @@ export interface RunResult {
 const NOTIFY_TEXT_MAX = 2000;
 const NOTIFY_BYTES_MAX = 7000; // pg_notify payloads must stay under 8000 bytes
 const EXCERPT_MAX = 500;
+const REASONING_MAX = 4000;
 const TOOL_RESULT_MAX = 8000;
 
 export function mcpConnector(mcpUrl: string): RunDeps['connect'] {
@@ -126,15 +129,24 @@ export async function runSession(deps: RunDeps, i: RunInput): Promise<RunResult>
   // The bearer token only travels in the MCP request header; scrub it from anything stored.
   const scrub = (s: string): string => (i.token ? s.split(i.token).join('[Redacted]') : s);
   const add = (entry: Omit<TranscriptEntry, 'at'>): TranscriptEntry => {
-    const full: TranscriptEntry = { ...entry, text: scrub(entry.text), at: now().toISOString() };
+    const full: TranscriptEntry = {
+      ...entry,
+      text: scrub(entry.text),
+      ...(entry.reasoning ? { reasoning: scrub(entry.reasoning) } : {}),
+      at: now().toISOString(),
+    };
     transcript.push(full);
     return full;
   };
   const publish = async (entry: TranscriptEntry): Promise<void> => {
-    let shown = { ...entry, text: clip(entry.text, NOTIFY_TEXT_MAX) };
+    let shown = {
+      ...entry,
+      text: clip(entry.text, NOTIFY_TEXT_MAX),
+      ...(entry.reasoning ? { reasoning: clip(entry.reasoning, NOTIFY_TEXT_MAX) } : {}),
+    };
     let payload = { type: 'agent.step', userId: i.userId, sessionId: i.sessionId, entry: shown };
     if (JSON.stringify(payload).length > NOTIFY_BYTES_MAX) {
-      const { toolCalls: _drop, ...rest } = shown;
+      const { toolCalls: _drop, reasoning: _drop2, ...rest } = shown;
       shown = { ...rest, text: clip(entry.text, 500) };
       payload = { ...payload, entry: shown };
     }
@@ -175,6 +187,7 @@ export async function runSession(deps: RunDeps, i: RunInput): Promise<RunResult>
         turn,
         role: 'assistant',
         text: step.text,
+        ...(step.reasoning ? { reasoning: clip(step.reasoning, REASONING_MAX) } : {}),
         ...(step.toolCalls.length > 0 ? { toolCalls: step.toolCalls } : {}),
         usage: {
           ...step.usage,
@@ -223,7 +236,7 @@ export async function runSession(deps: RunDeps, i: RunInput): Promise<RunResult>
 
         if (proposalId) {
           proposalIds.push(proposalId);
-          const excerpt = clip(scrub(step.text), EXCERPT_MAX);
+          const excerpt = clip(scrub(step.text || step.reasoning || ''), EXCERPT_MAX);
           if (excerpt !== '') await deps.store.setReasoning(i.sessionId, proposalId, excerpt);
         }
       }

@@ -9,10 +9,11 @@ import {
   proposals,
   ruleCards,
 } from '@twokey/db';
-import { and, asc, eq, ilike, inArray, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { type AgentSession, requireAgent } from '../auth/agent-token.js';
+import { searchWords } from '../services/catalog.js';
 import type { Channel3Service } from '../services/channel3.js';
 import { loadProposalResult, type PurchaseDeps, proposePurchase } from '../services/purchase.js';
 
@@ -115,12 +116,16 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
     // Evaluation episodes carry their own listings (attached in phase 13).
     if (session.mode === 'eval') return { items: [] };
 
-    // Demo and hijack: every word must appear in the title or category. Hijack listings that
-    // belong to one session arrive with phase 22.
-    const words = q
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((w) => `%${escapeLike(w)}%`);
+    // Demo and hijack: a listing matches when ANY query word is in its title or category, ranked
+    // by how many words match, then price. Hijack listings that belong to one session arrive with
+    // phase 22.
+    const words = searchWords(q).map((w) => `%${escapeLike(w)}%`);
+    if (words.length === 0) return { items: [] };
+    const hit = (w: string) => or(ilike(listings.title, w), ilike(listings.category, w));
+    const matches = sql<number>`(${sql.join(
+      words.map((w) => sql`(case when ${hit(w)} then 1 else 0 end)`),
+      sql` + `,
+    )})`;
     const rows = await db
       .select({
         id: listings.id,
@@ -137,10 +142,10 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
         and(
           eq(catalogSnapshots.kind, 'demo_unbranded'),
           maxPriceCents === undefined ? undefined : lte(listings.priceCents, maxPriceCents),
-          ...words.map((w) => or(ilike(listings.title, w), ilike(listings.category, w))),
+          or(...words.map(hit)),
         ),
       )
-      .orderBy(asc(listings.priceCents), asc(listings.title))
+      .orderBy(desc(matches), asc(listings.priceCents), asc(listings.title))
       .limit(limit);
     return {
       items: rows.map(

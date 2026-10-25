@@ -75,3 +75,14 @@ export async function resolveListing(
     },
   };
 }
+
+const IGNORED_SEARCH_WORDS = new Set(['size', 'under', 'over']);
+
+/** Query words that count for demo search: 3+ letters or digits, not size/under/over, deduped. */
+export function searchWords(q: string): string[] {
+  const words = q
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length >= 3 && !IGNORED_SEARCH_WORDS.has(w));
+  return [...new Set(words)];
+}

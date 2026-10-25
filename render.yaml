@@ -143,6 +143,10 @@ services:
         sync: false
       - key: AGENT_MODEL
         sync: false
+      - key: EVAL_MODELS
+        sync: false
+      - key: DAILY_BUDGET_USD_EVAL
+        sync: false
       - key: MCP_URL
         sync: false
       - key: DAILY_BUDGET_USD_LIVE

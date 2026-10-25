@@ -1,0 +1,30 @@
+{
+  "id": "chatcmpl-recorded-1",
+  "object": "chat.completion",
+  "created": 1792936327,
+  "model": "openai/gpt-oss-20b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "reasoning": "The user wants to buy item 7. I will call the buy function with id 7.",
+        "tool_calls": [
+          {
+            "id": "fc_recorded_1",
+            "type": "function",
+            "function": { "name": "buy", "arguments": "{\"id\":\"7\"}" }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 120,
+    "completion_tokens": 35,
+    "total_tokens": 155,
+    "completion_tokens_details": { "reasoning_tokens": 13 }
+  }
+}

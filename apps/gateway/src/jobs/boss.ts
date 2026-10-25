@@ -1,3 +1,4 @@
+import { pgBossConnection, startWithRetry } from '@twokey/db';
 import type { FastifyInstance } from 'fastify';
 import { PgBoss, type Queue } from 'pg-boss';
 import { processPendingWebhooks } from '../services/webhook-apply.js';
@@ -37,9 +38,17 @@ export function createJobRunner(url: string, log: Logger): JobRunner {
   let stopped = false;
 
   async function start(): Promise<PgBoss> {
-    const boss = new PgBoss({ connectionString: url, application_name: 'twokey-gateway' });
+    let boss = new PgBoss(pgBossConnection(url, 'twokey-gateway'));
     boss.on('error', (err) => log.error({ err }, 'pg-boss error'));
-    await boss.start();
+    await startWithRetry(
+      () => boss.start(),
+      async () => {
+        await boss.stop({ graceful: false });
+        boss = new PgBoss(pgBossConnection(url, 'twokey-gateway'));
+        boss.on('error', (err) => log.error({ err }, 'pg-boss error'));
+      },
+      (err, attempt) => log.warn({ err, attempt }, 'pg-boss start failed, retrying'),
+    );
     for (const [name, options] of Object.entries(QUEUE_OPTIONS)) {
       if (!(await boss.getQueue(name))) await boss.createQueue(name, options);
     }

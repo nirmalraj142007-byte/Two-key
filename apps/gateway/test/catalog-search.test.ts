@@ -131,8 +131,10 @@ describe.skipIf(!baseUrl)('GET /agent/catalog/search', () => {
     const res = await search(app, tokens.demo, 'q=cloud%20runner');
     expect(res.statusCode).toBe(200);
     const { items } = res.json() as { items: Record<string, unknown>[] };
-    expect(items.length).toBe(3);
-    expect(items.map((i) => i.store).sort()).toEqual([
+    // Two words match the Cloud Runner listings, only one matches Trail Runner: they rank first.
+    const top = items.slice(0, 3);
+    expect(top.map((i) => i.title)).toEqual(Array(3).fill('Cloud Runner CR-1 running shoe'));
+    expect(top.map((i) => i.store).sort()).toEqual([
       'Pacer Goods',
       'Peak Outfitters',
       'Stride Supply',
@@ -156,9 +158,24 @@ describe.skipIf(!baseUrl)('GET /agent/catalog/search', () => {
   it('applies max_price_cents and validates the query', async () => {
     const app = build({});
     const cheap = await search(app, tokens.demo, 'q=cloud%20runner&max_price_cents=5450');
-    expect((cheap.json() as { items: unknown[] }).items).toHaveLength(1);
+    const cheapItems = (cheap.json() as { items: { price_usd: string }[] }).items;
+    expect(cheapItems.every((i) => Number(i.price_usd) <= 54.5)).toBe(true);
+    expect(cheapItems[0]?.price_usd).toBe('54.00');
     expect((await search(app, tokens.demo, 'q=')).statusCode).toBe(400);
     expect((await search(app, tokens.demo, 'q=shoe&limit=11')).statusCode).toBe(400);
+  });
+
+  it('matches any word, ignoring size/under/over and short words', async () => {
+    const app = build({});
+    const res = await search(app, tokens.demo, 'q=Running%20shoes%20size%2010%20under%20%2470');
+    const { items } = res.json() as { items: { category: string; price_usd: string }[] };
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => i.category === 'running_shoes')).toBe(true);
+    const prices = items.map((i) => Number(i.price_usd));
+    expect(prices).toEqual([...prices].sort((a, b) => a - b));
+    // Only ignored or short words: nothing to match.
+    const none = await search(app, tokens.demo, 'q=size%2010%20under');
+    expect((none.json() as { items: unknown[] }).items).toEqual([]);
   });
 
   it('treats LIKE wildcards in q as plain text', async () => {

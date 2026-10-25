@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { AppError, type Env, ErrorCode, loadEnv } from '@twokey/core';
-import { createDb, users } from '@twokey/db';
+import { createDb, pgBossConnection, startWithRetry, users } from '@twokey/db';
 import { eq } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import { z } from 'zod';
@@ -44,9 +44,20 @@ function depsFor(env: RunnerEnv, store: RunStore, model: string, log: Logger): R
 export async function startWorker(env: RunnerEnv, log: Logger): Promise<() => Promise<void>> {
   const { db, sql } = createDb(env.DATABASE_URL);
   const store = createDbStore(db);
-  const boss = new PgBoss({ connectionString: env.DATABASE_URL, application_name: 'twokey-agent' });
-  boss.on('error', (err) => log.error({ err }, 'pg-boss error'));
-  await boss.start();
+  const make = (): PgBoss => {
+    const b = new PgBoss(pgBossConnection(env.DATABASE_URL, 'twokey-agent'));
+    b.on('error', (err) => log.error({ err }, 'pg-boss error'));
+    return b;
+  };
+  let boss = make();
+  await startWithRetry(
+    () => boss.start(),
+    async () => {
+      await boss.stop({ graceful: false });
+      boss = make();
+    },
+    (err, attempt) => log.error({ err, attempt }, 'pg-boss start failed, retrying'),
+  );
   if (!(await boss.getQueue(AGENT_RUN_QUEUE))) {
     await boss.createQueue(AGENT_RUN_QUEUE, { retryLimit: 0 });
   }
