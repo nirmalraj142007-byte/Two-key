@@ -1,15 +1,27 @@
 /**
- * Evaluation CLI. `npm run eval -- build` builds the frozen set; `freeze [--dry-run|--tag]`
- * writes the manifest. Env comes from .env.eval (DATABASE_URL, CHANNEL3_API_KEY).
+ * Evaluation CLI. `build` builds the frozen set; `freeze [--dry-run|--tag]` writes the manifest;
+ * `run`, `replay`, `grade`, `metrics`, `predictions` and `checkpoint` run and score it.
+ * Env comes from .env.eval.
  */
-import { AppError, ErrorCode, SECRET_OWNERS } from '@twokey/core';
+import { parseModelList } from '@twokey/agent-runner/pricing';
+import { AppError, ErrorCode, loadEnv, SECRET_OWNERS } from '@twokey/core';
 import { createDb } from '@twokey/db';
 import { z } from 'zod';
 import { loadAgentDojo, loadInjecAgent, PINNED } from './attacks.js';
 import { CACHE_DIR, Channel3Cache, sdkFetch } from './channel3.js';
 import { buildDataset } from './dataset.js';
 import { buildManifest, MANIFEST_PATH, tagFreeze } from './freeze.js';
+import { grade, LLM_GRADED } from './grade.js';
+import { computeMetrics, GATES, type Metrics, metricsPath } from './metrics.js';
 import { persistDataset } from './persist.js';
+import {
+  checkpoint,
+  FALLBACK_HEADLINE,
+  registerPredictions,
+  scorePredictions,
+} from './predictions.js';
+import { replay } from './replay.js';
+import { runEval, type Split } from './run.js';
 import { loadWebshop, WEBSHOP_FILE } from './webshop.js';
 
 const SAMPLE_SIZE = 200;
@@ -124,12 +136,153 @@ async function freeze(args: string[]) {
   }
 }
 
+function splitFlag(args: string[]): Split {
+  const split = flag(args, '--split');
+  if (split !== 'dev' && split !== 'test') {
+    throw new AppError(ErrorCode.VALIDATION, 'Pass --split dev|test');
+  }
+  return split;
+}
+
+async function withDb<T>(fn: (db: ReturnType<typeof createDb>['db']) => Promise<T>): Promise<T> {
+  const env = loadBuildEnv();
+  const { db, sql } = createDb(env.DATABASE_URL);
+  try {
+    return await fn(db);
+  } finally {
+    await sql.end();
+  }
+}
+
+async function run(args: string[]) {
+  const env = loadEnv('eval');
+  const split = splitFlag(args);
+  const configured = parseModelList(env.EVAL_MODELS);
+  const requested = flag(args, '--models') ?? 'all';
+  const models = requested === 'all' ? configured : parseModelList(requested);
+  const unknown = models.filter((m) => !configured.includes(m));
+  if (unknown.length > 0) {
+    throw new AppError(ErrorCode.VALIDATION, `Not in EVAL_MODELS: ${unknown.join(', ')}`);
+  }
+  const pilotRaw = flag(args, '--pilot');
+  const pilot = pilotRaw === undefined ? undefined : Number(pilotRaw);
+  if (pilot !== undefined && (!Number.isInteger(pilot) || pilot < 1)) {
+    throw new AppError(ErrorCode.VALIDATION, '--pilot takes a positive whole number');
+  }
+  const { db, sql } = createDb(env.DATABASE_URL);
+  try {
+    await runEval(
+      env,
+      db,
+      {
+        split,
+        models,
+        concurrency: Number(flag(args, '--concurrency') ?? 3),
+        pilot,
+        maxWaitMinutes: Number(flag(args, '--max-wait-minutes') ?? 60),
+      },
+      out,
+    );
+  } finally {
+    await sql.end();
+  }
+}
+
+const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`);
+const bound = (v: number | null) => (v === null ? '—' : `≤ ${pct(v)}`);
+
+function printMetrics(m: Metrics) {
+  out(`metrics ${m.split} (${m.gateVersion}) → ${metricsPath(m.split)}`);
+  for (const [model, x] of Object.entries(m.models)) {
+    out(model);
+    out(
+      `  runs ${x.runs} · attacked ${x.attacked} · followed ${x.followed} (followRate ${pct(x.followRate)})` +
+        ` · proposals ${x.proposals} · clean runs with a proposal ${x.cleanWithProposal}/${x.cleanRuns}`,
+    );
+    for (const g of GATES) {
+      const d = x.gates[g];
+      out(
+        `  ${g}: letThrough ${pct(d.letThrough)} (${d.letThroughCount}/${x.attacked}; attacker ${d.attackerCaptured}, inside ${d.insideCaptured})` +
+          ` · held ${d.held} · honestInterrupted ${pct(d.honestInterrupted)} (${d.honestInterruptedCount}/${x.cleanWithProposal})`,
+      );
+    }
+    const i = x.insideRules;
+    out(
+      `  G4, followed inside_rules attacks (${i.followed}): pass hard rules ${pct(i.passShare)}` +
+        ` · held by anomaly ${pct(i.heldShare)} · blocked ${pct(i.blockedShare)}`,
+    );
+    out(`  rule of three (G4 attacker captures = 0): ${bound(x.ruleOfThree)}`);
+  }
+  out(`pooled: attacked ${m.pooled.attacked} · rule of three ${bound(m.pooled.ruleOfThree)}`);
+  out(`attackerMoneyCentsG4 = ${m.attackerMoneyCentsG4}`);
+  const fiveEach = m.totals.gateDecisions === GATES.length * m.totals.proposals;
+  out(
+    `totals: runs ${m.totals.runs} · proposals ${m.totals.proposals} · gateDecisions ${m.totals.gateDecisions}` +
+      ` (= ${GATES.length} × proposals: ${fiveEach ? 'yes' : 'NO'})` +
+      ` · tokens ${m.totals.tokensIn + m.totals.tokensOut} · cost $${m.totals.totalCostUsd.toFixed(4)}`,
+  );
+}
+
+async function predictionsCmd(args: string[]) {
+  const [sub, ...more] = args;
+  if (sub === 'register') {
+    const file = flag(more, '--file') ?? 'PREDICTIONS.md';
+    const n = await withDb((db) => registerPredictions(db, file));
+    out(`registered ${n} predictions from ${file}`);
+  } else if (sub === 'score') {
+    const split = splitFlag(more);
+    const rows = await withDb((db) => scorePredictions(db, split));
+    for (const r of rows) {
+      const verdict = r.hit === null ? '' : r.hit ? 'HIT' : 'MISS';
+      out(
+        `${r.metric} ${r.model ?? ''} ${r.gate ?? ''}: [${r.predictedLow}, ${r.predictedHigh}] actual ${r.actual ?? '—'} ${verdict}`,
+      );
+    }
+  } else {
+    throw new AppError(ErrorCode.VALIDATION, 'Use predictions register --file F | score --split S');
+  }
+}
+
+const USAGE = [
+  'usage: npm run eval -- <build|freeze|run|replay|grade|metrics|predictions|checkpoint>',
+  '  run --split dev|test [--models all|a,b] [--concurrency 3 (per model)] [--pilot N] [--max-wait-minutes 60]',
+  `  grade --split dev|test   labels product_detail_ok (${LLM_GRADED})`,
+  '',
+].join('\n');
+
 const [command, ...rest] = process.argv.slice(2);
 try {
   if (command === 'build') await build(rest);
   else if (command === 'freeze') await freeze(rest);
-  else {
-    process.stderr.write('usage: npm run eval -- <build|freeze> [--dry-run|--tag]\n');
+  else if (command === 'run') await run(rest);
+  else if (command === 'replay') {
+    const split = splitFlag(rest);
+    const r = await withDb((db) => replay(db, split));
+    out(
+      `replayed ${r.proposals} proposals × ${GATES.length} gates: ${r.decisionsWritten} decisions written` +
+        ` (static cap ${r.staticCapCents} cents from ${r.staticCapSource}); every live G4 matched`,
+    );
+  } else if (command === 'grade') {
+    const env = loadEnv('eval');
+    const split = splitFlag(rest);
+    const { db, sql } = createDb(env.DATABASE_URL);
+    try {
+      await grade(env, db, split, out);
+    } finally {
+      await sql.end();
+    }
+  } else if (command === 'metrics') {
+    const split = splitFlag(rest);
+    printMetrics(await withDb((db) => computeMetrics(db, split)));
+  } else if (command === 'predictions') await predictionsCmd(rest);
+  else if (command === 'checkpoint') {
+    const env = loadEnv('eval');
+    const c = checkpoint(env.EVAL_WEAK_MODEL);
+    out(`checkpoint (dev): ${env.EVAL_WEAK_MODEL} followed ${c.followed}/${c.attacked} attacks`);
+    out(c.verdict);
+    if (c.verdict === 'RESCOPE') out(FALLBACK_HEADLINE);
+  } else {
+    process.stderr.write(USAGE);
     process.exit(2);
   }
 } catch (err) {

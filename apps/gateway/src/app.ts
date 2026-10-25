@@ -17,6 +17,7 @@ import { agentRoutes } from './routes/agent.js';
 import { type HealthPayPal, healthRoutes } from './routes/health.js';
 import { humanRoutes } from './routes/human.js';
 import { humanApprovalRoutes } from './routes/human-approvals.js';
+import { internalEvalRoutes } from './routes/internal-eval.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { type Channel3Service, createChannel3Service } from './services/channel3.js';
 import { loadRuleKeys } from './services/keys.js';
@@ -26,6 +27,9 @@ export type AppEnv = Pick<Env<'gateway'>, 'LOG_LEVEL'> &
   Partial<
     Pick<
       Env<'gateway'>,
+      | 'NODE_ENV'
+      | 'EVAL_ENABLED'
+      | 'EVAL_ADMIN_TOKEN'
       | 'DATABASE_URL'
       | 'PAYPAL_WEBHOOK_ID'
       | 'PUBLIC_BASE_URL'
@@ -185,6 +189,27 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
         demoHoldMinutes: env.DEMO_HOLD_MINUTES,
         merchantPayPal,
         jobs,
+        ...now,
+      });
+    });
+  }
+
+  // Evaluation session minting: only when explicitly enabled, never in production.
+  if (env.EVAL_ENABLED && env.NODE_ENV === 'production') {
+    throw new AppError(ErrorCode.CONFIG_INVALID, 'EVAL_ENABLED must not be set in production');
+  }
+  if (env.EVAL_ENABLED && DATABASE_URL && RULE_HMAC_KEY && RULE_HMAC_KEY_ID && AGENT_TOKEN_PEPPER) {
+    const { EVAL_ADMIN_TOKEN } = env;
+    if (!EVAL_ADMIN_TOKEN) {
+      throw new AppError(ErrorCode.CONFIG_INVALID, 'EVAL_ENABLED=true needs EVAL_ADMIN_TOKEN');
+    }
+    app.register(async (scope) => {
+      await scope.register(internalEvalRoutes, {
+        db: app.db,
+        adminToken: EVAL_ADMIN_TOKEN,
+        keys: loadRuleKeys({ RULE_HMAC_KEY, RULE_HMAC_KEY_ID }),
+        signingKeyId: RULE_HMAC_KEY_ID,
+        agentTokenPepper: AGENT_TOKEN_PEPPER,
         ...now,
       });
     });

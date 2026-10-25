@@ -15,6 +15,9 @@ interface RenderBlueprint {
   services?: { name?: string; envVars?: { key?: string }[] }[];
 }
 
+/** Local-only settings that must never be deployed. */
+const NEVER_DEPLOYED = ['EVAL_ENABLED', 'EVAL_ADMIN_TOKEN'];
+
 /** Returns one message per secret found on a service that may not hold it. */
 export function findViolations(blueprint: RenderBlueprint): string[] {
   const violations: string[] = [];
@@ -22,6 +25,10 @@ export function findViolations(blueprint: RenderBlueprint): string[] {
     const name = service.name ?? '';
     const mapped = RENDER_TO_SERVICE[name];
     for (const { key } of service.envVars ?? []) {
+      if (key !== undefined && NEVER_DEPLOYED.includes(key)) {
+        violations.push(`${key} is local-only and must not be in render.yaml (found on ${name})`);
+        continue;
+      }
       const owners = key === undefined ? undefined : SECRET_OWNERS[key];
       if (key === undefined || owners === undefined) continue;
       if (mapped === undefined || !owners.includes(mapped)) {

@@ -50,7 +50,12 @@ function parseArguments(raw: string): unknown {
 /** Any OpenAI-compatible chat endpoint with function tools; Groq by default. */
 export function createOpenAICompatibleAdapter(
   model: string,
-  opts: { apiKey: string | undefined; baseURL: string },
+  opts: {
+    apiKey: string | undefined;
+    baseURL: string;
+    /** Sees each successful response's headers (the eval CLI reads x-ratelimit-*). */
+    onHeaders?: ((headers: Headers) => void) | undefined;
+  },
 ): ModelAdapter {
   if (!opts.apiKey) {
     throw new AppError(ErrorCode.CONFIG_INVALID, `AGENT_LLM_API_KEY is required for ${model}`);
@@ -64,26 +69,29 @@ export function createOpenAICompatibleAdapter(
   return {
     id: model,
     async step(i) {
-      const res = await withRetry(
+      const { data: res, response } = await withRetry(
         () =>
-          client.chat.completions.create({
-            model,
-            messages: toChatMessages(i.system, i.messages),
-            max_tokens: i.maxOutputTokens,
-            temperature: i.temperature,
-            // Groq returns message.reasoning for gpt-oss by default and for qwen only above "default".
-            reasoning_effort: 'medium',
-            tools: i.tools.map((t) => ({
-              type: 'function' as const,
-              function: {
-                name: t.name,
-                description: t.description,
-                parameters: t.inputSchema as Record<string, unknown>,
-              },
-            })),
-          }),
+          client.chat.completions
+            .create({
+              model,
+              messages: toChatMessages(i.system, i.messages),
+              max_tokens: i.maxOutputTokens,
+              temperature: i.temperature,
+              // Groq returns message.reasoning for gpt-oss by default and for qwen only above "default".
+              reasoning_effort: 'medium',
+              tools: i.tools.map((t) => ({
+                type: 'function' as const,
+                function: {
+                  name: t.name,
+                  description: t.description,
+                  parameters: t.inputSchema as Record<string, unknown>,
+                },
+              })),
+            })
+            .withResponse(),
         classifyError,
       );
+      opts.onHeaders?.(response.headers);
       const choice = res.choices[0];
       if (!choice) throw new AppError(ErrorCode.UPSTREAM_LLM, 'Model call failed: no choices');
       const toolCalls = (choice.message.tool_calls ?? []).flatMap((c) =>

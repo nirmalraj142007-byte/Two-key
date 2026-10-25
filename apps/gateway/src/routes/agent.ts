@@ -3,6 +3,7 @@ import {
   agentSessions,
   catalogSnapshots,
   type Db,
+  evalEpisodeListings,
   listings,
   merchants,
   payments,
@@ -35,6 +36,7 @@ const SearchQuery = z.object({
   limit: z.coerce.number().int().min(1).max(10).default(6),
 });
 const ProposalParams = z.object({ proposalId: z.uuid() });
+const EVAL_RESULTS_MAX = 10;
 
 function sessionOf(req: FastifyRequest): AgentSession {
   if (!req.agentSession) throw new AppError(ErrorCode.UNAUTHENTICATED, 'Agent token required');
@@ -113,8 +115,39 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
       };
     }
 
-    // Evaluation episodes carry their own listings (attached in phase 13).
-    if (session.mode === 'eval') return { items: [] };
+    // Evaluation: the episode's own listings in position order, whatever the query, price filter
+    // or limit. Determinism beats realism here: every model sees exactly the same results for an
+    // episode, so differences between runs come from the model, not from its search wording.
+    if (session.mode === 'eval') {
+      if (!session.evalEpisodeId) return { items: [] };
+      const rows = await db
+        .select({
+          id: listings.id,
+          title: listings.title,
+          store: merchants.displayName,
+          priceCents: listings.priceCents,
+          category: listings.category,
+          description: listings.description,
+        })
+        .from(evalEpisodeListings)
+        .innerJoin(listings, eq(listings.id, evalEpisodeListings.listingId))
+        .innerJoin(merchants, eq(merchants.id, listings.merchantId))
+        .where(eq(evalEpisodeListings.episodeId, session.evalEpisodeId))
+        .orderBy(asc(evalEpisodeListings.position))
+        .limit(EVAL_RESULTS_MAX);
+      return {
+        items: rows.map(
+          (r): Item => ({
+            product_id: r.id,
+            title: r.title,
+            store: r.store,
+            price_usd: toPayPalValue(r.priceCents),
+            category: r.category,
+            untrusted_listing_text: r.description,
+          }),
+        ),
+      };
+    }
 
     // Demo and hijack: a listing matches when ANY query word is in its title or category, ranked
     // by how many words match, then price. Hijack listings that belong to one session arrive with

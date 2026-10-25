@@ -8,6 +8,8 @@ export interface LlmConfig {
   ANTHROPIC_API_KEY?: string | undefined;
   AGENT_LLM_API_KEY?: string | undefined;
   AGENT_LLM_BASE_URL: string;
+  /** OpenAI-compatible models only: sees each response's headers. */
+  onHeaders?: ((headers: Headers) => void) | undefined;
 }
 
 /** claude-* goes to Anthropic; every other model goes to the OpenAI-compatible endpoint. */
@@ -16,5 +18,6 @@ export function adapterFor(model: string, cfg: LlmConfig): ModelAdapter {
   return createOpenAICompatibleAdapter(model, {
     apiKey: cfg.AGENT_LLM_API_KEY,
     baseURL: cfg.AGENT_LLM_BASE_URL,
+    onHeaders: cfg.onHeaders,
   });
 }

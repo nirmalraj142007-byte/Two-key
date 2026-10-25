@@ -56,6 +56,13 @@ const schemas = {
       })
       .pipe(z.record(z.string().min(1), z.object({ clientId: nonEmpty, clientSecret: nonEmpty })))
       .optional(),
+    /** Mounts POST /internal/eval/sessions. Local only: never set in render.yaml or on Render. */
+    EVAL_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    /** Shared with the eval CLI; sent as x-eval-token. */
+    EVAL_ADMIN_TOKEN: z.string().min(32).optional(),
   }),
   web: z.object({
     ...common,
@@ -112,6 +119,11 @@ const schemas = {
     CHANNEL3_API_KEY: nonEmpty,
     GATEWAY_URL: url,
     MCP_URL: url,
+    EVAL_ADMIN_TOKEN: z.string().min(32).optional(),
+    /** The model the Oct 29 checkpoint looks at. */
+    EVAL_WEAK_MODEL: nonEmpty.default('openai/gpt-oss-20b'),
+    /** Daily cap for budget scope 'eval'. */
+    EVAL_BUDGET_USD: z.coerce.number().nonnegative().default(25),
   }),
 } satisfies Record<ServiceName, z.ZodObject>;
 
@@ -130,6 +142,7 @@ export const SECRET_OWNERS: Record<string, ServiceName[]> = {
   ANTHROPIC_API_KEY: ['web', 'agent-runner', 'eval'],
   COMPILER_API_KEY: ['web', 'eval'],
   AGENT_LLM_API_KEY: ['agent-runner', 'eval'],
+  EVAL_ADMIN_TOKEN: ['gateway', 'eval'],
 };
 
 export function loadEnv<S extends ServiceName>(
