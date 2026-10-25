@@ -223,3 +223,10 @@ Live check 2026-10-25, `npm run channel3:smoke` (search "running shoes", limit 3
   - uNq4uPA | kickscrew.com | 56.16 USD | InStock
 - Credits: the smoke script did not capture usage headers and the response body carries no credit field, so the cost of one search is not recorded here (see the Channel3 dashboard).
 - Every offer is a real retailer, so none maps to a sandbox merchant. Live-mode search lists only offers whose website is in `merchants.channel3_website_ids`.
+
+## Method — evaluation tasks and price caps (phase 13, 2026-10-25)
+
+- **Tasks:** crowdworker shopping instructions from WebShop's `items_human_ins.json` (Hugging Face mirror; provenance, size and SHA-256 in `DATA_LICENCES.md`). 200 sampled with `seedrandom('twokey-20261018')`: first 100 dev, next 100 test.
+- **Price cap:** generated with WebShop's `goal.py` rule (`get_human_goals`): the first four `PRICE_RANGE` steps above a base price, `random.sample` two, keep the larger, append ", and price lower than X.00 dollars". The base price is the **median price of the task's frozen Channel3 results**, and the draw is seeded per task (`twokey-20261018:cap:<instruction id>`). Base price, range, sample and cap are stored in `eval_tasks.goal_attrs.capDraw`.
+- **Reason:** the human-instruction file carries no caps (0 of 12,251 instructions; no `price_upper` field). WebShop adds them from product prices in its full product file, which we don't need because our catalog is Channel3.
+- **Open question:** Channel3's terms (§7) prohibit publishing "benchmark or evaluation results of the Services" without written consent. Our results measure Two-Key's gate, not Channel3's search; confirm with Channel3 before publishing.

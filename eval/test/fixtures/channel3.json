@@ -1,0 +1,144 @@
+{
+  "B0SHOE0001:A1": [
+    {
+      "id": "fxShoe1",
+      "title": "Road Runner Running Shoes",
+      "description": "Lightweight road running shoe.",
+      "offers": [
+        {
+          "domain": "shoe-a.example",
+          "url": "https://shoe-a.example/1",
+          "price": { "price": 40, "currency": "USD" },
+          "availability": "InStock"
+        }
+      ]
+    },
+    {
+      "id": "fxShoe2",
+      "title": "Tempo Trainer Running Shoes",
+      "description": "Daily trainer.",
+      "offers": [
+        {
+          "domain": "www.shoe-b.example",
+          "url": "https://shoe-b.example/2",
+          "price": { "price": 45, "currency": "USD" },
+          "availability": "InStock"
+        }
+      ]
+    },
+    {
+      "id": "fxShoe3",
+      "title": "Cushion Max Running Shoe",
+      "description": "Max cushion.",
+      "offers": [
+        {
+          "domain": "shoe-c.example",
+          "url": "https://shoe-c.example/3",
+          "price": { "price": 50, "currency": "USD" },
+          "availability": "InStock"
+        }
+      ]
+    },
+    {
+      "id": "fxShoe4",
+      "title": "Carbon Race Shoes",
+      "description": "Race day.",
+      "offers": [
+        {
+          "domain": "shoe-d.example",
+          "url": "https://shoe-d.example/4",
+          "price": { "price": 90, "currency": "USD" },
+          "availability": "InStock"
+        },
+        {
+          "domain": "shoe-e.example",
+          "url": "https://shoe-e.example/4",
+          "price": { "price": 95, "currency": "USD" },
+          "availability": "OutOfStock"
+        }
+      ]
+    }
+  ],
+  "B0HEAD0002:A2": [
+    {
+      "id": "fxHead1",
+      "title": "Wireless Bluetooth Headphones",
+      "description": "Over-ear.",
+      "offers": [
+        {
+          "domain": "audio.example",
+          "url": "https://audio.example/1",
+          "price": { "price": 30, "currency": "USD" },
+          "availability": "InStock"
+        }
+      ]
+    },
+    {
+      "id": "fxLamp1",
+      "title": "LED Desk Lamp",
+      "description": "Not headphones.",
+      "offers": [
+        {
+          "domain": "home.example",
+          "url": "https://home.example/1",
+          "price": { "price": 25, "currency": "USD" },
+          "availability": "InStock"
+        }
+      ]
+    },
+    {
+      "id": "fxHead2",
+      "title": "Studio Headphones Pro",
+      "description": "Over the cap.",
+      "offers": [
+        {
+          "domain": "audio.example",
+          "url": "https://audio.example/2",
+          "price": { "price": 200, "currency": "USD" },
+          "availability": "InStock"
+        }
+      ]
+    }
+  ],
+  "B0COOK0003:A3": [
+    {
+      "id": "fxCookie1",
+      "title": "Chocolate Chip Cookies Gift Box",
+      "description": "A dozen cookies.",
+      "offers": [
+        {
+          "domain": "bake-x.example",
+          "url": "https://bake-x.example/1",
+          "price": { "price": 15, "currency": "USD" },
+          "availability": "InStock"
+        },
+        {
+          "domain": "bake-y.example",
+          "url": "https://bake-y.example/1",
+          "price": { "price": 16, "currency": "USD" },
+          "availability": "InStock"
+        },
+        {
+          "domain": "bake-z.example",
+          "url": "https://bake-z.example/1",
+          "price": { "price": 17, "currency": "USD" },
+          "availability": "InStock"
+        }
+      ]
+    },
+    {
+      "id": "fxCookie2",
+      "title": "Oatmeal Cookies",
+      "description": "Six cookies.",
+      "offers": [
+        {
+          "domain": "bake-x.example",
+          "url": "https://bake-x.example/2",
+          "price": { "price": 12, "currency": "USD" },
+          "availability": "InStock"
+        }
+      ]
+    }
+  ],
+  "B0NONE0004:A4": []
+}

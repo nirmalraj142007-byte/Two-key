@@ -10,3 +10,6 @@ coverage
 *.key
 test-results/
 playwright-report/
+
+eval/vendor/
+eval/data/
