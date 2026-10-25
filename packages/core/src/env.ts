@@ -85,18 +85,29 @@ const schemas = {
   'agent-runner': z.object({
     ...common,
     DATABASE_URL: databaseUrl,
-    ANTHROPIC_API_KEY: nonEmpty,
-    OPENROUTER_API_KEY: nonEmpty.optional(),
+    /** Only needed for claude-* models. */
+    ANTHROPIC_API_KEY: nonEmpty.optional(),
+    /** OpenAI-compatible endpoint for every other model (default Groq). */
+    AGENT_LLM_BASE_URL: url.default('https://api.groq.com/openai/v1'),
+    AGENT_LLM_API_KEY: nonEmpty.optional(),
+    /** Model for live and hijack sessions. */
+    AGENT_MODEL: nonEmpty.default('openai/gpt-oss-120b'),
+    /** Checked for pricing at startup so an eval run cannot start with an unpriced model. */
+    EVAL_MODELS: nonEmpty.default('openai/gpt-oss-120b,qwen/qwen3.8-27b,openai/gpt-oss-20b'),
     MCP_URL: url,
     DAILY_BUDGET_USD_LIVE: z.coerce.number().nonnegative().default(5),
     DAILY_BUDGET_USD_HIJACK: z.coerce.number().nonnegative().default(10),
+    DAILY_BUDGET_USD_EVAL: z.coerce.number().nonnegative().default(100),
     PORT: z.coerce.number().int().positive().default(4200),
   }),
   eval: z.object({
     ...common,
     DATABASE_URL: databaseUrl,
-    ANTHROPIC_API_KEY: nonEmpty,
-    OPENROUTER_API_KEY: nonEmpty,
+    ANTHROPIC_API_KEY: nonEmpty.optional(),
+    AGENT_LLM_BASE_URL: url.default('https://api.groq.com/openai/v1'),
+    AGENT_LLM_API_KEY: nonEmpty,
+    /** Comma list of evaluation models. */
+    EVAL_MODELS: nonEmpty.default('openai/gpt-oss-120b,qwen/qwen3.8-27b,openai/gpt-oss-20b'),
     COMPILER_API_KEY: nonEmpty.optional(),
     CHANNEL3_API_KEY: nonEmpty,
     GATEWAY_URL: url,
@@ -118,7 +129,7 @@ export const SECRET_OWNERS: Record<string, ServiceName[]> = {
   AUTH_SECRET: ['web'],
   ANTHROPIC_API_KEY: ['web', 'agent-runner', 'eval'],
   COMPILER_API_KEY: ['web', 'eval'],
-  OPENROUTER_API_KEY: ['agent-runner', 'eval'],
+  AGENT_LLM_API_KEY: ['agent-runner', 'eval'],
 };
 
 export function loadEnv<S extends ServiceName>(

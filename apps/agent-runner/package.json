@@ -8,6 +8,13 @@
     "start": "tsx src/index.ts"
   },
   "dependencies": {
-    "@twokey/core": "*"
+    "@anthropic-ai/sdk": "^0.137.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@twokey/core": "*",
+    "@twokey/db": "*",
+    "drizzle-orm": "^0.44",
+    "openai": "^7.39.0",
+    "pg-boss": "~12.33.7",
+    "zod": "^4"
   }
 }

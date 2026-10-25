@@ -110,8 +110,9 @@ Generate the values on your machine. Nothing below is committed.
 | --- | --- |
 | `NODE_ENV`, `LOG_LEVEL` | `production`, `info` |
 | `DATABASE_URL` | the same Neon direct string |
-| `ANTHROPIC_API_KEY` | your key |
-| `OPENROUTER_API_KEY` | your key, or *blank* |
+| `ANTHROPIC_API_KEY` | your key, or *blank* (only for claude-* models) |
+| `AGENT_LLM_API_KEY` | your Groq key |
+| `AGENT_LLM_BASE_URL`, `AGENT_MODEL` | *blank* (defaults) |
 | `MCP_URL` | `https://<twokey-mcp service>.onrender.com` |
 | `DAILY_BUDGET_USD_LIVE`, `DAILY_BUDGET_USD_HIJACK`, `PORT` | *blank* (defaults) |
 

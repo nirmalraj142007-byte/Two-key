@@ -1,16 +1,18 @@
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { createLogger, installCrashHandlers, loadEnv, reportStartupFailure } from '@twokey/core';
+import { assertPriced, parseModelList } from './pricing.js';
+import { startWorker } from './worker.js';
 
 const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
 
 installCrashHandlers('agent-runner');
 
-function main(): void {
+async function main(): Promise<void> {
   const env = loadEnv('agent-runner');
   const log = createLogger('agent-runner', env.LOG_LEVEL);
+  assertPriced([env.AGENT_MODEL, ...parseModelList(env.EVAL_MODELS)]);
 
-  // The worker arrives in phase 12.
   const server = createServer((req, res) => {
     const path = (req.url ?? '').split('?')[0];
     if (req.method === 'GET' && path === '/healthz') {
@@ -30,10 +32,14 @@ function main(): void {
   });
   server.on('error', (err) => reportStartupFailure('agent-runner', err));
   server.listen(env.PORT, '0.0.0.0', () => log.info('agent-runner ready'));
+
+  const stopWorker = await startWorker(env, log);
+  const shutdown = (): void => {
+    server.close();
+    void stopWorker().finally(() => process.exit(0));
+  };
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
 }
 
-try {
-  main();
-} catch (err) {
-  reportStartupFailure('agent-runner', err);
-}
+main().catch((err) => reportStartupFailure('agent-runner', err));
