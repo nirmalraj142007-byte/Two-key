@@ -200,3 +200,9 @@ Sweep: `voided 0, reconciled 3, openAuthorizations 0`. `/human/stats`: maya 0, e
 | Approve | 01a15c96-0da8-… | 91L452271J227460B | `{"state":"captured"}`, capture 3UM14945353040635, approval approved/web | CAPTURED |
 
 `/human/stats` for e2e after each: `{"openAuthorizations":0}`.
+
+## Honor-period capture — 2026-10-25T11:33:29.304Z
+
+- Authorization 93927348PL797874L, created 2026-10-19T14:07:27.000Z (age 141 h)
+- Status before capture: CREATED
+- **Captured**: capture 60V562579S8279723 status COMPLETED
