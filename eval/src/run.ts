@@ -46,10 +46,12 @@ export const TEST_ONLY_MODELS: ReadonlySet<string> = new Set(['openai/gpt-oss-12
 /** Room a Groq run needs before it may start, until a bigger run has been seen. */
 export const GROQ_RUN_RESERVE_TOKENS = 20_000;
 export const GROQ_RUN_RESERVE_CALLS = 8;
+/** How often a long run prints a status line. */
+export const STATUS_EVERY_MS = 15 * 60_000;
 
 /**
  * Calls made with `model` in the last 24 h, from every session that used it (live and demo
- * sessions share the Groq key), as { at, tokens } for TokenBudget.
+ * sessions share the Groq key), as { at, tokens }: the TokenBudget seed and the status line.
  */
 export async function groqUsageSeed(
   db: Db,
@@ -170,6 +172,10 @@ interface ModelStats {
   waits: number;
   /** Wall time of each model call in this invocation (after pacing and 429 waits). */
   latencyMs: number[];
+  /** Runs this invocation set out to do. */
+  todoTotal: number;
+  /** Groq models only. */
+  budget: TokenBudget | null;
   stopped?: string;
 }
 
@@ -235,6 +241,22 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
 
   const stats = new Map<string, ModelStats>();
   let budgetHit = false;
+  const printStatus = async () => {
+    for (const [model, s] of stats) {
+      const last24h = (await groqUsageSeed(db, model)).reduce((a, e) => a + e.tokens, 0);
+      const left = s.budget?.available();
+      out(
+        `status ${new Date().toISOString()} ${model}: ${s.done} done, ${Math.max(0, s.todoTotal - s.done)} remaining;` +
+          ` ${fmt(last24h)} tokens in the last 24 h` +
+          (left
+            ? `; Groq allowance left ${fmt(left.tokens)} tokens / ${fmt(left.requests)} calls`
+            : ''),
+      );
+    }
+  };
+  const statusTimer = setInterval(() => {
+    printStatus().catch(() => undefined);
+  }, STATUS_EVERY_MS);
   try {
     await Promise.all(
       models.map(async (model) => {
@@ -249,6 +271,8 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
           limits: {},
           waits: 0,
           latencyMs: [],
+          todoTotal: 0,
+          budget: null,
         };
         stats.set(model, s);
         const doneRows = await db
@@ -257,6 +281,7 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
           .where(eq(evalRuns.model, model));
         const done = new Set(doneRows.map((r) => r.episodeId));
         const todo = scope.filter((e) => !done.has(e.id));
+        s.todoTotal = todo.length;
         out(`${model}: ${todo.length} to run (${scope.length - todo.length} already done)`);
 
         // 429s pause only their own model: in the Oct 26 dev run NIM rate-limited one model
@@ -289,6 +314,7 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
         }
         const budget =
           groq && limits ? new TokenBudget(model, limits, await groqUsageSeed(db, model)) : null;
+        s.budget = budget;
         if (budget) {
           const left = budget.available();
           out(
@@ -318,10 +344,17 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
         let runReserve = { tokens: GROQ_RUN_RESERVE_TOKENS, requests: GROQ_RUN_RESERVE_CALLS };
         const worker = async () => {
           while (!stopAll && !s.stopped) {
-            if (budget && !budget.roomForRun(runReserve.tokens, runReserve.requests)) {
-              s.stopped = 'Groq daily budget nearly used: resume tomorrow';
-              out(`${model}: Groq daily budget nearly used — resume tomorrow`);
-              return;
+            // Groq's daily allowance refills continuously: when it is low, sleep until this
+            // run fits with the 10% headroom kept, then carry on.
+            if (budget) {
+              const ready = await budget.waitForRoomForRun(runReserve.tokens, runReserve.requests, {
+                shouldStop: () => stopAll,
+                onWait: (ms) =>
+                  out(
+                    `${model}: Groq daily allowance low, waiting ~${Math.ceil(ms / 60_000)} min for it to refill`,
+                  ),
+              });
+              if (!ready) return;
             }
             const episode = todo[next++];
             if (!episode) return;
@@ -344,6 +377,7 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
       }),
     );
   } finally {
+    clearInterval(statusTimer);
     process.off('SIGINT', onSigint);
   }
 

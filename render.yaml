@@ -143,6 +143,12 @@ services:
         sync: false
       - key: AGENT_MODEL
         sync: false
+      - key: AGENT_PROVIDER
+        sync: false
+      - key: EVAL_LLM_API_KEY
+        sync: false
+      - key: EVAL_LLM_BASE_URL
+        sync: false
       - key: EVAL_MODELS
         sync: false
       - key: DAILY_BUDGET_USD_EVAL

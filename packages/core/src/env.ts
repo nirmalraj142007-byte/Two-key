@@ -97,9 +97,14 @@ const schemas = {
     /** OpenAI-compatible endpoint for every other model (default Groq). */
     AGENT_LLM_BASE_URL: url.default('https://api.groq.com/openai/v1'),
     AGENT_LLM_API_KEY: nonEmpty.optional(),
-    /** Model for live and hijack sessions. */
-    AGENT_MODEL: nonEmpty.default('openai/gpt-oss-120b'),
-    /** OpenAI-compatible endpoint for eval sessions (NVIDIA NIM); live and hijack stay on AGENT_LLM_*. */
+    /**
+     * Model and provider for live, demo and hijack sessions. Until the test split is done
+     * (Nov 7) they run gpt-oss-20b on NIM so development never uses the Groq allowance kept for
+     * the gpt-oss-120b test runs; switch back to openai/gpt-oss-120b on groq afterwards.
+     */
+    AGENT_MODEL: nonEmpty.default('openai/gpt-oss-20b'),
+    AGENT_PROVIDER: z.enum(['groq', 'nim']).default('nim'),
+    /** OpenAI-compatible endpoint for NIM (eval sessions, and live ones while AGENT_PROVIDER=nim). */
     EVAL_LLM_BASE_URL: url.default('https://integrate.api.nvidia.com/v1'),
     EVAL_LLM_API_KEY: nonEmpty.optional(),
     /** Checked for pricing at startup so an eval run cannot start with an unpriced model. */

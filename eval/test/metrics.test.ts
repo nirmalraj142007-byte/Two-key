@@ -317,12 +317,56 @@ describe('Groq free-tier budget', () => {
     expect(used.tokens).toBeLessThanOrEqual(9000);
   });
 
-  it('stops for the day and refuses requests over the minute limit', async () => {
-    const seed = [{ at: Date.now() - 60_000, tokens: 199_000 }];
-    const budget = new TokenBudget('m', limits, seed);
+  /** A budget on a fake clock: every sleep moves time forward. */
+  function fakeClockBudget(seedTokens: number) {
+    const clock = { t: 50 * 86_400_000, slept: 0 };
+    const budget = new TokenBudget(
+      'm',
+      limits,
+      [{ at: clock.t, tokens: seedTokens }],
+      async (ms) => {
+        clock.t += ms;
+        clock.slept += ms;
+      },
+      () => clock.t,
+    );
+    return { clock, budget };
+  }
+  const perMs = 200_000 / 86_400_000;
+
+  it('sleeps until a run fits with 10% headroom, then continues', async () => {
+    const { clock, budget } = fakeClockBudget(199_000);
     expect(budget.roomForRun(20_000, 8)).toBe(false);
-    await expect(budget.reserve(6000)).rejects.toBeInstanceOf(DailyBudgetStop);
-    await expect(new TokenBudget('m', limits).reserve(9000)).rejects.toThrow(/tokens\/min|limit/);
+    const waits: number[] = [];
+    const ready = await budget.waitForRoomForRun(20_000, 8, { onWait: (ms) => waits.push(ms) });
+    expect(ready).toBe(true);
+    expect(budget.roomForRun(20_000, 8)).toBe(true);
+    // Needs 20,000 for the run plus 20,000 headroom; 1,000 was left: 39,000 tokens to refill.
+    expect(clock.slept).toBeCloseTo(39_000 / perMs, -4);
+    expect(waits).toHaveLength(1);
+    expect(waits[0]).toBeCloseTo(39_000 / perMs, -4);
+  });
+
+  it('stops waiting when asked to stop', async () => {
+    const { budget } = fakeClockBudget(199_000);
+    let calls = 0;
+    const ready = await budget.waitForRoomForRun(20_000, 8, { shouldStop: () => ++calls > 2 });
+    expect(ready).toBe(false);
+  });
+
+  it('waits mid-run for the refill instead of failing a call', async () => {
+    const { clock, budget } = fakeClockBudget(199_500);
+    await budget.reserve(6000);
+    expect(clock.slept).toBeGreaterThanOrEqual(5_500 / perMs - 1000);
+  });
+
+  it('refuses what can never fit', async () => {
+    await expect(new TokenBudget('m', limits).reserve(9000)).rejects.toBeInstanceOf(
+      DailyBudgetStop,
+    );
+    await expect(new TokenBudget('m', limits).waitForRoomForRun(190_000, 8)).rejects.toThrow(
+      /more than the daily allowance/,
+    );
   });
 
   it('refills the daily allowance continuously', () => {

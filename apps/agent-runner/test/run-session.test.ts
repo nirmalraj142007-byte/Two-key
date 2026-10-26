@@ -280,6 +280,18 @@ describe('adapters and pricing', () => {
     );
   });
 
+  it('sends live sessions to NIM when AGENT_PROVIDER is nim', () => {
+    const cfg = { AGENT_LLM_API_KEY: 'groq', AGENT_LLM_BASE_URL: 'http://x/v1' };
+    // NIM needs its own key: a Groq key alone is not enough.
+    expect(() => adapterFor('openai/gpt-oss-20b', { ...cfg, AGENT_PROVIDER: 'nim' })).toThrow(
+      /EVAL_LLM_API_KEY/,
+    );
+    expect(
+      adapterFor('openai/gpt-oss-20b', { ...cfg, AGENT_PROVIDER: 'nim', EVAL_LLM_API_KEY: 'nim' })
+        .id,
+    ).toBe('openai/gpt-oss-20b');
+  });
+
   it('names an unpriced model at startup', () => {
     expect(() => assertPriced(['claude-haiku-5-5', 'llama-3.1-8b-instant'])).toThrow(
       /llama-3\.1-8b-instant/,

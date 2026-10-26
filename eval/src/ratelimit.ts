@@ -219,7 +219,7 @@ export class DailyBudgetStop extends Error {
     readonly model: string,
     readonly reason: string,
   ) {
-    super(`${model}: ${reason}; resume tomorrow`);
+    super(`${model}: ${reason}`);
   }
 }
 
@@ -313,7 +313,57 @@ export class TokenBudget {
     );
   }
 
-  /** Waits until a request of `estimate` tokens fits the minute window; throws past the day. */
+  /** Milliseconds until the daily allowance holds `tokens` and `requests` (linear refill). */
+  msUntilAvailable(tokens: number, requests: number): number {
+    const left = this.available();
+    const tokenRate = this.limits.tokensPerDay / DAY_MS;
+    const requestRate = this.limits.requestsPerDay / DAY_MS;
+    return Math.ceil(
+      Math.max(0, (tokens - left.tokens) / tokenRate, (requests - left.requests) / requestRate),
+    );
+  }
+
+  /** Milliseconds until roomForRun(tokens, requests) is true. */
+  msUntilRoomForRun(tokens: number, requests: number): number {
+    return this.msUntilAvailable(
+      tokens + this.limits.tokensPerDay * (1 - DAILY_SHARE),
+      requests + this.limits.requestsPerDay * (1 - DAILY_SHARE),
+    );
+  }
+
+  /**
+   * Sleeps, in chunks of at most `chunkMs`, until a run of about `tokens` tokens and `requests`
+   * calls fits with the 10% headroom kept. Returns false if `shouldStop` turns true meanwhile.
+   */
+  async waitForRoomForRun(
+    tokens: number,
+    requests: number,
+    o: {
+      shouldStop?: () => boolean;
+      onWait?: (ms: number) => void;
+      chunkMs?: number;
+    } = {},
+  ): Promise<boolean> {
+    if (
+      tokens > this.limits.tokensPerDay * DAILY_SHARE ||
+      requests > this.limits.requestsPerDay * DAILY_SHARE
+    ) {
+      throw new DailyBudgetStop(this.model, 'one run needs more than the daily allowance');
+    }
+    let told = false;
+    for (;;) {
+      const ms = this.msUntilRoomForRun(tokens, requests);
+      if (ms <= 0) return true;
+      if (o.shouldStop?.()) return false;
+      if (!told) {
+        o.onWait?.(ms);
+        told = true;
+      }
+      await this.sleep(Math.min(ms, o.chunkMs ?? 60_000));
+    }
+  }
+
+  /** Waits until a request of `estimate` tokens fits the minute window and the day's allowance. */
   async reserve(estimate: number): Promise<{ at: number; tokens: number }> {
     if (estimate > this.limits.tokensPerMinute) {
       throw new DailyBudgetStop(
@@ -324,9 +374,11 @@ export class TokenBudget {
     for (;;) {
       const t = this.now();
       this.prune(t);
-      const left = this.available();
-      if (left.tokens < estimate || left.requests < 1) {
-        throw new DailyBudgetStop(this.model, 'daily token or request limit reached');
+      const wait = this.msUntilAvailable(estimate, 1);
+      if (wait > 0) {
+        // Mid-run the allowance ran short (live sessions share it): wait for the refill.
+        await this.sleep(Math.min(wait, 60_000));
+        continue;
       }
       const inMinute = this.minute.reduce((a, e) => a + e.tokens, 0);
       const callsInMinute = this.minute.length;

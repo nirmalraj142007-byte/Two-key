@@ -8,7 +8,9 @@ export interface LlmConfig {
   ANTHROPIC_API_KEY?: string | undefined;
   AGENT_LLM_API_KEY?: string | undefined;
   AGENT_LLM_BASE_URL: string;
-  /** Eval sessions only (NVIDIA NIM). */
+  /** Provider for live, demo and hijack sessions; groq when unset. */
+  AGENT_PROVIDER?: 'groq' | 'nim' | undefined;
+  /** NVIDIA NIM: eval sessions, and live ones when AGENT_PROVIDER is nim. */
   EVAL_LLM_API_KEY?: string | undefined;
   EVAL_LLM_BASE_URL?: string | undefined;
   /** OpenAI-compatible models only: sees each response's headers. */
@@ -58,6 +60,15 @@ export function adapterFor(model: string, cfg: LlmConfig, o: AdapterOptions = {}
       baseURL: cfg.EVAL_LLM_BASE_URL ?? 'https://integrate.api.nvidia.com/v1',
       onHeaders: cfg.onHeaders,
       reasoningEffort,
+      keyName: 'EVAL_LLM_API_KEY',
+    });
+  }
+  if (cfg.AGENT_PROVIDER === 'nim') {
+    return createOpenAICompatibleAdapter(model, {
+      apiKey: cfg.EVAL_LLM_API_KEY,
+      baseURL: cfg.EVAL_LLM_BASE_URL ?? 'https://integrate.api.nvidia.com/v1',
+      onHeaders: cfg.onHeaders,
+      reasoningEffort: o.reasoningEffort,
       keyName: 'EVAL_LLM_API_KEY',
     });
   }
