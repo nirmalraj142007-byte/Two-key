@@ -119,6 +119,31 @@ export function mergeProposals(current: ProposalView[], incoming: ProposalView[]
   return [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+// ---- stream event IDs -------------------------------------------------------------------------
+
+/**
+ * Event IDs are `{boot}:{seq}` from one gateway process. A different boot (gateway restarted)
+ * starts a new sequence, so its events always count as new.
+ */
+export function isNewerEventId(last: string | undefined, id: string): boolean {
+  if (!last) return true;
+  const [lastBoot, lastSeq] = last.split(':');
+  const [boot, seq] = id.split(':');
+  if (boot !== lastBoot) return true;
+  return Number(seq) > Number(lastSeq);
+}
+
+// ---- stored transcripts -----------------------------------------------------------------------
+
+/** The steps the stream shows (assistant and tool entries), read from a stored transcript. */
+export function streamedSteps(transcript: unknown): StepEntry[] {
+  if (!Array.isArray(transcript)) return [];
+  return transcript.flatMap((e) => {
+    const r = StepEntrySchema.safeParse(e);
+    return r.success && (r.data.role === 'assistant' || r.data.role === 'tool') ? [r.data] : [];
+  });
+}
+
 // ---- search results ---------------------------------------------------------------------------
 
 export interface ListingHit {

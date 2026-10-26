@@ -10,6 +10,8 @@ import {
   failureKind,
   type ProposalView,
   ProposalViewSchema,
+  type StepEntry,
+  streamedSteps,
 } from '@/lib/console-view';
 import { db } from '@/lib/db';
 import { webEnv } from '@/lib/env';
@@ -81,8 +83,8 @@ export async function recentProposals(): Promise<ProposalView[]> {
 
 export type RunStatus =
   | { status: 'active' }
-  | { status: 'ended' }
-  | { status: 'failed'; reason: string }
+  | { status: 'ended'; steps: StepEntry[] }
+  | { status: 'failed'; reason: string; steps: StepEntry[] }
   | { status: 'unknown' };
 
 /** Where a console run stands. Another user's session reads as unknown. */
@@ -95,8 +97,12 @@ export async function runStatus(sessionId: string): Promise<RunStatus> {
     .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, session.userId)))
     .limit(1);
   if (!row) return { status: 'unknown' };
+  if (row.status === 'active') return { status: 'active' };
+  // The stored transcript is the full record once a run ends; the console replaces its live
+  // view with it, so a step the stream missed (gateway restart) still shows.
+  const steps = streamedSteps(row.transcript);
   if (row.status === 'failed') {
-    return { status: 'failed', reason: FAILURE_TEXT[failureKind(row.transcript)] };
+    return { status: 'failed', reason: FAILURE_TEXT[failureKind(row.transcript)], steps };
   }
-  return { status: row.status };
+  return { status: 'ended', steps };
 }

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   failureKind,
+  isNewerEventId,
   looksInjected,
   mergeProposals,
   type ProposalView,
   parseEvent,
   searchHits,
+  streamedSteps,
 } from '../lib/console-view';
 
 function view(over: Partial<ProposalView> = {}): ProposalView {
@@ -96,5 +98,31 @@ describe('failureKind', () => {
     expect(failureKind([{ role: 'error', text: 'failed: max_turns' }])).toBe('max_turns');
     expect(failureKind([{ role: 'error', text: 'UPSTREAM_LLM: 503' }])).toBe('model');
     expect(failureKind(null)).toBe('model');
+  });
+});
+
+describe('isNewerEventId', () => {
+  it('orders IDs within one gateway boot and treats a new boot as new', () => {
+    expect(isNewerEventId(undefined, 'a1b2c3d4:1')).toBe(true);
+    expect(isNewerEventId('a1b2c3d4:5', 'a1b2c3d4:6')).toBe(true);
+    expect(isNewerEventId('a1b2c3d4:5', 'a1b2c3d4:5')).toBe(false);
+    expect(isNewerEventId('a1b2c3d4:9', 'a1b2c3d4:10')).toBe(true);
+    expect(isNewerEventId('a1b2c3d4:9', 'a1b2c3d4:3')).toBe(false);
+    expect(isNewerEventId('a1b2c3d4:900', 'ffff0000:1')).toBe(true);
+  });
+});
+
+describe('streamedSteps', () => {
+  it('keeps the assistant and tool entries the stream shows, in order', () => {
+    const at = '2026-10-26T10:00:00.000Z';
+    const transcript = [
+      { turn: 0, role: 'user', text: 'Running shoes', at },
+      { turn: 1, role: 'assistant', text: 'Searching', at, usage: { inputTokens: 1 } },
+      { turn: 1, role: 'tool', toolName: 'search_products', text: 'Found 1 product.', at },
+      { turn: 2, role: 'error', text: 'failed: max_turns', isError: true, at },
+      { nonsense: true },
+    ];
+    expect(streamedSteps(transcript).map((s) => s.role)).toEqual(['assistant', 'tool']);
+    expect(streamedSteps(null)).toEqual([]);
   });
 });

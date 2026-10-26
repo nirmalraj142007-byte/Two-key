@@ -46,7 +46,14 @@ const card = (over: Record<string, unknown>) => ({
 });
 
 const at = () => new Date().toISOString();
-const sse = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+const BOOT = 'b00710aa';
+const sse = (seq: number, event: string, data: unknown) =>
+  `id: ${BOOT}:${seq}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+const toolStep = () =>
+  sse(2, 'agent.step', {
+    sessionId: SESSION,
+    entry: { turn: 1, role: 'tool', toolName: 'search_products', text: searchResult, at: at() },
+  });
 const searchResult = `Found 2 products.\n${JSON.stringify({
   items: [
     {
@@ -70,7 +77,7 @@ const searchResult = `Found 2 products.\n${JSON.stringify({
 
 const FIRST = [
   ': connected\n\n',
-  sse('agent.step', {
+  sse(1, 'agent.step', {
     sessionId: SESSION,
     entry: {
       turn: 1,
@@ -80,16 +87,16 @@ const FIRST = [
       at: at(),
     },
   }),
-  sse('agent.step', {
-    sessionId: SESSION,
-    entry: { turn: 1, role: 'tool', toolName: 'search_products', text: searchResult, at: at() },
-  }),
-  sse('proposal.created', card({})),
+  toolStep(),
+  sse(3, 'proposal.created', card({})),
 ].join('');
 
+// Starts with event 2 again (already shown): the console must not show it twice.
 const SECOND = [
   ': connected\n\n',
+  toolStep(),
   sse(
+    4,
     'payment.updated',
     card({
       state: 'captured',
@@ -118,6 +125,7 @@ test('scripted stream: steps stream in and the card turns Captured without a rel
   let streams = 0;
   let sentAt = 0;
   const authHeaders: string[] = [];
+  const lastEventIds: (string | undefined)[] = [];
   await page.route('**/human/events', async (route: Route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') {
@@ -125,6 +133,7 @@ test('scripted stream: steps stream in and the card turns Captured without a rel
       return;
     }
     authHeaders.push(req.headers().authorization ?? '');
+    lastEventIds.push(req.headers()['last-event-id']);
     streams++;
     const headers = { ...CORS, 'content-type': 'text/event-stream', 'cache-control': 'no-cache' };
     if (streams === 1) {
@@ -199,4 +208,9 @@ test('scripted stream: steps stream in and the card turns Captured without a rel
   expect(authHeaders.length).toBeGreaterThanOrEqual(2);
   expect(authHeaders[0]).toMatch(/^Bearer ey/);
   expect(authHeaders[1]).not.toBe(authHeaders[0]);
+  // The reconnect asks the gateway to replay everything after the last event shown.
+  expect(lastEventIds[0]).toBeUndefined();
+  expect(lastEventIds[1]).toBe(`${BOOT}:3`);
+  // The repeated event 2 was dropped: still one assistant step and one tool step.
+  await expect(page.locator('[data-slot="agent-step"]')).toHaveCount(2);
 });

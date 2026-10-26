@@ -147,6 +147,9 @@ export function AgentConsole({
     const t = setInterval(() => {
       runStatus(id)
         .then((s) => {
+          if (s.status === 'ended' || s.status === 'failed') {
+            setSteps((prev) => ({ ...prev, [id]: s.steps }));
+          }
           if (s.status === 'ended') {
             setRun((r) =>
               r.status === 'running' && r.sessionId === id ? { ...r, status: 'ended' } : r,

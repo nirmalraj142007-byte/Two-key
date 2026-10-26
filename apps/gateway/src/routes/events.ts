@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { AppError, ErrorCode, type PaymentState } from '@twokey/core';
 import {
   agentSessions,
@@ -250,21 +251,49 @@ export async function expandNotice(
   }
 }
 
-type Send = (events: OutEvent[]) => void;
+/** An event with its stream ID, `{boot}:{seq}`: seq grows by one per event in this process. */
+export type StreamEvent = OutEvent & { id: string };
+type Send = (events: StreamEvent[]) => void;
+
+export interface Subscription {
+  unsubscribe: () => void;
+  /** Buffered events after the client's Last-Event-ID, to write before any live event. */
+  replay: StreamEvent[];
+}
 
 export interface EventHub {
-  subscribe(userId: string, send: Send): Promise<() => void>;
+  subscribe(userId: string, send: Send, lastEventId?: string): Promise<Subscription>;
   subscriberCount(): number;
   close(): Promise<void>;
+}
+
+/** How long a user's events are kept for replay after their last stream closes. */
+const REPLAY_TTL_MS = 10 * 60 * 1000;
+const REPLAY_MAX = 200;
+
+/** `{boot}:{seq}` from this process, or null for a foreign or malformed ID. */
+export function parseEventId(id: string | undefined, boot: string): number | null {
+  if (!id) return null;
+  const [b, s] = id.split(':');
+  if (b !== boot || !s || !/^\d+$/.test(s)) return null;
+  return Number(s);
 }
 
 /**
  * One LISTEN connection for the whole gateway, opened with the first subscriber. Notifications
  * are handled one at a time so a user's events arrive in the order they were committed.
+ *
+ * Each user who had a stream in the last 10 minutes keeps their last 200 events, so a client
+ * that reconnects with Last-Event-ID gets what it missed while it was away. The buffer lives in
+ * this process (single gateway instance); after a restart the boot part of the ID changes and
+ * nothing is replayed.
  */
 export function createEventHub(databaseUrl: string, db: Db, log: FastifyBaseLogger): EventHub {
   const subs = new Map<string, Set<Send>>();
+  const buffers = new LRUCache<string, StreamEvent[]>({ max: 10_000, ttl: REPLAY_TTL_MS });
   const sentDecisions = new LRUCache<string, true>({ max: 10_000 });
+  const boot = randomUUID().slice(0, 8);
+  let seq = 0;
   let sql: postgres.Sql | undefined;
   let listening: Promise<unknown> | undefined;
   let queue: Promise<void> = Promise.resolve();
@@ -278,11 +307,19 @@ export function createEventHub(databaseUrl: string, db: Db, log: FastifyBaseLogg
     }
     const notice = Notice.safeParse(raw);
     if (!notice.success) return;
-    const targets = subs.get(notice.data.userId);
-    if (!targets || targets.size === 0) return;
-    const events = await expandNotice(db, notice.data, sentDecisions);
-    if (events.length === 0) return;
-    for (const send of targets) send(events);
+    const { userId } = notice.data;
+    // Users with a stream now, or one that closed recently and may come back.
+    if (!subs.has(userId) && !buffers.has(userId)) return;
+    const out = await expandNotice(db, notice.data, sentDecisions);
+    if (out.length === 0) return;
+    const events = out.map((e) => ({ ...e, id: `${boot}:${++seq}` }));
+    const buffer = buffers.get(userId) ?? [];
+    buffer.push(...events);
+    if (buffer.length > REPLAY_MAX) buffer.splice(0, buffer.length - REPLAY_MAX);
+    buffers.set(userId, buffer);
+    // Looked up after the await: a stream that opened meanwhile gets these live (its replay was
+    // taken before they were buffered), so nothing is sent twice or lost.
+    for (const send of subs.get(userId) ?? []) send(events);
   }
 
   function listen(): Promise<unknown> {
@@ -301,17 +338,29 @@ export function createEventHub(databaseUrl: string, db: Db, log: FastifyBaseLogg
   }
 
   return {
-    async subscribe(userId, send) {
+    async subscribe(userId, send, lastEventId) {
       await listen();
+      // Same tick: take the replay and add the subscriber, so no event falls between them.
+      const after = parseEventId(lastEventId, boot);
+      const buffer = buffers.get(userId) ?? [];
+      const replay =
+        after === null ? [] : buffer.filter((e) => (parseEventId(e.id, boot) ?? 0) > after);
+      buffers.set(userId, buffer); // start (or refresh) this user's replay window
       let set = subs.get(userId);
       if (!set) {
         set = new Set();
         subs.set(userId, set);
       }
       set.add(send);
-      return () => {
-        set.delete(send);
-        if (set.size === 0) subs.delete(userId);
+      return {
+        replay,
+        unsubscribe: () => {
+          set.delete(send);
+          if (set.size === 0) subs.delete(userId);
+          // Keep the buffer: the client is expected back within REPLAY_TTL_MS.
+          const kept = buffers.get(userId);
+          if (kept) buffers.set(userId, kept);
+        },
       };
     },
     subscriberCount() {
@@ -347,9 +396,11 @@ function humanOf(req: FastifyRequest): Human {
   return req.human;
 }
 
-function frame(e: OutEvent): string {
-  return `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`;
+function frame(e: StreamEvent): string {
+  return `id: ${e.id}\nevent: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`;
 }
+
+const LastEventId = z.string().max(100).optional();
 
 export const eventRoutes: FastifyPluginAsync<EventRouteOptions> = async (app, opts) => {
   const { db } = opts;
@@ -384,24 +435,31 @@ export const eventRoutes: FastifyPluginAsync<EventRouteOptions> = async (app, op
 
   app.get('/human/events', { preHandler: requireHuman('events:read') }, async (req, reply) => {
     const { userId } = humanOf(req);
-    let unsubscribe: (() => void) | undefined;
     let heartbeat: NodeJS.Timeout | undefined;
     let closed = false;
+    // Live events that arrive before the headers and the replay are written wait here.
+    let held: string[] | null = [];
+    const write = (chunk: string) => {
+      if (held) held.push(chunk);
+      else if (!closed && !reply.raw.writableEnded) reply.raw.write(chunk);
+    };
+
+    // Subscribe before the headers go out: a hub failure is still an ordinary error response.
+    const lastEventId = LastEventId.safeParse(req.headers['last-event-id']);
+    const sub = await hub.subscribe(
+      userId,
+      (events) => {
+        for (const e of events) write(frame(e));
+      },
+      lastEventId.success ? lastEventId.data : undefined,
+    );
     const cleanup = () => {
       if (closed) return;
       closed = true;
       clearInterval(heartbeat);
-      unsubscribe?.();
+      sub.unsubscribe();
       open.delete(reply);
     };
-
-    const write = (chunk: string) => {
-      if (!closed && !reply.raw.writableEnded) reply.raw.write(chunk);
-    };
-    // Subscribe before the headers go out: a hub failure is still an ordinary error response.
-    unsubscribe = await hub.subscribe(userId, (events) => {
-      for (const e of events) write(frame(e));
-    });
 
     reply.hijack();
     reply.raw.writeHead(200, {
@@ -413,11 +471,18 @@ export const eventRoutes: FastifyPluginAsync<EventRouteOptions> = async (app, op
     });
     reply.raw.flushHeaders();
     open.add(reply);
+    const waiting = held;
+    held = null;
     write(': connected\n\n');
+    for (const e of sub.replay) write(frame(e));
+    for (const chunk of waiting) write(chunk);
     heartbeat = setInterval(() => write(': heartbeat\n\n'), heartbeatMs);
     req.raw.on('close', cleanup);
     reply.raw.on('close', cleanup);
-    req.log.info({ subscribers: hub.subscriberCount() }, 'events stream opened');
+    req.log.info(
+      { subscribers: hub.subscriberCount(), replayed: sub.replay.length },
+      'events stream opened',
+    );
   });
 
   // Open streams never go idle; end them so the server can close.

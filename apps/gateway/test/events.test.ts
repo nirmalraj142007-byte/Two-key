@@ -87,9 +87,12 @@ describe.skipIf(!baseUrl)('/human/events', () => {
     return (row as { id: string }).id;
   }
 
-  async function open(userId: string) {
+  async function open(userId: string, lastEventId?: string) {
     const res = await fetch(`${base}/human/events`, {
-      headers: { authorization: `Bearer ${await assertion(userId, ['events:read'])}` },
+      headers: {
+        authorization: `Bearer ${await assertion(userId, ['events:read'])}`,
+        ...(lastEventId ? { 'last-event-id': lastEventId } : {}),
+      },
     });
     expect(res.status).toBe(200);
     const f = frames(res);
@@ -256,11 +259,57 @@ describe.skipIf(!baseUrl)('/human/events', () => {
       sessionId: 'S-ALICE',
       entry: { ...entry, usage: { inputTokens: 1 }, secret: 'x' },
     });
-    const frame = await f.next((x) => x.startsWith('event: agent.step'));
+    const frame = await f.next((x) => x.includes('event: agent.step'));
     const data = dataOf(frame);
     expect(data.sessionId).toBe('S-ALICE');
     expect(data.entry).toEqual(entry);
     await f.cancel();
+  });
+
+  it('replays what a dropped client missed after its Last-Event-ID, once and in order', async () => {
+    const userId = await newUser();
+    const step = (text: string) => ({
+      type: 'agent.step',
+      userId,
+      sessionId: 'S-GAP',
+      entry: { turn: 1, role: 'assistant', text, at: new Date().toISOString() },
+    });
+    const idOf = (frame: string) =>
+      frame
+        .split('\n')
+        .find((l) => l.startsWith('id: '))
+        ?.slice(4);
+    const textOf = (frame: string) => (dataOf(frame).entry as { text: string }).text;
+    const isStep = (x: string) => x.includes('event: agent.step');
+
+    const first = await open(userId);
+    await notify(step('one'));
+    const one = await first.f.next(isStep);
+    expect(textOf(one)).toBe('one');
+    expect(idOf(one)).toMatch(/^[0-9a-f]{8}:\d+$/);
+    await first.f.cancel();
+    // Give the gateway a moment to see the close before the next events fire.
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Sent while the client is away.
+    await notify(step('two'));
+    await notify(step('three'));
+    await new Promise((r) => setTimeout(r, 300));
+
+    const again = await open(userId, idOf(one));
+    const replayed = [await again.f.next(isStep), await again.f.next(isStep)];
+    expect(replayed.map(textOf)).toEqual(['two', 'three']);
+    await notify(step('four'));
+    expect(textOf(await again.f.next(isStep))).toBe('four');
+    await again.f.cancel();
+
+    // Without Last-Event-ID (a fresh tab) nothing is replayed; a foreign ID replays nothing either.
+    for (const last of [undefined, 'deadbeef:1']) {
+      const fresh = await open(userId, last);
+      await notify(step(`live-${last ?? 'none'}`));
+      expect(textOf(await fresh.f.next(isStep))).toBe(`live-${last ?? 'none'}`);
+      await fresh.f.cancel();
+    }
   });
 
   it('sends a payment.updated snapshot without vault fields, and lists recent proposals', async () => {
@@ -268,7 +317,7 @@ describe.skipIf(!baseUrl)('/human/events', () => {
     const { f } = await open(userId);
     const { proposalId, paymentId } = await capturedPurchase(userId);
     await notify({ type: 'payment.updated', userId, proposalId, paymentId, state: 'captured' });
-    const frame = await f.next((x) => x.startsWith('event: payment.updated'));
+    const frame = await f.next((x) => x.includes('event: payment.updated'));
     expect(frame).not.toMatch(/vault|payment_token|paymentToken/i);
     expect(dataOf(frame)).toMatchObject({
       proposalId,

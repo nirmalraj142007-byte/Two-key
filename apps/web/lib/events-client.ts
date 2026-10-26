@@ -3,7 +3,7 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { useEffect, useRef, useState } from 'react';
 import { mintEventsAssertion } from '@/app/agent/actions';
-import { type ConsoleEvent, parseEvent } from './console-view';
+import { type ConsoleEvent, isNewerEventId, parseEvent } from './console-view';
 
 export type LiveStatus = 'connecting' | 'live' | 'reconnecting';
 
@@ -43,6 +43,8 @@ export function useTwoKeyEvents(
     const ctrl = new AbortController();
     const url = new URL('/human/events', gatewayUrl).toString();
     let opened = 0;
+    // Sent back on reconnect so the gateway replays what this tab missed while it was away.
+    let lastEventId: string | undefined;
 
     async function loop() {
       let attempt = 0;
@@ -53,7 +55,10 @@ export function useTwoKeyEvents(
           if (ctrl.signal.aborted) return;
           await fetchEventSource(url, {
             signal: ctrl.signal,
-            headers: { authorization: `Bearer ${token}` },
+            headers: {
+              authorization: `Bearer ${token}`,
+              ...(lastEventId ? { 'last-event-id': lastEventId } : {}),
+            },
             // The assertion is single-use; the library's own hide/show reconnect would reuse it.
             openWhenHidden: true,
             async onopen(res) {
@@ -66,6 +71,11 @@ export function useTwoKeyEvents(
               handlers.current.onOpen?.(opened++ > 0);
             },
             onmessage(msg) {
+              if (msg.id) {
+                // A replay never overlaps what was shown, but never show anything twice.
+                if (!isNewerEventId(lastEventId, msg.id)) return;
+                lastEventId = msg.id;
+              }
               const event = parseEvent(msg.event, msg.data);
               if (event) handlers.current.onEvent(event);
             },
