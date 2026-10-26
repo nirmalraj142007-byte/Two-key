@@ -7,13 +7,13 @@
     "eval": "tsx src/cli.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.137.0",
     "@channel3/sdk": "^4.5.0",
     "@twokey/agent-runner": "*",
     "@twokey/core": "*",
     "@twokey/db": "*",
     "diff": "^9.0.0",
     "drizzle-orm": "^0.44",
+    "openai": "^7.39.0",
     "seedrandom": "^3.0.5",
     "zod": "^4"
   },

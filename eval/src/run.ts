@@ -17,6 +17,7 @@ import {
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { buildManifest, MANIFEST_PATH, type Manifest } from './freeze.js';
 import {
+  Pacer,
   RateGate,
   type RateLimitSnapshot,
   RateLimitStop,
@@ -28,14 +29,23 @@ export type Split = 'dev' | 'test';
 type Out = (line?: string) => void;
 
 export const TEMPERATURE = 0;
+/** Eval output cap per model call (pre-freeze, uniform for every model). */
+export const EVAL_MAX_OUTPUT_TOKENS = 768;
 /** Test runs per model, and in total, that the pilot projects to. */
 export const TEST_RUNS_PER_MODEL = 300;
+/** NIM's free tier: about 40 requests per minute, assumed shared across models. */
+export const PROVIDER_RPM = 40;
 
 export interface RunOptions {
   split: Split;
   models: string[];
-  /** Concurrent runs per model (Groq limits are per model). */
+  /** Concurrent runs per model. */
   concurrency: number;
+  /** Per-model overrides of `concurrency`. */
+  concurrencyFor?: Record<string, number> | undefined;
+  /** Model calls per minute across all models together. */
+  rpm: number;
+  /** Runs the first N episodes for each selected model, then prints a projection. */
   pilot?: number | undefined;
   /** A 429 asking for a longer wait stops that model's runs; rerun to resume. */
   maxWaitMinutes: number;
@@ -126,6 +136,8 @@ interface ModelStats {
   requests: number;
   limits: RateLimitSnapshot;
   waits: number;
+  /** Wall time of each model call in this invocation (after pacing and 429 waits). */
+  latencyMs: number[];
   stopped?: string;
 }
 
@@ -160,8 +172,11 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
 
   const all = await splitEpisodes(db, o.split);
   if (all.length === 0) throw new AppError(ErrorCode.CONFIG_INVALID, `No ${o.split} episodes`);
-  const models = o.pilot !== undefined ? o.models.slice(0, 1) : o.models;
+  const models = o.models;
   const scope = o.pilot !== undefined ? all.slice(0, o.pilot) : all;
+  // One pacer for every model: the provider's request limit may be shared across models.
+  const pacer = new Pacer(o.rpm);
+  out(`pacing model calls at ≤ ${o.rpm}/min across ${models.length} model(s)`);
 
   const baseStore = createDbStore(db);
   // Eval steps are not shown live anywhere, so nothing is sent on the events channel.
@@ -196,6 +211,7 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
           requests: 0,
           limits: {},
           waits: 0,
+          latencyMs: [],
         };
         stats.set(model, s);
         const doneRows = await db
@@ -206,27 +222,43 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
         const todo = scope.filter((e) => !done.has(e.id));
         out(`${model}: ${todo.length} to run (${scope.length - todo.length} already done)`);
 
+        // 429s pause only their own model: in the Oct 26 dev run NIM rate-limited one model
+        // while the others kept answering.
         const gate = new RateGate();
-        const adapter = rateLimited(
-          adapterFor(model, {
+        const base = adapterFor(
+          model,
+          {
             ...env,
             onHeaders: (h) => {
               s.limits = { ...s.limits, ...readRateLimits(h) };
             },
-          }),
-          {
-            model,
-            gate,
-            maxWaitMs,
-            onWait: (ms) => {
-              s.waits++;
-              out(`${model}: 429, waiting ${(ms / 1000).toFixed(1)}s`);
-            },
-            onTokensPerDay: (n) => {
-              s.limits.limitTokensPerDay = n;
-            },
           },
+          { purpose: 'eval' },
         );
+        const timed: typeof base = {
+          id: base.id,
+          step: async (input) => {
+            const t0 = Date.now();
+            const res = await base.step(input);
+            s.latencyMs.push(Date.now() - t0);
+            return res;
+          },
+        };
+        const adapter = rateLimited(timed, {
+          model,
+          gate,
+          pacer,
+          maxWaitMs,
+          onWait: (ms, message) => {
+            s.waits++;
+            out(
+              `${model}: 429, waiting ${(ms / 1000).toFixed(1)}s (${message.replace(/\s+/g, ' ')})`,
+            );
+          },
+          onTokensPerDay: (n) => {
+            s.limits.limitTokensPerDay = n;
+          },
+        });
 
         let next = 0;
         const worker = async () => {
@@ -241,7 +273,9 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
             }
           }
         };
-        await Promise.all(Array.from({ length: Math.max(1, o.concurrency) }, worker));
+        await Promise.all(
+          Array.from({ length: Math.max(1, o.concurrencyFor?.[model] ?? o.concurrency) }, worker),
+        );
       }),
     );
   } finally {
@@ -272,6 +306,7 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
         model,
         mode: 'eval',
         temperature: TEMPERATURE,
+        maxOutputTokens: EVAL_MAX_OUTPUT_TOKENS,
       },
     );
 
@@ -374,82 +409,93 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
   if (budgetHit) {
     throw new AppError(ErrorCode.BUDGET_EXCEEDED, 'Eval budget used up; runs above remain');
   }
-  if (o.pilot !== undefined) await pilotReport(db, models[0] as string, scope, stats, o, out);
+  if (o.pilot !== undefined) await pilotReport(db, models, scope, stats, o, out);
+}
+
+export interface PilotModelRow {
+  model: string;
+  runs: number;
+  tokensPerRun: number;
+  requestsPerRun: number;
+  tokensPerRequest: number;
+  medianLatencyMs: number | null;
+  rateLimited: number;
+}
+
+/** Hours for `runsPerModel` runs of every model when all calls share one per-minute limit. */
+export function projectHours(rows: readonly PilotModelRow[], runsPerModel: number, rpm: number) {
+  const calls = rows.reduce((a, r) => a + r.requestsPerRun * runsPerModel, 0);
+  return { calls, hours: calls / rpm / 60 };
+}
+
+function median(xs: number[]): number | null {
+  if (xs.length === 0) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)] as number;
 }
 
 async function pilotReport(
   db: Db,
-  model: string,
+  models: string[],
   scope: EpisodeRow[],
   stats: Map<string, ModelStats>,
   o: RunOptions,
   out: Out,
 ): Promise<void> {
-  // Measured over every recorded pilot run for this model (this invocation or an earlier one).
+  // Measured over every recorded pilot run (this invocation or an earlier one).
   const ids = new Set(scope.map((e) => e.id));
-  const rows = (
-    await db
-      .select({
-        episodeId: evalRuns.episodeId,
-        tokensIn: evalRuns.tokensIn,
-        tokensOut: evalRuns.tokensOut,
-        costUsd: evalRuns.costUsd,
-        transcript: agentSessions.transcript,
-      })
-      .from(evalRuns)
-      .innerJoin(agentSessions, eq(agentSessions.id, evalRuns.sessionId))
-      .where(eq(evalRuns.model, model))
-  ).filter((r) => ids.has(r.episodeId));
-  const n = rows.length;
-  if (n === 0) {
-    out('pilot: no recorded runs to project from');
-    return;
+  const rows: PilotModelRow[] = [];
+  for (const model of models) {
+    const runs = (
+      await db
+        .select({
+          episodeId: evalRuns.episodeId,
+          tokensIn: evalRuns.tokensIn,
+          tokensOut: evalRuns.tokensOut,
+          transcript: agentSessions.transcript,
+        })
+        .from(evalRuns)
+        .innerJoin(agentSessions, eq(agentSessions.id, evalRuns.sessionId))
+        .where(eq(evalRuns.model, model))
+    ).filter((r) => ids.has(r.episodeId));
+    const n = runs.length;
+    const tokens = runs.reduce((a, r) => a + r.tokensIn + r.tokensOut, 0);
+    const calls = runs.reduce(
+      (a, r) => a + runTotals(r.transcript as TranscriptEntry[]).requests,
+      0,
+    );
+    const s = stats.get(model);
+    rows.push({
+      model,
+      runs: n,
+      tokensPerRun: n ? tokens / n : 0,
+      requestsPerRun: n ? calls / n : 0,
+      tokensPerRequest: calls ? tokens / calls : 0,
+      medianLatencyMs: median(s?.latencyMs ?? []),
+      rateLimited: s?.waits ?? 0,
+    });
   }
-  const sum = (f: (r: (typeof rows)[number]) => number) => rows.reduce((a, r) => a + f(r), 0);
-  const tin = sum((r) => r.tokensIn) / n;
-  const tout = sum((r) => r.tokensOut) / n;
-  const cost = sum((r) => Number(r.costUsd)) / n;
-  const reqs = sum((r) => runTotals(r.transcript as TranscriptEntry[]).requests) / n;
-  const perRun = tin + tout;
-  const lim = stats.get(model)?.limits ?? {};
-  const devRuns = 300;
 
   out('');
-  out(`pilot ${model}: ${n} runs (split ${o.split}, temperature ${TEMPERATURE})`);
+  out(`pilot: ${scope.length} ${o.split} episodes per model, temperature ${TEMPERATURE}`);
   out(
-    `  tokens/run: ${fmt(perRun)} (in ${fmt(tin)} · out ${fmt(tout)}); model calls/run ${reqs.toFixed(2)}`,
+    '| model | runs | tokens/run | calls/run | tokens/call | median latency | 429s | rate-limit headers |',
   );
-  out(
-    `  cost/run $${cost.toFixed(6)} · projected 900 runs $${(cost * 900).toFixed(2)} (priced per pricing.ts)`,
-  );
-  out(
-    `  projected tokens: ${fmt(perRun * TEST_RUNS_PER_MODEL)} per model for its ${TEST_RUNS_PER_MODEL} test runs; ` +
-      `${fmt(perRun * 900)} for 900 test runs if every model matched this one`,
-  );
-  out(
-    `  Groq limits (x-ratelimit-*): requests/day ${lim.limitRequests ?? '?'} · tokens/minute ${lim.limitTokens ?? '?'}` +
-      ` · tokens/day ${lim.limitTokensPerDay ?? 'not in headers'}`,
-  );
-  const devTokens = perRun * devRuns;
-  const devCalls = reqs * devRuns;
-  const verdicts: string[] = [];
-  let fits = true;
-  if (lim.limitRequests !== undefined) {
-    verdicts.push(`${fmt(devCalls)} calls vs ${fmt(lim.limitRequests)}/day`);
-    if (devCalls > lim.limitRequests) fits = false;
+  out('| --- | --- | --- | --- | --- | --- | --- | --- |');
+  for (const r of rows) {
+    const lim = stats.get(r.model)?.limits ?? {};
+    const headers =
+      Object.keys(lim).length === 0
+        ? 'none sent'
+        : `req ${lim.remainingRequests ?? '?'}/${lim.limitRequests ?? '?'}, tok ${lim.remainingTokens ?? '?'}/${lim.limitTokens ?? '?'}`;
+    out(
+      `| ${r.model} | ${r.runs} | ${fmt(r.tokensPerRun)} | ${r.requestsPerRun.toFixed(2)} | ${fmt(r.tokensPerRequest)} | ` +
+        `${r.medianLatencyMs === null ? '—' : `${(r.medianLatencyMs / 1000).toFixed(1)}s`} | ${r.rateLimited} | ${headers} |`,
+    );
   }
-  if (lim.limitTokens !== undefined) {
-    const minutes = devTokens / lim.limitTokens;
-    verdicts.push(`${fmt(devTokens)} tokens = ${fmt(minutes)} min at ${fmt(lim.limitTokens)} TPM`);
-    if (minutes > 24 * 60) fits = false;
-  }
-  if (lim.limitTokensPerDay !== undefined) {
-    verdicts.push(`vs ${fmt(lim.limitTokensPerDay)} tokens/day`);
-    if (devTokens > lim.limitTokensPerDay) fits = false;
-  }
+  const dev = projectHours(rows, 300, PROVIDER_RPM);
   out(
-    `  dev run (${devRuns} runs): ${verdicts.join('; ') || 'no limit headers seen'} → fits in one day: ${
-      verdicts.length === 0 ? 'unknown' : fits ? 'yes' : 'no'
-    }`,
+    `dev split projection: ${fmt(dev.calls)} model calls for 300 runs × ${rows.length} models ` +
+      `at ${PROVIDER_RPM} calls/min shared = ${dev.hours.toFixed(1)} h`,
   );
 }

@@ -88,7 +88,7 @@ const DEFAULT_WAIT_MS = 15_000;
 /** How long to wait after a 429: retry-after, else the later of the two reset headers. */
 export function rateLimitWaitMs(
   err: unknown,
-): { waitMs: number; tokensPerDay?: number } | undefined {
+): { waitMs: number; tokensPerDay?: number; message: string } | undefined {
   const rl = rateLimitError(err);
   if (!rl) return undefined;
   const retryAfter = parseDuration(header(rl.headers, 'retry-after'));
@@ -98,7 +98,11 @@ export function rateLimitWaitMs(
   ].filter((n): n is number => n !== undefined);
   const waitMs = retryAfter ?? (resets.length > 0 ? Math.max(...resets) : DEFAULT_WAIT_MS);
   const tpd = /tokens per day \(TPD\): Limit (\d+)/i.exec(rl.message)?.[1];
-  return { waitMs: waitMs + 250, ...(tpd ? { tokensPerDay: Number(tpd) } : {}) };
+  return {
+    waitMs: waitMs + 250,
+    message: rl.message.slice(0, 160),
+    ...(tpd ? { tokensPerDay: Number(tpd) } : {}),
+  };
 }
 
 /** Thrown when the wait would be longer than allowed (a daily limit): the model's runs stop. */
@@ -127,12 +131,35 @@ export class RateGate {
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** Spaces call starts at least 60s / rpm apart, across every caller that shares it. */
+export class Pacer {
+  private next = 0;
+  private readonly gapMs: number;
+  constructor(
+    rpm: number,
+    private readonly sleep: (ms: number) => Promise<void> = defaultSleep,
+    private readonly now: () => number = Date.now,
+  ) {
+    if (!(rpm > 0)) throw new AppError(ErrorCode.VALIDATION, 'rpm must be positive');
+    this.gapMs = 60_000 / rpm;
+  }
+  /** Reserves the next slot and waits for it. */
+  async take(): Promise<void> {
+    const t = this.now();
+    const slot = Math.max(t, this.next);
+    this.next = slot + this.gapMs;
+    if (slot > t) await this.sleep(slot - t);
+  }
+}
+
 export interface RateLimitedOptions {
   model: string;
   gate: RateGate;
+  /** Shared request pacing; taken before every attempt. */
+  pacer?: Pacer;
   maxWaitMs: number;
   maxAttempts?: number;
-  onWait?: (waitMs: number) => void;
+  onWait?: (waitMs: number, message: string) => void;
   onTokensPerDay?: (limit: number) => void;
 }
 
@@ -147,6 +174,7 @@ export function rateLimited(adapter: ModelAdapter, o: RateLimitedOptions): Model
     async step(input) {
       for (let attempt = 1; ; attempt++) {
         await o.gate.ready();
+        await o.pacer?.take();
         try {
           return await adapter.step(input);
         } catch (err) {
@@ -160,7 +188,7 @@ export function rateLimited(adapter: ModelAdapter, o: RateLimitedOptions): Model
               cause: err,
             });
           }
-          o.onWait?.(rl.waitMs);
+          o.onWait?.(rl.waitMs, rl.message);
           o.gate.pause(rl.waitMs);
         }
       }

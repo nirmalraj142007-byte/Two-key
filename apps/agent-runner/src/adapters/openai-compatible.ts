@@ -55,11 +55,20 @@ export function createOpenAICompatibleAdapter(
     baseURL: string;
     /** Sees each successful response's headers (the eval CLI reads x-ratelimit-*). */
     onHeaders?: ((headers: Headers) => void) | undefined;
+    /** Sent as reasoning_effort; null leaves it out (models that don't support it). */
+    reasoningEffort?: 'low' | 'medium' | null | undefined;
+    /** Named in the missing-key error. */
+    keyName?: string | undefined;
   },
 ): ModelAdapter {
   if (!opts.apiKey) {
-    throw new AppError(ErrorCode.CONFIG_INVALID, `AGENT_LLM_API_KEY is required for ${model}`);
+    throw new AppError(
+      ErrorCode.CONFIG_INVALID,
+      `${opts.keyName ?? 'AGENT_LLM_API_KEY'} is required for ${model}`,
+    );
   }
+  // Groq returns message.reasoning for gpt-oss by default and for qwen only above "default".
+  const effort = opts.reasoningEffort === undefined ? 'medium' : opts.reasoningEffort;
   const client = new OpenAI({
     apiKey: opts.apiKey,
     baseURL: opts.baseURL,
@@ -77,8 +86,7 @@ export function createOpenAICompatibleAdapter(
               messages: toChatMessages(i.system, i.messages),
               max_tokens: i.maxOutputTokens,
               temperature: i.temperature,
-              // Groq returns message.reasoning for gpt-oss by default and for qwen only above "default".
-              reasoning_effort: 'medium',
+              ...(effort ? { reasoning_effort: effort } : {}),
               tools: i.tools.map((t) => ({
                 type: 'function' as const,
                 function: {

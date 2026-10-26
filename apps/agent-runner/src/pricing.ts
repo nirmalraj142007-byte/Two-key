@@ -11,6 +11,8 @@ export interface ModelPrice {
 const CLAUDE_PRICING = 'https://platform.claude.com/docs/en/about-claude/pricing';
 const GROQ_FREE = 'Groq free tier, 2026-10-25';
 const AS_OF = '2026-10-25';
+const NIM_FREE = 'NVIDIA NIM free tier, 2026-10-26';
+const NIM_AS_OF = '2026-10-26';
 
 /** Looked up on the provider's page, never guessed. Haiku is the up-to-100k-token-prompt tier. */
 export const PRICING: Record<string, ModelPrice> = {
@@ -28,7 +30,20 @@ export const PRICING: Record<string, ModelPrice> = {
   },
   'openai/gpt-oss-120b': { inputPerMTok: 0, outputPerMTok: 0, source: GROQ_FREE, asOf: AS_OF },
   'qwen/qwen3.8-27b': { inputPerMTok: 0, outputPerMTok: 0, source: GROQ_FREE, asOf: AS_OF },
-  'openai/gpt-oss-20b': { inputPerMTok: 0, outputPerMTok: 0, source: GROQ_FREE, asOf: AS_OF },
+  // Evaluation models, served by NVIDIA NIM (gpt-oss-20b is also on Groq's free tier).
+  'nvidia/nemotron-3-ultra-550b-a55b': {
+    inputPerMTok: 0,
+    outputPerMTok: 0,
+    source: NIM_FREE,
+    asOf: NIM_AS_OF,
+  },
+  'openai/gpt-oss-20b': { inputPerMTok: 0, outputPerMTok: 0, source: NIM_FREE, asOf: NIM_AS_OF },
+  'nvidia/nemotron-3.5-bolt-e4b': {
+    inputPerMTok: 0,
+    outputPerMTok: 0,
+    source: NIM_FREE,
+    asOf: NIM_AS_OF,
+  },
 };
 
 export function priceFor(model: string): ModelPrice {

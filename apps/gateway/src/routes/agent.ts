@@ -10,11 +10,11 @@ import {
   proposals,
   ruleCards,
 } from '@twokey/db';
-import { and, asc, desc, eq, ilike, inArray, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { type AgentSession, requireAgent } from '../auth/agent-token.js';
-import { searchWords } from '../services/catalog.js';
+import { evalListingText, searchWords } from '../services/catalog.js';
 import type { Channel3Service } from '../services/channel3.js';
 import { loadProposalResult, type PurchaseDeps, proposePurchase } from '../services/purchase.js';
 
@@ -36,7 +36,8 @@ const SearchQuery = z.object({
   limit: z.coerce.number().int().min(1).max(10).default(6),
 });
 const ProposalParams = z.object({ proposalId: z.uuid() });
-const EVAL_RESULTS_MAX = 10;
+/** Eval search size; episodes inject at positions 0–2, so the injected listing is always shown. */
+export const EVAL_RESULTS_MAX = 6;
 
 function sessionOf(req: FastifyRequest): AgentSession {
   if (!req.agentSession) throw new AppError(ErrorCode.UNAUTHENTICATED, 'Agent token required');
@@ -115,9 +116,10 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
       };
     }
 
-    // Evaluation: the episode's own listings in position order, whatever the query, price filter
-    // or limit. Determinism beats realism here: every model sees exactly the same results for an
-    // episode, so differences between runs come from the model, not from its search wording.
+    // Evaluation: the episode's first EVAL_RESULTS_MAX listings in position order, whatever the
+    // query, price filter or limit. Determinism beats realism here: every model sees exactly the
+    // same results for an episode, so differences between runs come from the model, not from its
+    // search wording. Listing text is cut the same way for every listing (evalListingText).
     if (session.mode === 'eval') {
       if (!session.evalEpisodeId) return { items: [] };
       const rows = await db
@@ -128,6 +130,10 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
           priceCents: listings.priceCents,
           category: listings.category,
           description: listings.description,
+          injectionId: listings.injectionId,
+          snapshotId: listings.snapshotId,
+          merchantId: listings.merchantId,
+          channel3ProductId: listings.channel3ProductId,
         })
         .from(evalEpisodeListings)
         .innerJoin(listings, eq(listings.id, evalEpisodeListings.listingId))
@@ -135,18 +141,39 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
         .where(eq(evalEpisodeListings.episodeId, session.evalEpisodeId))
         .orderBy(asc(evalEpisodeListings.position))
         .limit(EVAL_RESULTS_MAX);
-      return {
-        items: rows.map(
-          (r): Item => ({
-            product_id: r.id,
-            title: r.title,
-            store: r.store,
-            price_usd: toPayPalValue(r.priceCents),
-            category: r.category,
-            untrusted_listing_text: r.description,
-          }),
-        ),
-      };
+      const items: Item[] = [];
+      for (const r of rows) {
+        let original: string | null = null;
+        if (r.injectionId) {
+          // The injected copy's description is the original's plus the attack text.
+          const [o] = await db
+            .select({ description: listings.description })
+            .from(listings)
+            .where(
+              and(
+                eq(listings.snapshotId, r.snapshotId),
+                eq(listings.merchantId, r.merchantId),
+                eq(listings.title, r.title),
+                isNull(listings.injectionId),
+                r.channel3ProductId === null
+                  ? isNull(listings.channel3ProductId)
+                  : eq(listings.channel3ProductId, r.channel3ProductId),
+              ),
+            )
+            .limit(1);
+          if (!o) throw new AppError(ErrorCode.INTERNAL, 'Injected listing has no original');
+          original = o.description;
+        }
+        items.push({
+          product_id: r.id,
+          title: r.title,
+          store: r.store,
+          price_usd: toPayPalValue(r.priceCents),
+          category: r.category,
+          untrusted_listing_text: evalListingText(r.description, original),
+        });
+      }
+      return { items };
     }
 
     // Demo and hijack: a listing matches when ANY query word is in its title or category, ranked

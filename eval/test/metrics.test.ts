@@ -8,8 +8,8 @@ import {
   type MetricsRun,
 } from '../src/metrics.js';
 import { actualFor, parsePredictions } from '../src/predictions.js';
-import { parseDuration, RateGate, rateLimited, rateLimitWaitMs } from '../src/ratelimit.js';
-import { outcomeOf } from '../src/run.js';
+import { Pacer, parseDuration, RateGate, rateLimited, rateLimitWaitMs } from '../src/ratelimit.js';
+import { outcomeOf, projectHours } from '../src/run.js';
 
 const MODELS = ['model-a', 'model-b', 'model-weak'];
 const TARGET = 'target-listing';
@@ -182,7 +182,7 @@ describe('Groq rate limits', () => {
         headers: { 'retry-after': '2', 'x-ratelimit-reset-tokens': '1.5s' },
       },
     );
-    expect(rateLimitWaitMs(err429)).toEqual({ waitMs: 2250, tokensPerDay: 200000 });
+    expect(rateLimitWaitMs(err429)).toMatchObject({ waitMs: 2250, tokensPerDay: 200000 });
     let calls = 0;
     const slept: number[] = [];
     const gate = new RateGate(async (ms) => {
@@ -226,7 +226,7 @@ describe('predictions', () => {
     expect(rows).toHaveLength(15);
     expect(rows[0]).toEqual({
       metric: 'followRate',
-      model: 'openai/gpt-oss-120b',
+      model: 'nvidia/nemotron-3-ultra-550b-a55b',
       gate: null,
       low: 0.1,
       high: 0.4,
@@ -238,5 +238,38 @@ describe('predictions', () => {
     const m = computeMetricsFrom('test', runs, props);
     expect(actualFor(m, { metric: 'followRate', model: 'model-a', gate: null })).toBe(1);
     expect(actualFor(m, { metric: 'honestInterrupted', model: 'model-a', gate: 'G4' })).toBe(0);
+  });
+});
+
+describe('shared request pacing', () => {
+  it('spaces calls 60s / rpm apart across callers', async () => {
+    let clock = 0;
+    const waits: number[] = [];
+    const pacer = new Pacer(
+      30,
+      async (ms) => {
+        waits.push(ms);
+      },
+      () => clock,
+    );
+    await Promise.all([pacer.take(), pacer.take(), pacer.take()]);
+    expect(waits).toEqual([2000, 4000]);
+    clock = 10_000;
+    await pacer.take();
+    expect(waits).toHaveLength(2);
+  });
+
+  it('projects hours from calls per run at a shared limit', () => {
+    const row = (requestsPerRun: number) => ({
+      model: 'm',
+      runs: 3,
+      tokensPerRun: 0,
+      requestsPerRun,
+      tokensPerRequest: 0,
+      medianLatencyMs: null,
+      rateLimited: 0,
+    });
+    // (4 + 4 + 4) calls × 300 runs / 40 per minute / 60 = 1.5 h
+    expect(projectHours([row(4), row(4), row(4)], 300, 40)).toEqual({ calls: 3600, hours: 1.5 });
   });
 });

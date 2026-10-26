@@ -1,27 +1,36 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { costUsd } from '@twokey/agent-runner/pricing';
+import { costUsd, parseModelList } from '@twokey/agent-runner/pricing';
 import { AppError, type Env, ErrorCode } from '@twokey/core';
 import { type Db, evalEpisodes, evalRuns, evalTasks, listings, proposals, spend } from '@twokey/db';
 import { and, asc, eq, isNull } from 'drizzle-orm';
+import OpenAI from 'openai';
 import { z } from 'zod';
 import type { Split } from './run.js';
 
-export const GRADER_MODEL = 'claude-haiku-5-5';
+/** The grader is the large evaluation model: the first EVAL_MODELS entry. */
+export function graderModel(env: Pick<Env<'eval'>, 'EVAL_MODELS'>): string {
+  const [first] = parseModelList(env.EVAL_MODELS);
+  if (!first) throw new AppError(ErrorCode.CONFIG_INVALID, 'EVAL_MODELS is empty');
+  return first;
+}
+
 /** Shown next to every number this produces. */
-export const LLM_GRADED = 'LLM-graded';
+export const llmGradedLabel = (model: string) => `LLM-graded (${model})`;
 
 const GRADE_TOOL = {
-  name: 'record_grade',
-  description: 'Record whether the proposed product matches the shopper request.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      matches: {
-        type: 'boolean',
-        description: 'true only if the product fits every product detail the shopper asked for',
+  type: 'function' as const,
+  function: {
+    name: 'record_grade',
+    description: 'Record whether the proposed product matches the shopper request.',
+    parameters: {
+      type: 'object',
+      properties: {
+        matches: {
+          type: 'boolean',
+          description: 'true only if the product fits every product detail the shopper asked for',
+        },
       },
+      required: ['matches'],
     },
-    required: ['matches'],
   },
 };
 const GradeOutput = z.object({ matches: z.boolean() });
@@ -35,14 +44,13 @@ export async function grade(
   db: Db,
   split: Split,
   out: (line: string) => void,
-): Promise<{ graded: number; yes: number }> {
-  if (!env.ANTHROPIC_API_KEY) {
-    throw new AppError(
-      ErrorCode.CONFIG_INVALID,
-      `ANTHROPIC_API_KEY is required for ${GRADER_MODEL}`,
-    );
-  }
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 2 });
+): Promise<{ graded: number; yes: number; model: string }> {
+  const model = graderModel(env);
+  const client = new OpenAI({
+    apiKey: env.EVAL_LLM_API_KEY,
+    baseURL: env.EVAL_LLM_BASE_URL,
+    maxRetries: 2,
+  });
   const runs = await db
     .select({
       runId: evalRuns.id,
@@ -73,15 +81,15 @@ export async function grade(
       .limit(1);
     if (!first) continue;
 
-    await spend(db, 'eval', costUsd(GRADER_MODEL, 1500, 64), env.EVAL_BUDGET_USD);
-    const res = await client.messages.create({
-      model: GRADER_MODEL,
+    await spend(db, 'eval', costUsd(model, 1500, 64), env.EVAL_BUDGET_USD);
+    const res = await client.chat.completions.create({
+      model,
       max_tokens: 64,
       temperature: 0,
-      system: SYSTEM,
       tools: [GRADE_TOOL],
-      tool_choice: { type: 'tool', name: GRADE_TOOL.name },
+      tool_choice: { type: 'function', function: { name: GRADE_TOOL.function.name } },
       messages: [
+        { role: 'system', content: SYSTEM },
         {
           role: 'user',
           content: JSON.stringify({
@@ -91,8 +99,14 @@ export async function grade(
         },
       ],
     });
-    const call = res.content.find((b) => b.type === 'tool_use');
-    const parsed = GradeOutput.safeParse(call?.type === 'tool_use' ? call.input : undefined);
+    const call = res.choices[0]?.message.tool_calls?.find((c) => c.type === 'function');
+    let input: unknown;
+    try {
+      input = call?.type === 'function' ? JSON.parse(call.function.arguments) : undefined;
+    } catch {
+      input = undefined;
+    }
+    const parsed = GradeOutput.safeParse(input);
     if (!parsed.success) {
       throw new AppError(ErrorCode.UPSTREAM_LLM, `Grader returned no grade for run ${run.runId}`);
     }
@@ -103,6 +117,6 @@ export async function grade(
     graded++;
     if (parsed.data.matches) yes++;
   }
-  out(`graded ${graded} clean runs with ${GRADER_MODEL} (${LLM_GRADED}): ${yes} match`);
-  return { graded, yes };
+  out(`graded ${graded} clean runs (${llmGradedLabel(model)}): ${yes} match`);
+  return { graded, yes, model };
 }

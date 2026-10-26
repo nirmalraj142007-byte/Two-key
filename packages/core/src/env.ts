@@ -99,8 +99,13 @@ const schemas = {
     AGENT_LLM_API_KEY: nonEmpty.optional(),
     /** Model for live and hijack sessions. */
     AGENT_MODEL: nonEmpty.default('openai/gpt-oss-120b'),
+    /** OpenAI-compatible endpoint for eval sessions (NVIDIA NIM); live and hijack stay on AGENT_LLM_*. */
+    EVAL_LLM_BASE_URL: url.default('https://integrate.api.nvidia.com/v1'),
+    EVAL_LLM_API_KEY: nonEmpty.optional(),
     /** Checked for pricing at startup so an eval run cannot start with an unpriced model. */
-    EVAL_MODELS: nonEmpty.default('openai/gpt-oss-120b,qwen/qwen3.8-27b,openai/gpt-oss-20b'),
+    EVAL_MODELS: nonEmpty.default(
+      'nvidia/nemotron-3-ultra-550b-a55b,openai/gpt-oss-20b,nvidia/nemotron-3.5-bolt-e4b',
+    ),
     MCP_URL: url,
     DAILY_BUDGET_USD_LIVE: z.coerce.number().nonnegative().default(5),
     DAILY_BUDGET_USD_HIJACK: z.coerce.number().nonnegative().default(10),
@@ -112,16 +117,21 @@ const schemas = {
     DATABASE_URL: databaseUrl,
     ANTHROPIC_API_KEY: nonEmpty.optional(),
     AGENT_LLM_BASE_URL: url.default('https://api.groq.com/openai/v1'),
-    AGENT_LLM_API_KEY: nonEmpty,
+    AGENT_LLM_API_KEY: nonEmpty.optional(),
+    /** Evaluation models are served by NVIDIA NIM's OpenAI-compatible API. */
+    EVAL_LLM_BASE_URL: url.default('https://integrate.api.nvidia.com/v1'),
+    EVAL_LLM_API_KEY: nonEmpty,
     /** Comma list of evaluation models. */
-    EVAL_MODELS: nonEmpty.default('openai/gpt-oss-120b,qwen/qwen3.8-27b,openai/gpt-oss-20b'),
+    EVAL_MODELS: nonEmpty.default(
+      'nvidia/nemotron-3-ultra-550b-a55b,openai/gpt-oss-20b,nvidia/nemotron-3.5-bolt-e4b',
+    ),
     COMPILER_API_KEY: nonEmpty.optional(),
     CHANNEL3_API_KEY: nonEmpty,
     GATEWAY_URL: url,
     MCP_URL: url,
     EVAL_ADMIN_TOKEN: z.string().min(32).optional(),
     /** The model the Oct 29 checkpoint looks at. */
-    EVAL_WEAK_MODEL: nonEmpty.default('openai/gpt-oss-20b'),
+    EVAL_WEAK_MODEL: nonEmpty.default('nvidia/nemotron-3.5-bolt-e4b'),
     /** Daily cap for budget scope 'eval'. */
     EVAL_BUDGET_USD: z.coerce.number().nonnegative().default(25),
   }),
@@ -142,6 +152,8 @@ export const SECRET_OWNERS: Record<string, ServiceName[]> = {
   ANTHROPIC_API_KEY: ['web', 'agent-runner', 'eval'],
   COMPILER_API_KEY: ['web', 'eval'],
   AGENT_LLM_API_KEY: ['agent-runner', 'eval'],
+  EVAL_LLM_API_KEY: ['agent-runner', 'eval'],
+  NIM_API_KEY: ['agent-runner', 'eval'],
   EVAL_ADMIN_TOKEN: ['gateway', 'eval'],
 };
 

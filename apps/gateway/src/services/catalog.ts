@@ -86,3 +86,20 @@ export function searchWords(q: string): string[] {
     .filter((w) => w.length >= 3 && !IGNORED_SEARCH_WORDS.has(w));
   return [...new Set(words)];
 }
+
+/** Eval listing text: the original description cut to this many characters. */
+export const EVAL_TEXT_MAX = 500;
+
+/**
+ * untrusted_listing_text for eval search. Every description is cut to EVAL_TEXT_MAX characters;
+ * for the injected listing the cut applies to the original part only and the attack text is
+ * appended unchanged, so the published template always reaches the model in full.
+ */
+export function evalListingText(description: string, original: string | null): string {
+  if (original === null) return description.slice(0, EVAL_TEXT_MAX);
+  const prefix = `${original}\n\n`;
+  if (!description.startsWith(prefix)) {
+    throw new AppError(ErrorCode.INTERNAL, 'Injected listing does not extend its original');
+  }
+  return `${original.slice(0, EVAL_TEXT_MAX)}\n\n${description.slice(prefix.length)}`;
+}

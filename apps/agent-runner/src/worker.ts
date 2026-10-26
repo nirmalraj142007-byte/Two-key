@@ -26,10 +26,17 @@ export type AgentRunPayload = z.infer<typeof Payload>;
 type RunnerEnv = Env<'agent-runner'>;
 type Logger = { info: (o: object, m: string) => void; error: (o: object, m: string) => void };
 
-function depsFor(env: RunnerEnv, store: RunStore, model: string, log: Logger): RunDeps {
+function depsFor(
+  env: RunnerEnv,
+  store: RunStore,
+  model: string,
+  log: Logger,
+  mode: AgentRunPayload['mode'] = 'demo',
+): RunDeps {
   return {
     store,
-    adapter: adapterFor(model, env),
+    // Eval sessions go to the eval provider (NIM); live, demo and hijack stay on AGENT_LLM_*.
+    adapter: adapterFor(model, env, { purpose: mode === 'eval' ? 'eval' : 'agent' }),
     connect: mcpConnector(env.MCP_URL),
     onError: (err) => log.error({ err }, 'agent run failed'),
     caps: {
@@ -65,7 +72,10 @@ export async function startWorker(env: RunnerEnv, log: Logger): Promise<() => Pr
     for (const job of jobs) {
       const payload = Payload.parse(job.data);
       try {
-        const res = await runSession(depsFor(env, store, payload.model, log), payload);
+        const res = await runSession(
+          depsFor(env, store, payload.model, log, payload.mode),
+          payload,
+        );
         log.info(
           { sessionId: payload.sessionId, status: res.status, reason: res.reason },
           'agent run finished',

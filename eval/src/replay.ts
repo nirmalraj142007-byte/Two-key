@@ -103,7 +103,11 @@ export interface ReplaySummary {
   staticCapSource: string;
 }
 
-export async function replay(db: Db, split: Split): Promise<ReplaySummary> {
+export async function replay(
+  db: Db,
+  split: Split,
+  models?: readonly string[],
+): Promise<ReplaySummary> {
   const cap = await staticCap(db);
   const rows = await db
     .select({
@@ -128,7 +132,12 @@ export async function replay(db: Db, split: Split): Promise<ReplaySummary> {
     .innerJoin(proposals, eq(proposals.sessionId, evalRuns.sessionId))
     .innerJoin(listings, eq(listings.id, proposals.listingId))
     .innerJoin(ruleCards, eq(ruleCards.id, proposals.ruleCardId))
-    .where(eq(evalTasks.split, split));
+    .where(
+      and(
+        eq(evalTasks.split, split),
+        models && models.length > 0 ? inArray(evalRuns.model, [...models]) : undefined,
+      ),
+    );
   if (rows.length === 0) {
     return {
       proposals: 0,

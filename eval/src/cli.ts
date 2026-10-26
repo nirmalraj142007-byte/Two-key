@@ -11,7 +11,7 @@ import { loadAgentDojo, loadInjecAgent, PINNED } from './attacks.js';
 import { CACHE_DIR, Channel3Cache, sdkFetch } from './channel3.js';
 import { buildDataset } from './dataset.js';
 import { buildManifest, MANIFEST_PATH, tagFreeze } from './freeze.js';
-import { grade, LLM_GRADED } from './grade.js';
+import { grade } from './grade.js';
 import { computeMetrics, GATES, type Metrics, metricsPath } from './metrics.js';
 import { persistDataset } from './persist.js';
 import {
@@ -144,6 +144,12 @@ function splitFlag(args: string[]): Split {
   return split;
 }
 
+/** Optional --models a,b for replay and metrics; absent means every model with runs. */
+function modelsFlag(args: string[]): string[] | undefined {
+  const raw = flag(args, '--models');
+  return raw === undefined || raw === 'all' ? undefined : parseModelList(raw);
+}
+
 async function withDb<T>(fn: (db: ReturnType<typeof createDb>['db']) => Promise<T>): Promise<T> {
   const env = loadBuildEnv();
   const { db, sql } = createDb(env.DATABASE_URL);
@@ -178,6 +184,16 @@ async function run(args: string[]) {
         split,
         models,
         concurrency: Number(flag(args, '--concurrency') ?? 3),
+        concurrencyFor: Object.fromEntries(
+          (flag(args, '--concurrency-for') ?? '')
+            .split(',')
+            .filter(Boolean)
+            .map((kv) => {
+              const at = kv.lastIndexOf('=');
+              return [kv.slice(0, at), Number(kv.slice(at + 1))];
+            }),
+        ),
+        rpm: Number(flag(args, '--rpm') ?? 35),
         pilot,
         maxWaitMinutes: Number(flag(args, '--max-wait-minutes') ?? 60),
       },
@@ -193,6 +209,7 @@ const bound = (v: number | null) => (v === null ? '—' : `≤ ${pct(v)}`);
 
 function printMetrics(m: Metrics) {
   out(`metrics ${m.split} (${m.gateVersion}) → ${metricsPath(m.split)}`);
+  if (m.modelsFilter) out(`models filter: ${m.modelsFilter.join(', ')}`);
   for (const [model, x] of Object.entries(m.models)) {
     out(model);
     out(
@@ -212,6 +229,19 @@ function printMetrics(m: Metrics) {
         ` · held by anomaly ${pct(i.heldShare)} · blocked ${pct(i.blockedShare)}`,
     );
     out(`  rule of three (G4 attacker captures = 0): ${bound(x.ruleOfThree)}`);
+    const ft = x.followByTarget;
+    out(
+      `  followed by target: outside_rules ${ft.outside_rules.followed}/${ft.outside_rules.available} (${pct(ft.outside_rules.rate)})` +
+        ` · inside_rules ${ft.inside_rules.followed}/${ft.inside_rules.available} (${pct(ft.inside_rules.rate)})`,
+    );
+    const why = Object.entries(x.g4Interruptions.blockedBy)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([rule, n]) => `${rule} ${n}`)
+      .join(', ');
+    out(
+      `  G4 honest interruptions (${x.gates.G4.honestInterruptedCount}): anomaly hold ${x.g4Interruptions.anomalyHold}` +
+        ` · blocked by: ${why || 'none'}`,
+    );
   }
   out(`pooled: attacked ${m.pooled.attacked} · rule of three ${bound(m.pooled.ruleOfThree)}`);
   out(`attackerMoneyCentsG4 = ${m.attackerMoneyCentsG4}`);
@@ -245,8 +275,8 @@ async function predictionsCmd(args: string[]) {
 
 const USAGE = [
   'usage: npm run eval -- <build|freeze|run|replay|grade|metrics|predictions|checkpoint>',
-  '  run --split dev|test [--models all|a,b] [--concurrency 3 (per model)] [--pilot N] [--max-wait-minutes 60]',
-  `  grade --split dev|test   labels product_detail_ok (${LLM_GRADED})`,
+  '  run --split dev|test [--models all|a,b] [--concurrency 3 (per model)] [--concurrency-for model=N,...] [--rpm 35 (all models)] [--pilot N (per model)] [--max-wait-minutes 60]',
+  '  grade --split dev|test   labels product_detail_ok (LLM-graded, first EVAL_MODELS entry)',
   '',
 ].join('\n');
 
@@ -257,7 +287,8 @@ try {
   else if (command === 'run') await run(rest);
   else if (command === 'replay') {
     const split = splitFlag(rest);
-    const r = await withDb((db) => replay(db, split));
+    const models = modelsFlag(rest);
+    const r = await withDb((db) => replay(db, split, models));
     out(
       `replayed ${r.proposals} proposals × ${GATES.length} gates: ${r.decisionsWritten} decisions written` +
         ` (static cap ${r.staticCapCents} cents from ${r.staticCapSource}); every live G4 matched`,
@@ -273,7 +304,8 @@ try {
     }
   } else if (command === 'metrics') {
     const split = splitFlag(rest);
-    printMetrics(await withDb((db) => computeMetrics(db, split)));
+    const models = modelsFlag(rest);
+    printMetrics(await withDb((db) => computeMetrics(db, split, models)));
   } else if (command === 'predictions') await predictionsCmd(rest);
   else if (command === 'checkpoint') {
     const env = loadEnv('eval');
