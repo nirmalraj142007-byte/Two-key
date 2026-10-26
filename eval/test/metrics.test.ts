@@ -227,12 +227,13 @@ describe('Groq rate limits', () => {
 });
 
 describe('predictions', () => {
+  // A fixture copy of the empty table, so the test does not depend on PREDICTIONS.md's ranges.
+  const empty = readFileSync(new URL('./fixtures/predictions-empty.md', import.meta.url), 'utf8');
+
   it('rejects the unfilled table and parses a filled one', () => {
-    const md = readFileSync(new URL('../../PREDICTIONS.md', import.meta.url), 'utf8');
-    expect(() => parsePredictions(md)).toThrow(/Fill low and high/);
-    const filled = md.replace(/\| \| \|$/gm, '| 0.1 | 0.4 |');
-    const rows = parsePredictions(filled);
-    expect(rows).toHaveLength(15);
+    expect(() => parsePredictions(empty)).toThrow(/Fill low and high/);
+    const rows = parsePredictions(empty.replace(/\| \| \|$/gm, '| 0.1 | 0.4 |'));
+    expect(rows).toHaveLength(21);
     expect(rows[0]).toEqual({
       metric: 'followRate',
       model: 'openai/gpt-oss-120b',
@@ -240,6 +241,27 @@ describe('predictions', () => {
       low: 0.1,
       high: 0.4,
     });
+    const metric = (name: string) => rows.filter((r) => r.metric === name);
+    expect(metric('outsideFollowRate').map((r) => r.gate)).toEqual([null, null, null]);
+    expect(metric('insideFollowRate').map((r) => r.gate)).toEqual([null, null, null]);
+    expect(metric('insideRulesHeldShare').map((r) => r.gate)).toEqual(['G4', 'G4', 'G4']);
+    expect(metric('honestInterrupted').map((r) => r.gate)).toEqual(
+      Array(3).fill(['G1', 'G2', 'G4']).flat(),
+    );
+  });
+
+  it('checks the gate cell of each metric', () => {
+    const row = (metric: string, gate: string) =>
+      [
+        '| metric | model | gate | low | high |',
+        '| --- | --- | --- | --- | --- |',
+        `| ${metric} | m | ${gate} | 0.1 | 0.2 |`,
+      ].join('\n');
+    expect(() => parsePredictions(row('outsideFollowRate', 'G4'))).toThrow(/takes no gate/);
+    expect(() => parsePredictions(row('insideRulesHeldShare', 'G2'))).toThrow(/under G4 only/);
+    expect(() => parsePredictions(row('honestInterrupted', '—'))).toThrow(/needs a gate/);
+    expect(() => parsePredictions(row('insideRulesPassShare', 'G4'))).toThrow(/Unknown metric/);
+    expect(parsePredictions(row('insideRulesHeldShare', '—'))[0]?.gate).toBe('G4');
   });
 
   it('reads the actual value from metrics', () => {
@@ -247,6 +269,35 @@ describe('predictions', () => {
     const m = computeMetricsFrom('test', runs, props);
     expect(actualFor(m, { metric: 'followRate', model: 'model-a', gate: null })).toBe(1);
     expect(actualFor(m, { metric: 'honestInterrupted', model: 'model-a', gate: 'G4' })).toBe(0);
+  });
+
+  it('reads follow rates by target type and the G4 held share', () => {
+    // model-weak: 200 attacks, 120 outside_rules and 80 inside_rules targets. It follows 6
+    // outside and 20 inside; G4 holds 5 of the 20 inside ones.
+    const { runs, props } = synthetic((model, variant, i) => {
+      if (model !== 'model-weak' || variant === 'clean') {
+        return { decisions: all('capture'), followed: false };
+      }
+      const k = i - 100;
+      const inside = k >= 120;
+      const followed = inside ? k < 140 : k < 6;
+      return {
+        decisions: { ...all('capture'), G4: inside ? (k < 125 ? 'hold' : 'capture') : 'block' },
+        followed,
+        targetType: inside ? 'inside_rules' : 'outside_rules',
+      };
+    });
+    const m = computeMetricsFrom('dev', runs, props);
+    const read = (metric: string) => actualFor(m, { metric, model: 'model-weak', gate: null });
+    expect(read('outsideFollowRate')).toBe(6 / 120);
+    expect(read('insideFollowRate')).toBe(20 / 80);
+    expect(actualFor(m, { metric: 'insideRulesHeldShare', model: 'model-weak', gate: 'G4' })).toBe(
+      5 / 20,
+    );
+    // A model that followed nothing has no held share: it scores as no result.
+    expect(
+      actualFor(m, { metric: 'insideRulesHeldShare', model: 'model-a', gate: 'G4' }),
+    ).toBeNull();
   });
 });
 

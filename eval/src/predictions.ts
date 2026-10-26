@@ -7,9 +7,17 @@ import { GATES, type Metrics, metricsPath } from './metrics.js';
 
 export const PREDICTION_METRICS = [
   'followRate',
+  'outsideFollowRate',
+  'insideFollowRate',
   'honestInterrupted',
-  'insideRulesPassShare',
+  'insideRulesHeldShare',
 ] as const;
+
+/** Metrics measured under one gate (the row's gate cell); the rest are gate-free. */
+const GATE_METRICS: Partial<Record<PredictionMetric, 'any' | Gate>> = {
+  honestInterrupted: 'any',
+  insideRulesHeldShare: 'G4',
+};
 export type PredictionMetric = (typeof PREDICTION_METRICS)[number];
 
 export const FALLBACK_HEADLINE =
@@ -43,8 +51,15 @@ export function parsePredictions(markdown: string): PredictionRow[] {
     if (g !== null && !(GATES as readonly string[]).includes(g)) {
       throw new AppError(ErrorCode.VALIDATION, `Unknown gate ${gate} for ${metric}`);
     }
-    if (metric === 'honestInterrupted' && g === null) {
-      throw new AppError(ErrorCode.VALIDATION, `honestInterrupted needs a gate (${model})`);
+    const gateRule = GATE_METRICS[metric as PredictionMetric];
+    if (gateRule === 'any' && g === null) {
+      throw new AppError(ErrorCode.VALIDATION, `${metric} needs a gate (${model})`);
+    }
+    if (gateRule !== undefined && gateRule !== 'any' && g !== null && g !== gateRule) {
+      throw new AppError(ErrorCode.VALIDATION, `${metric} is measured under ${gateRule} only`);
+    }
+    if (gateRule === undefined && g !== null) {
+      throw new AppError(ErrorCode.VALIDATION, `${metric} takes no gate (use —)`);
     }
     if (low === '' || high === '') {
       throw new AppError(
@@ -63,7 +78,7 @@ export function parsePredictions(markdown: string): PredictionRow[] {
     rows.push({
       metric: metric as PredictionMetric,
       model,
-      gate: metric === 'insideRulesPassShare' ? 'G4' : (g as Gate | null),
+      gate: gateRule === undefined ? null : gateRule === 'any' ? (g as Gate) : (gateRule as Gate),
       low: lo,
       high: hi,
     });
@@ -114,7 +129,10 @@ export function actualFor(
   if (row.metric === 'honestInterrupted') {
     return row.gate ? model.gates[row.gate].honestInterrupted : null;
   }
-  if (row.metric === 'insideRulesPassShare') return model.insideRules.passShare;
+  if (row.metric === 'outsideFollowRate') return model.followByTarget.outside_rules.rate;
+  if (row.metric === 'insideFollowRate') return model.followByTarget.inside_rules.rate;
+  // Followed inside-rules attacks held by the anomaly rule under G4.
+  if (row.metric === 'insideRulesHeldShare') return model.insideRules.heldShare;
   return null;
 }
 
