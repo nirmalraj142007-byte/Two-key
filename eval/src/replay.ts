@@ -103,11 +103,23 @@ export interface ReplaySummary {
   staticCapSource: string;
 }
 
-export async function replay(
+export interface ReplayedProposal {
+  proposalId: string;
+  decisions: Record<Gate, { outcome: GateOutcome; hits: RuleHit[] }>;
+  hasLiveG4: boolean;
+}
+
+/**
+ * Recomputes G0..G4 for every recorded proposal, in memory. With `anomalyThreshold` the task
+ * card's priceRatioThreshold is replaced (what-if analysis only; the live check is then skipped,
+ * since the stored G4 used the real threshold).
+ */
+export async function computeReplay(
   db: Db,
   split: Split,
   models?: readonly string[],
-): Promise<ReplaySummary> {
+  opts: { anomalyThreshold?: number } = {},
+): Promise<{ cap: { cents: number; source: string }; decided: ReplayedProposal[] }> {
   const cap = await staticCap(db);
   const rows = await db
     .select({
@@ -138,14 +150,7 @@ export async function replay(
         models && models.length > 0 ? inArray(evalRuns.model, [...models]) : undefined,
       ),
     );
-  if (rows.length === 0) {
-    return {
-      proposals: 0,
-      decisionsWritten: 0,
-      staticCapCents: cap.cents,
-      staticCapSource: cap.source,
-    };
-  }
+  if (rows.length === 0) return { cap, decided: [] };
 
   // Category medians exactly as the gateway's resolveListing computes them.
   const medians = await db
@@ -173,9 +178,11 @@ export async function replay(
     for (const d of live) stored.set(d.proposalId, d.outcome);
   }
 
-  const decided = rows.map((r) => {
+  const override = opts.anomalyThreshold;
+  const decided = rows.map((r): ReplayedProposal => {
     const median = medianOf.get(`${r.snapshotId}|${r.category}`) ?? null;
     const evalCard = (r.goalAttrs as { evalCard?: unknown }).evalCard;
+    const card = taskCard(r.proposalId, { status: r.cardStatus, rules: r.cardRules }, evalCard);
     const decisions = replayGates({
       proposalId: r.proposalId,
       qty: r.qty,
@@ -188,14 +195,17 @@ export async function replay(
         referenceOffers: r.referenceOffers,
         categoryMedianCents: median && median > 0 ? median : null,
       },
-      card: taskCard(r.proposalId, { status: r.cardStatus, rules: r.cardRules }, evalCard),
+      card:
+        override === undefined
+          ? card
+          : { ...card, anomaly: { ...card.anomaly, priceRatioThreshold: override } },
       taskCapCents: r.taskCapCents,
       staticCapCents: cap.cents,
       now: r.createdAt,
     });
     // Consistency check: the offline G4 must equal what the gateway decided live.
     const live = stored.get(r.proposalId);
-    if (live !== undefined && live !== decisions.G4.outcome) {
+    if (override === undefined && live !== undefined && live !== decisions.G4.outcome) {
       throw new AppError(
         ErrorCode.CONFLICT,
         `Replay mismatch on proposal ${r.proposalId}: live G4 ${live}, replayed ${decisions.G4.outcome}`,
@@ -203,7 +213,16 @@ export async function replay(
     }
     return { proposalId: r.proposalId, decisions, hasLiveG4: live !== undefined };
   });
+  return { cap, decided };
+}
 
+/** Replays at the card's own threshold and stores G0..G3 (and G4 where no live one exists). */
+export async function replay(
+  db: Db,
+  split: Split,
+  models?: readonly string[],
+): Promise<ReplaySummary> {
+  const { cap, decided } = await computeReplay(db, split, models);
   let written = 0;
   await db.transaction(async (tx) => {
     const values = decided.flatMap((d) =>
@@ -232,7 +251,7 @@ export async function replay(
     written = values.length;
   });
   return {
-    proposals: rows.length,
+    proposals: decided.length,
     decisionsWritten: written,
     staticCapCents: cap.cents,
     staticCapSource: cap.source,
