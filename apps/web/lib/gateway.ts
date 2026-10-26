@@ -1,5 +1,6 @@
 import { AppError, ErrorCode } from '@twokey/core';
 import { headers } from 'next/headers';
+import { connection } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/auth';
 import { webEnv } from './env';
@@ -18,6 +19,8 @@ export interface GatewayRequest {
 
 /** Calls a /human/* gateway route as the signed-in user, with a fresh single-use assertion. */
 export async function gatewayFetch<T>(path: string, req: GatewayRequest = {}): Promise<T> {
+  // Always request-time: each call mints a fresh, random, single-use assertion.
+  await connection();
   const session = await auth();
   if (!session?.userId) throw new AppError(ErrorCode.UNAUTHENTICATED, 'Sign in first');
   const assertion = await mintAssertion(session.userId, session.role, req.scope ? [req.scope] : []);

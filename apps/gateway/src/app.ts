@@ -83,6 +83,22 @@ function isClientError(err: unknown): err is { statusCode: number } {
   );
 }
 
+/**
+ * What a failed request logs. Database errors carry the SQL params (vault and payment-token
+ * IDs among them), so only their type and the Postgres code and constraint are kept.
+ */
+export function safeErr(err: unknown): unknown {
+  const e = err as { name?: unknown; query?: unknown; params?: unknown; cause?: unknown };
+  if (!e || typeof e !== 'object' || !('query' in e || 'params' in e)) return err;
+  const cause = (e.cause ?? {}) as { code?: unknown; constraint_name?: unknown };
+  return {
+    type: typeof e.name === 'string' ? e.name : 'DatabaseError',
+    message: 'Database query failed',
+    pgCode: typeof cause.code === 'string' ? cause.code : undefined,
+    constraint: typeof cause.constraint_name === 'string' ? cause.constraint_name : undefined,
+  };
+}
+
 export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
   const app = Fastify({
     loggerInstance: createLogger('gateway', env.LOG_LEVEL) as FastifyBaseLogger,
@@ -98,7 +114,7 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
       ? new AppError(ErrorCode.VALIDATION, 'Invalid request', { httpStatus: err.statusCode })
       : err;
     const { status, body } = toHttp(mapped, req.id);
-    if (status >= 500) req.log.error({ err }, 'request failed');
+    if (status >= 500) req.log.error({ err: safeErr(err) }, 'request failed');
     return reply.status(status).send(body);
   });
 

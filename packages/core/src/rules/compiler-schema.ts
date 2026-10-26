@@ -78,7 +78,8 @@ export function toDraftCard(out: CompilerOutput, ctx: DraftContext): DraftResult
   const needsInput: string[] = [];
   const enforcement: Enforcement = {};
 
-  const perItemCents = usdToCents(out.perItemCapUsd);
+  // A single stated cap ("max $25" read as an order total) caps each item too.
+  const perItemCents = usdToCents(out.perItemCapUsd) ?? usdToCents(out.perOrderCapUsd);
   if (perItemCents === null) needsInput.push('a price cap');
 
   const merchantIds: string[] = [];

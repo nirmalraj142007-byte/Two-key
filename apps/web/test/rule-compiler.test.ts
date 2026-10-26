@@ -3,7 +3,7 @@ import { AppError, ErrorCode, type Registry, RuleCardSchema } from '@twokey/core
 import { describe, expect, it, vi } from 'vitest';
 import type { CompilerClient, ToolCallParams, ToolCallResult } from '../lib/llm';
 import { withRetry } from '../lib/llm';
-import { compileRules } from '../lib/rule-compiler';
+import { compileRules, SYSTEM_PROMPT } from '../lib/rule-compiler';
 
 const id = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
 const registry: Registry = [
@@ -151,6 +151,48 @@ describe('compileRules', () => {
       code: ErrorCode.UPSTREAM_LLM,
     });
     expect(broken.calls).toHaveLength(2);
+  });
+
+  it('tells the model that "max/under/up to/no more than $X" is the item cap', async () => {
+    const client = fakeClient(output());
+    await compileRules(DEMO, registry, deps(client));
+    const system = client.calls[0]?.system ?? '';
+    expect(system).toBe(SYSTEM_PROMPT);
+    for (const phrase of ['max $X', 'under $X', 'up to $X', 'no more than $X']) {
+      expect(system).toContain(phrase);
+    }
+    expect(system).toContain('perItemCapUsd = X');
+  });
+
+  it('"max $25" at Corner Pantry becomes a 2500-cent item cap', async () => {
+    const pantry = (over: Record<string, unknown>) =>
+      output({
+        stores: ['corner-pantry'],
+        maxQty: null,
+        expiresInDays: null,
+        frequency: { maxPurchases: 2, windowHours: 168 },
+        advisory: [],
+        ...over,
+      });
+    const request = 'dish soap and paper towels from Corner Pantry, max $25, twice a week';
+
+    // Canned output that follows the prompt: the cap lands on perItemCapUsd.
+    const direct = await compileRules(
+      request,
+      registry,
+      deps(fakeClient(pantry({ perItemCapUsd: 25, perOrderCapUsd: null }))),
+    );
+    expect(direct.card).toMatchObject({ perItemCapCents: 2500, allowedMerchantIds: [id(3)] });
+
+    // Canned output that reads it as an order total only: the order cap caps each item too.
+    const orderOnly = await compileRules(
+      request,
+      registry,
+      deps(fakeClient(pantry({ perItemCapUsd: null, perOrderCapUsd: 25 }))),
+    );
+    expect(orderOnly.needsInput).toEqual([]);
+    expect(orderOnly.card).toMatchObject({ perItemCapCents: 2500, perOrderCapCents: 2500 });
+    expect(orderOnly.enforcement.perItemCapCents).toBe('enforced');
   });
 
   it('rejects empty and oversized requests before any model call', async () => {

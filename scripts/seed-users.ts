@@ -2,6 +2,10 @@
  * Upserts the demo users (idempotent):
  *
  *   npm run db:seed-users
+ *   npm run db:seed-users -- --email newuser@example.test
+ *
+ * With --email, only that one account is upserted (role user, DEMO_PASSWORD): a fresh user for
+ * walking through onboarding.
  *
  * maya@twokey.demo (user) and judge1–3@twokey.demo (judge_demo) get an argon2 hash of
  * DEMO_PASSWORD; hijack@twokey.system (hijack_system) has no password and cannot sign in.
@@ -27,6 +31,27 @@ const SEEDS: Seed[] = [
   { email: 'hijack@twokey.system', displayName: 'Hijack system', role: 'hijack_system' },
 ];
 
+function emailArg(argv: string[]): string | undefined {
+  const at = argv.indexOf('--email');
+  if (at === -1) return undefined;
+  const email = z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(z.email().max(254))
+    .safeParse(argv[at + 1]);
+  if (!email.success) {
+    console.error('--email needs a valid email address');
+    process.exit(1);
+  }
+  return email.data;
+}
+
+const onlyEmail = emailArg(process.argv.slice(2));
+const seeds: Seed[] = onlyEmail
+  ? [{ email: onlyEmail, displayName: onlyEmail.split('@')[0] ?? onlyEmail, role: 'user' }]
+  : SEEDS;
+
 const parsed = Env.safeParse(process.env);
 if (!parsed.success) {
   const keys = [...new Set(parsed.error.issues.map((i) => String(i.path[0])))];
@@ -38,7 +63,7 @@ const { db, sql } = createDb(env.DATABASE_URL);
 
 try {
   const passwordHash = await hash(env.DEMO_PASSWORD);
-  for (const seed of SEEDS) {
+  for (const seed of seeds) {
     const hashed = seed.role === 'hijack_system' ? null : passwordHash;
     await db
       .insert(users)

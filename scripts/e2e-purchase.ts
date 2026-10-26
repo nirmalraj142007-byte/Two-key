@@ -85,8 +85,8 @@ async function bootstrap() {
       status: 'active',
     })
     .onConflictDoUpdate({
-      target: vaultTokens.paymentTokenId,
-      set: { userId: user.id, status: 'active', deletedAt: null },
+      target: [vaultTokens.userId, vaultTokens.paymentTokenId],
+      set: { status: 'active', deletedAt: null },
     });
 
   const merchantRows = await db.select().from(merchants);

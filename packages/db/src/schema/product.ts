@@ -55,13 +55,17 @@ export const vaultTokens = pgTable(
       .notNull()
       .references(() => users.id),
     paypalCustomerId: text('paypal_customer_id').notNull(),
-    paymentTokenId: text('payment_token_id').notNull().unique(),
+    // PayPal reuses one payment token for the same buyer, so several accounts (judges sharing
+    // the sandbox buyer) can hold it. Unique per user, not globally.
+    paymentTokenId: text('payment_token_id').notNull(),
     status: vaultTokenStatus('status').notNull(),
     createdAt: createdAt(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => [
     uniqueIndex('vault_tokens_one_active_per_user').on(t.userId).where(sql`${t.status} = 'active'`),
+    unique('vault_tokens_user_payment_token').on(t.userId, t.paymentTokenId),
+    index('vault_tokens_payment_token').on(t.paymentTokenId),
   ],
 );
 

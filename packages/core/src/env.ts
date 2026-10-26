@@ -70,6 +70,10 @@ const schemas = {
     AUTH_SECRET: nonEmpty,
     HUMAN_ASSERTION_PRIVATE_KEY: pem,
     GATEWAY_URL: url,
+    /** Public origin of this app; PayPal returns here after the vault approval. */
+    WEB_ORIGIN: url.default('http://localhost:3000'),
+    /** Streamable HTTP endpoint shown to users who connect their own agent. */
+    MCP_PUBLIC_URL: url.default('http://localhost:4100/mcp'),
     /** Only needed when COMPILER_PROVIDER=anthropic. */
     ANTHROPIC_API_KEY: nonEmpty.optional(),
     /** Rule compiler: any OpenAI-compatible endpoint (default Groq), or Anthropic. */

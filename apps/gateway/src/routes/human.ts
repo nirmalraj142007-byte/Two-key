@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { AppError, ErrorCode, fingerprint, RuleCardSchema, signCard } from '@twokey/core';
 import { agentSessions, type Db, ruleCards, vaultTokens } from '@twokey/db';
 import type { VaultApi } from '@twokey/paypal';
-import { and, desc, eq, gt } from 'drizzle-orm';
+import { and, desc, eq, gt, ne } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { LRUCache } from 'lru-cache';
 import { z } from 'zod';
@@ -82,6 +82,9 @@ export const humanRoutes: FastifyPluginAsync<HumanRouteOptions> = async (app, op
     max: 10_000,
     ttl: SETUP_TOKEN_TTL_MS,
   });
+  // userId -> the setup token most recently turned into this user's wallet, so a repeated
+  // return (reload, double submit) answers "connected" instead of 404.
+  const savedSetupTokens = new LRUCache<string, string>({ max: 10_000, ttl: SETUP_TOKEN_TTL_MS });
 
   app.decorateRequest('human', null);
 
@@ -145,27 +148,55 @@ export const humanRoutes: FastifyPluginAsync<HumanRouteOptions> = async (app, op
     async (req) => {
       const { userId } = humanOf(req);
       const { setupTokenId } = parse(PaymentTokenBody, req.body, 'Body must be { setupTokenId }');
+      // The same approval sent twice (reload, second tab): same answer, no second PayPal call.
+      if (
+        savedSetupTokens.get(userId) === setupTokenId &&
+        (await activeVaultToken(userId)) !== undefined
+      ) {
+        return { connected: true };
+      }
       // Only the setup token created for this user, in this onboarding: a stale or foreign
       // approval is rejected before PayPal is asked to turn it into a payment token.
       if (pendingSetupTokens.get(userId) !== setupTokenId) throw notFound('Setup token');
 
-      const created = await vault.createPaymentToken({
-        setupTokenId,
-        requestId: `tk-vault-${setupTokenId}`,
-      });
+      let created: Awaited<ReturnType<typeof vault.createPaymentToken>>;
+      try {
+        created = await vault.createPaymentToken({
+          setupTokenId,
+          requestId: `tk-vault-${setupTokenId}`,
+        });
+      } catch (err) {
+        // PayPal refusing the approval (expired, not approved, already used) is final; asking
+        // again cannot help, so the user starts over. 429/5xx stay retryable errors.
+        if (err instanceof AppError && err.code === ErrorCode.UPSTREAM_PAYPAL && !err.retryable) {
+          pendingSetupTokens.delete(userId);
+          req.log.warn({ event: 'setup_token_refused', details: err.details }, 'approval refused');
+          throw new AppError(ErrorCode.NOT_FOUND, 'PayPal approval expired or not found');
+        }
+        throw err;
+      }
       await db.transaction(async (tx) => {
         await tx
           .update(vaultTokens)
           .set({ status: 'deleted', deletedAt: now() })
           .where(and(eq(vaultTokens.userId, userId), eq(vaultTokens.status, 'active')));
-        await tx.insert(vaultTokens).values({
-          userId,
-          paypalCustomerId: created.customerId,
-          paymentTokenId: created.paymentTokenId,
-          status: 'active',
-        });
+        // PayPal hands back the same payment token for a buyer it has vaulted before (another
+        // account, or this user reconnecting): reactivate this user's row instead of failing.
+        await tx
+          .insert(vaultTokens)
+          .values({
+            userId,
+            paypalCustomerId: created.customerId,
+            paymentTokenId: created.paymentTokenId,
+            status: 'active',
+          })
+          .onConflictDoUpdate({
+            target: [vaultTokens.userId, vaultTokens.paymentTokenId],
+            set: { paypalCustomerId: created.customerId, status: 'active', deletedAt: null },
+          });
       });
       pendingSetupTokens.delete(userId);
+      savedSetupTokens.set(userId, setupTokenId);
       req.log.info({ event: 'vault_connected' }, 'vault connected');
       return { connected: true };
     },
@@ -178,7 +209,20 @@ export const humanRoutes: FastifyPluginAsync<HumanRouteOptions> = async (app, op
     }
     const token = await activeVaultToken(userId);
     if (!token) throw notFound('PayPal wallet');
-    await vault.deletePaymentToken(token.paymentTokenId);
+    // The same PayPal token may back another account's wallet; delete it at PayPal only when
+    // this user is its last active holder.
+    const [shared] = await db
+      .select({ id: vaultTokens.id })
+      .from(vaultTokens)
+      .where(
+        and(
+          eq(vaultTokens.paymentTokenId, token.paymentTokenId),
+          eq(vaultTokens.status, 'active'),
+          ne(vaultTokens.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!shared) await vault.deletePaymentToken(token.paymentTokenId);
     await db
       .update(vaultTokens)
       .set({ status: 'deleted', deletedAt: now() })

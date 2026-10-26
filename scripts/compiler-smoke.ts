@@ -1,4 +1,7 @@
-/* Real API: compiles five requests once each. Run with `npm run compiler:smoke`. */
+/*
+ * Real API: compiles five requests once each. Run with `npm run compiler:smoke`.
+ * `-- --only <text>` runs only the requests containing that text (case-insensitive).
+ */
 import { randomUUID } from 'node:crypto';
 import { formatUSD } from '@twokey/core';
 import { spend } from '@twokey/db';
@@ -27,7 +30,12 @@ async function main(): Promise<void> {
     `provider=${client.provider} model=${client.model} registry=${registry.map((r) => r.slug).join(',')}`,
   );
 
-  for (const request of REQUESTS) {
+  const onlyAt = process.argv.indexOf('--only');
+  const only = onlyAt === -1 ? undefined : process.argv[onlyAt + 1]?.toLowerCase();
+  const requests = only ? REQUESTS.filter((r) => r.toLowerCase().includes(only)) : REQUESTS;
+  if (requests.length === 0) throw new Error(`no smoke request contains "${only}"`);
+
+  for (const request of requests) {
     out(`\n> ${request}`);
     try {
       const r = await compileRules(request, registry, {

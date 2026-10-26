@@ -34,6 +34,10 @@ services:
         sync: false
       - key: GATEWAY_URL
         sync: false
+      - key: WEB_ORIGIN
+        sync: false
+      - key: MCP_PUBLIC_URL
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: COMPILER_PROVIDER

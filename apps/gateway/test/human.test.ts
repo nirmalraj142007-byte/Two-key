@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { verifyCard } from '@twokey/core';
+import { AppError, ErrorCode, verifyCard } from '@twokey/core';
 import {
   agentSessions,
   createDb,
@@ -37,6 +37,10 @@ describe.skipIf(!baseUrl)('/human/*', () => {
   let productId = '';
   const vaultCalls: string[] = [];
   let setupCounter = 0;
+  /** When set, the fake PayPal vault returns this payment token for every setup token. */
+  let samePayPalToken: string | undefined;
+  /** When set, the fake PayPal vault refuses to turn a setup token into a payment token. */
+  let paymentTokenError: Error | undefined;
 
   /** Mirrors apps/web/lib/human-assertion.ts; `over` lets a test break one claim at a time. */
   async function assertion(
@@ -194,7 +198,11 @@ describe.skipIf(!baseUrl)('/human/*', () => {
           },
           async createPaymentToken({ setupTokenId }) {
             vaultCalls.push(`createPaymentToken ${setupTokenId}`);
-            return { paymentTokenId: `PT-${setupTokenId}`, customerId: 'CUST-1' };
+            if (paymentTokenError) throw paymentTokenError;
+            return {
+              paymentTokenId: samePayPalToken ?? `PT-${setupTokenId}`,
+              customerId: 'CUST-1',
+            };
           },
           async deletePaymentToken(id) {
             vaultCalls.push(`deletePaymentToken ${id}`);
@@ -213,6 +221,8 @@ describe.skipIf(!baseUrl)('/human/*', () => {
 
   beforeEach(() => {
     vaultCalls.length = 0;
+    samePayPalToken = undefined;
+    paymentTokenError = undefined;
   });
 
   // ---- assertion checks --------------------------------------------------------------------
@@ -357,6 +367,99 @@ describe.skipIf(!baseUrl)('/human/*', () => {
         `PT-${mine}`,
       ]);
       expect(rows.filter((r) => r.status === 'deleted')).toHaveLength(1);
+    });
+
+    it('two accounts can connect the same PayPal buyer (PayPal reuses the token)', async () => {
+      // Judges share one sandbox buyer; PayPal returns the same payment token every time.
+      samePayPalToken = `PT-shared-${randomUUID()}`;
+      const connect = async (who: { id: string; role: Role }) => {
+        const setupTokenId = (
+          await as(who, ['vault:manage'], 'POST', '/human/vault/setup-token', {
+            returnUrl: `${WEB_ORIGIN}/onboarding/paypal/return`,
+          })
+        ).body.setupTokenId as string;
+        return as(who, ['vault:manage'], 'POST', '/human/vault/payment-token', { setupTokenId });
+      };
+      const first = await newUser();
+      const second = await newUser();
+      expect((await connect(first)).status).toBe(200);
+      expect((await connect(second)).status).toBe(200);
+      // Reconnecting the same wallet reactivates the row instead of colliding with it.
+      expect((await connect(second)).status).toBe(200);
+
+      const rows = await conn.db
+        .select()
+        .from(vaultTokens)
+        .where(eq(vaultTokens.paymentTokenId, samePayPalToken));
+      expect(rows.map((r) => [r.userId, r.status]).sort()).toEqual(
+        [
+          [first.id, 'active'],
+          [second.id, 'active'],
+        ].sort(),
+      );
+
+      // Disconnecting one account leaves the PayPal token for the other.
+      vaultCalls.length = 0;
+      expect((await as(first, ['vault:manage'], 'DELETE', '/human/vault')).status).toBe(200);
+      expect(vaultCalls).toEqual([]);
+      expect((await as(second, [], 'GET', '/human/me')).body).toMatchObject({
+        vaultConnected: true,
+      });
+      // The last holder deletes it at PayPal.
+      expect((await as(second, ['vault:manage'], 'DELETE', '/human/vault')).status).toBe(200);
+      expect(vaultCalls).toEqual([`deletePaymentToken ${samePayPalToken}`]);
+    });
+
+    async function newSetupToken(user: { id: string; role: Role }): Promise<string> {
+      const res = await as(user, ['vault:manage'], 'POST', '/human/vault/setup-token', {
+        returnUrl: `${WEB_ORIGIN}/onboarding/paypal/return`,
+      });
+      return res.body.setupTokenId as string;
+    }
+
+    it('the same approval sent again after success answers connected, without PayPal', async () => {
+      const user = await newUser();
+      const setupTokenId = await newSetupToken(user);
+      const send = () =>
+        as(user, ['vault:manage'], 'POST', '/human/vault/payment-token', { setupTokenId });
+      expect((await send()).body).toEqual({ connected: true });
+      const reload = await send();
+      expect(reload.status).toBe(200);
+      expect(reload.body).toEqual({ connected: true });
+      expect(vaultCalls.filter((c) => c.startsWith('createPaymentToken'))).toHaveLength(1);
+      const rows = await conn.db.select().from(vaultTokens).where(eq(vaultTokens.userId, user.id));
+      expect(rows.map((r) => r.status)).toEqual(['active']);
+    });
+
+    it('an approval PayPal refuses (expired) is a 404 "start again", not a 5xx', async () => {
+      const user = await newUser();
+      const expired = await newSetupToken(user);
+      paymentTokenError = new AppError(ErrorCode.UPSTREAM_PAYPAL, 'PayPal 422: UNPROCESSABLE', {
+        retryable: false,
+        details: { httpStatus: 422, issues: ['SETUP_TOKEN_EXPIRED'], debug_id: 'dbg1' },
+      });
+      const sendExpired = () =>
+        as(user, ['vault:manage'], 'POST', '/human/vault/payment-token', { setupTokenId: expired });
+      const res = await sendExpired();
+      expect(res.status).toBe(404);
+      expect(res.body).toMatchObject({
+        error: { code: 'NOT_FOUND', message: 'PayPal approval expired or not found' },
+      });
+      // The refused approval is forgotten: sending it again does not reach PayPal.
+      paymentTokenError = undefined;
+      expect((await sendExpired()).status).toBe(404);
+      expect(vaultCalls.filter((c) => c.startsWith('createPaymentToken'))).toHaveLength(1);
+
+      // A PayPal outage stays a retryable 5xx and keeps the approval for a retry.
+      const second = await newSetupToken(user);
+      paymentTokenError = new AppError(ErrorCode.UPSTREAM_PAYPAL, 'PayPal 503: down', {
+        retryable: true,
+      });
+      const sendSecond = () =>
+        as(user, ['vault:manage'], 'POST', '/human/vault/payment-token', { setupTokenId: second });
+      expect((await sendSecond()).status).toBe(502);
+      paymentTokenError = undefined;
+      expect((await sendSecond()).body).toEqual({ connected: true });
     });
 
     it('DELETE /human/vault is forbidden for judge_demo and works for a user', async () => {
