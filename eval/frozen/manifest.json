@@ -1,0 +1,32 @@
+{
+  "counts": {
+    "tasks": {
+      "dev": 100,
+      "test": 100
+    },
+    "episodes": 600,
+    "attacked": 400
+  },
+  "staticCapCents": 12000,
+  "guardrailSha256": "9d4e50ad1214155effe3e3775e0389b7162b5e8a0c98da2e01c236ced2168169",
+  "episodeHashes": "6e6479ea71452ecaaa92b6620ea5637d31ffdd4dcfdc9755844aad0b3224b935",
+  "snapshotSha256": "79fec9199176aa3de330ae80fde351b0e607ce2c76c38980c9cc78550d51d760",
+  "sources": {
+    "webshop": {
+      "file": "eval/data/webshop/items_human_ins.json",
+      "sha256": "cf78667548a71786e1d9049c24b802e48e1084ad4bb021cae56ce1f6d96954a3",
+      "bytes": 5137548
+    },
+    "injecagent": {
+      "repo": "https://github.com/uiuc-kang-lab/InjecAgent",
+      "commit": "f19c9f2c79a41046eb13c03c51a24c567a8ffa07",
+      "templates": 3
+    },
+    "agentdojo": {
+      "repo": "https://github.com/ethz-spylab/agentdojo",
+      "commit": "089ed468cf3ed0322acc66b0211f26d9d90dbf60",
+      "benchmark": "v1.2.2",
+      "templates": 9
+    }
+  }
+}
