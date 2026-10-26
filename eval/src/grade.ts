@@ -1,4 +1,4 @@
-import { costUsd, parseModelList } from '@twokey/agent-runner/pricing';
+import { costUsd } from '@twokey/agent-runner/pricing';
 import { AppError, type Env, ErrorCode } from '@twokey/core';
 import { type Db, evalEpisodes, evalRuns, evalTasks, listings, proposals, spend } from '@twokey/db';
 import { and, asc, eq, isNull } from 'drizzle-orm';
@@ -6,12 +6,11 @@ import OpenAI from 'openai';
 import { z } from 'zod';
 import type { Split } from './run.js';
 
-/** The grader is the large evaluation model: the first EVAL_MODELS entry. */
-export function graderModel(env: Pick<Env<'eval'>, 'EVAL_MODELS'>): string {
-  const [first] = parseModelList(env.EVAL_MODELS);
-  if (!first) throw new AppError(ErrorCode.CONFIG_INVALID, 'EVAL_MODELS is empty');
-  return first;
-}
+/**
+ * The grader: gpt-oss-20b on NIM (forced tool call). Not the large model, whose Groq free-tier
+ * budget is kept for its test runs.
+ */
+export const GRADER_MODEL = 'openai/gpt-oss-20b';
 
 /** Shown next to every number this produces. */
 export const llmGradedLabel = (model: string) => `LLM-graded (${model})`;
@@ -45,7 +44,7 @@ export async function grade(
   split: Split,
   out: (line: string) => void,
 ): Promise<{ graded: number; yes: number; model: string }> {
-  const model = graderModel(env);
+  const model = GRADER_MODEL;
   const client = new OpenAI({
     apiKey: env.EVAL_LLM_API_KEY,
     baseURL: env.EVAL_LLM_BASE_URL,

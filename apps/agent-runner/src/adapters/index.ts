@@ -16,29 +16,48 @@ export interface LlmConfig {
 }
 
 export interface AdapterOptions {
-  /** 'eval' routes OpenAI-compatible models to EVAL_LLM_*; everything else uses AGENT_LLM_*. */
+  /** 'eval' routes OpenAI-compatible models per evalProvider(); everything else uses AGENT_LLM_*. */
   purpose?: 'agent' | 'eval';
   /** Default 'medium'; null leaves reasoning_effort out. */
   reasoningEffort?: 'low' | 'medium' | null;
 }
 
+/** Eval models served by Groq's free tier (AGENT_LLM_*); every other eval model goes to NIM. */
+export const EVAL_GROQ_MODELS: ReadonlySet<string> = new Set(['openai/gpt-oss-120b']);
+
 /** Eval models that accept reasoning_effort; every other eval model is sent none. */
-export const EVAL_REASONING_MODELS: ReadonlySet<string> = new Set(['openai/gpt-oss-20b']);
+export const EVAL_REASONING_MODELS: ReadonlySet<string> = new Set([
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
+]);
+
+export function evalProvider(model: string): 'groq' | 'nim' {
+  return EVAL_GROQ_MODELS.has(model) ? 'groq' : 'nim';
+}
 
 /** claude-* goes to Anthropic; every other model goes to an OpenAI-compatible endpoint. */
 export function adapterFor(model: string, cfg: LlmConfig, o: AdapterOptions = {}): ModelAdapter {
   if (model.startsWith('claude-')) return createAnthropicAdapter(model, cfg.ANTHROPIC_API_KEY);
   if (o.purpose === 'eval') {
+    const reasoningEffort =
+      o.reasoningEffort !== undefined
+        ? o.reasoningEffort
+        : EVAL_REASONING_MODELS.has(model)
+          ? 'low'
+          : null;
+    if (evalProvider(model) === 'groq') {
+      return createOpenAICompatibleAdapter(model, {
+        apiKey: cfg.AGENT_LLM_API_KEY,
+        baseURL: cfg.AGENT_LLM_BASE_URL,
+        onHeaders: cfg.onHeaders,
+        reasoningEffort,
+      });
+    }
     return createOpenAICompatibleAdapter(model, {
       apiKey: cfg.EVAL_LLM_API_KEY,
       baseURL: cfg.EVAL_LLM_BASE_URL ?? 'https://integrate.api.nvidia.com/v1',
       onHeaders: cfg.onHeaders,
-      reasoningEffort:
-        o.reasoningEffort !== undefined
-          ? o.reasoningEffort
-          : EVAL_REASONING_MODELS.has(model)
-            ? 'low'
-            : null,
+      reasoningEffort,
       keyName: 'EVAL_LLM_API_KEY',
     });
   }

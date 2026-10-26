@@ -104,7 +104,7 @@ const schemas = {
     EVAL_LLM_API_KEY: nonEmpty.optional(),
     /** Checked for pricing at startup so an eval run cannot start with an unpriced model. */
     EVAL_MODELS: nonEmpty.default(
-      'nvidia/nemotron-3-ultra-550b-a55b,openai/gpt-oss-20b,nvidia/nemotron-3.5-bolt-e4b',
+      'openai/gpt-oss-120b,openai/gpt-oss-20b,nvidia/nemotron-3.5-bolt-e4b',
     ),
     MCP_URL: url,
     DAILY_BUDGET_USD_LIVE: z.coerce.number().nonnegative().default(5),
@@ -123,7 +123,7 @@ const schemas = {
     EVAL_LLM_API_KEY: nonEmpty,
     /** Comma list of evaluation models. */
     EVAL_MODELS: nonEmpty.default(
-      'nvidia/nemotron-3-ultra-550b-a55b,openai/gpt-oss-20b,nvidia/nemotron-3.5-bolt-e4b',
+      'openai/gpt-oss-120b,openai/gpt-oss-20b,nvidia/nemotron-3.5-bolt-e4b',
     ),
     COMPILER_API_KEY: nonEmpty.optional(),
     CHANNEL3_API_KEY: nonEmpty,

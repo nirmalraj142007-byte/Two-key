@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { adapterFor } from '@twokey/agent-runner/adapters';
+import { adapterFor, evalProvider } from '@twokey/agent-runner/adapters';
 import { priceFor } from '@twokey/agent-runner/pricing';
 import { mcpConnector, runSession, type TranscriptEntry } from '@twokey/agent-runner/run-session';
 import { createDbStore, type RunStore } from '@twokey/agent-runner/store';
@@ -17,12 +17,17 @@ import {
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { buildManifest, MANIFEST_PATH, type Manifest } from './freeze.js';
 import {
+  budgeted,
+  DAILY_SHARE,
+  DailyBudgetStop,
+  GROQ_FREE_LIMITS,
   Pacer,
   RateGate,
   type RateLimitSnapshot,
   RateLimitStop,
   rateLimited,
   readRateLimits,
+  TokenBudget,
 } from './ratelimit.js';
 
 export type Split = 'dev' | 'test';
@@ -33,6 +38,33 @@ export const TEMPERATURE = 0;
 export const EVAL_MAX_OUTPUT_TOKENS = 768;
 /** Test runs per model, and in total, that the pilot projects to. */
 export const TEST_RUNS_PER_MODEL = 300;
+/**
+ * Models evaluated on the test split only (Groq free tier: its daily token limit fits one split).
+ * They run on dev only as an explicit --pilot.
+ */
+export const TEST_ONLY_MODELS: ReadonlySet<string> = new Set(['openai/gpt-oss-120b']);
+/** Room a Groq run needs before it may start, until a bigger run has been seen. */
+export const GROQ_RUN_RESERVE_TOKENS = 20_000;
+export const GROQ_RUN_RESERVE_CALLS = 8;
+
+/**
+ * Calls made with `model` in the last 24 h, from every session that used it (live and demo
+ * sessions share the Groq key), as { at, tokens } for TokenBudget.
+ */
+export async function groqUsageSeed(
+  db: Db,
+  model: string,
+): Promise<{ at: number; tokens: number }[]> {
+  const rows = await db.execute<{ at: string; tokens: number }>(sql`
+    select e->>'at' as at,
+           ((e->'usage'->>'inputTokens')::int + (e->'usage'->>'outputTokens')::int) as tokens
+    from ${agentSessions}, jsonb_array_elements(${agentSessions.transcript}) e
+    where ${agentSessions.model} = ${model}
+      and e ? 'usage'
+      and (e->>'at')::timestamptz > now() - interval '24 hours'`);
+  return [...rows].map((r) => ({ at: Date.parse(r.at), tokens: Number(r.tokens) }));
+}
+
 /** NIM's free tier: about 40 requests per minute, assumed shared across models. */
 export const PROVIDER_RPM = 40;
 
@@ -172,7 +204,12 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
 
   const all = await splitEpisodes(db, o.split);
   if (all.length === 0) throw new AppError(ErrorCode.CONFIG_INVALID, `No ${o.split} episodes`);
-  const models = o.models;
+  // Test-only models run on the dev split only as an explicit pilot.
+  const models = o.models.filter((m) => {
+    const skip = o.split === 'dev' && o.pilot === undefined && TEST_ONLY_MODELS.has(m);
+    if (skip) out(`${m}: test split only, skipped on dev`);
+    return !skip;
+  });
   const scope = o.pilot !== undefined ? all.slice(0, o.pilot) : all;
   // One pacer for every model: the provider's request limit may be shared across models.
   const pacer = new Pacer(o.rpm);
@@ -244,7 +281,23 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
             return res;
           },
         };
-        const adapter = rateLimited(timed, {
+        // Groq free tier: pace every call under the model's per-minute and per-day limits.
+        const groq = evalProvider(model) === 'groq';
+        const limits = GROQ_FREE_LIMITS[model];
+        if (groq && !limits) {
+          throw new AppError(ErrorCode.CONFIG_INVALID, `No Groq limits recorded for ${model}`);
+        }
+        const budget =
+          groq && limits ? new TokenBudget(model, limits, await groqUsageSeed(db, model)) : null;
+        if (budget) {
+          const left = budget.available();
+          out(
+            `${model}: Groq free tier, daily allowance left ${fmt(left.tokens)} tokens / ${fmt(left.requests)} calls` +
+              ` of ${fmt(limits?.tokensPerDay ?? 0)} / ${fmt(limits?.requestsPerDay ?? 0)} (refills continuously)`,
+          );
+        }
+        const paced = budget ? budgeted(timed, budget) : timed;
+        const adapter = rateLimited(paced, {
           model,
           gate,
           pacer,
@@ -261,21 +314,33 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
         });
 
         let next = 0;
+        // The biggest run seen so far sets how much room a new run needs today.
+        let runReserve = { tokens: GROQ_RUN_RESERVE_TOKENS, requests: GROQ_RUN_RESERVE_CALLS };
         const worker = async () => {
           while (!stopAll && !s.stopped) {
+            if (budget && !budget.roomForRun(runReserve.tokens, runReserve.requests)) {
+              s.stopped = 'Groq daily budget nearly used: resume tomorrow';
+              out(`${model}: Groq daily budget nearly used — resume tomorrow`);
+              return;
+            }
             const episode = todo[next++];
             if (!episode) return;
+            const before = { tokens: s.tokensIn + s.tokensOut, requests: s.requests };
             try {
               await runOne(model, episode, s, adapter);
             } catch (err) {
               fatal ??= err;
               stopAll = true;
             }
+            runReserve = {
+              tokens: Math.max(runReserve.tokens, s.tokensIn + s.tokensOut - before.tokens),
+              requests: Math.max(runReserve.requests, s.requests - before.requests),
+            };
           }
         };
-        await Promise.all(
-          Array.from({ length: Math.max(1, o.concurrencyFor?.[model] ?? o.concurrency) }, worker),
-        );
+        // Groq's per-minute token limit leaves room for one call at a time.
+        const concurrency = o.concurrencyFor?.[model] ?? (groq ? 1 : o.concurrency);
+        await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
       }),
     );
   } finally {
@@ -315,6 +380,12 @@ export async function runEval(env: Env<'eval'>, db: Db, o: RunOptions, out: Out)
       budgetHit = true;
       s.stopped = `eval budget (EVAL_BUDGET_USD=${env.EVAL_BUDGET_USD}) used up for today`;
       s.skipped++;
+      return;
+    }
+    if (cause instanceof DailyBudgetStop) {
+      s.stopped = `${cause.message}`;
+      s.skipped++;
+      out(`${model}: ${cause.message}`);
       return;
     }
     if (cause instanceof RateLimitStop) {
@@ -418,8 +489,24 @@ export interface PilotModelRow {
   tokensPerRun: number;
   requestsPerRun: number;
   tokensPerRequest: number;
+  /** Largest single call (input + output tokens). */
+  maxTokensPerRequest: number;
+  /** Largest call input plus the output cap: what Groq checks against its per-minute limit. */
+  maxRequestedTokens: number;
   medianLatencyMs: number | null;
   rateLimited: number;
+}
+
+/** Days for `runs` runs of one model under a daily token and request limit (share of each). */
+export function projectDays(
+  row: Pick<PilotModelRow, 'tokensPerRun' | 'requestsPerRun'>,
+  runs: number,
+  limits: { tokensPerDay: number; requestsPerDay: number },
+  share = 1,
+) {
+  const byTokens = (row.tokensPerRun * runs) / (limits.tokensPerDay * share);
+  const byRequests = (row.requestsPerRun * runs) / (limits.requestsPerDay * share);
+  return { byTokens, byRequests, days: Math.max(byTokens, byRequests) };
 }
 
 /** Hours for `runsPerModel` runs of every model when all calls share one per-minute limit. */
@@ -465,12 +552,20 @@ async function pilotReport(
       0,
     );
     const s = stats.get(model);
+    const perCall = runs.flatMap((r) =>
+      (r.transcript as TranscriptEntry[]).flatMap((e) => (e.usage ? [e.usage] : [])),
+    );
     rows.push({
       model,
       runs: n,
       tokensPerRun: n ? tokens / n : 0,
       requestsPerRun: n ? calls / n : 0,
       tokensPerRequest: calls ? tokens / calls : 0,
+      maxTokensPerRequest: Math.max(0, ...perCall.map((u) => u.inputTokens + u.outputTokens)),
+      maxRequestedTokens: Math.max(
+        0,
+        ...perCall.map((u) => u.inputTokens + EVAL_MAX_OUTPUT_TOKENS),
+      ),
       medianLatencyMs: median(s?.latencyMs ?? []),
       rateLimited: s?.waits ?? 0,
     });
@@ -479,9 +574,9 @@ async function pilotReport(
   out('');
   out(`pilot: ${scope.length} ${o.split} episodes per model, temperature ${TEMPERATURE}`);
   out(
-    '| model | runs | tokens/run | calls/run | tokens/call | median latency | 429s | rate-limit headers |',
+    '| model | runs | tokens/run | calls/run | tokens/call | max call | max input + output cap | median latency | 429s | rate-limit headers |',
   );
-  out('| --- | --- | --- | --- | --- | --- | --- | --- |');
+  out('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
   for (const r of rows) {
     const lim = stats.get(r.model)?.limits ?? {};
     const headers =
@@ -490,12 +585,30 @@ async function pilotReport(
         : `req ${lim.remainingRequests ?? '?'}/${lim.limitRequests ?? '?'}, tok ${lim.remainingTokens ?? '?'}/${lim.limitTokens ?? '?'}`;
     out(
       `| ${r.model} | ${r.runs} | ${fmt(r.tokensPerRun)} | ${r.requestsPerRun.toFixed(2)} | ${fmt(r.tokensPerRequest)} | ` +
+        `${fmt(r.maxTokensPerRequest)} | ${fmt(r.maxRequestedTokens)} | ` +
         `${r.medianLatencyMs === null ? '—' : `${(r.medianLatencyMs / 1000).toFixed(1)}s`} | ${r.rateLimited} | ${headers} |`,
     );
   }
-  const dev = projectHours(rows, 300, PROVIDER_RPM);
-  out(
-    `dev split projection: ${fmt(dev.calls)} model calls for 300 runs × ${rows.length} models ` +
-      `at ${PROVIDER_RPM} calls/min shared = ${dev.hours.toFixed(1)} h`,
-  );
+  const nimRows = rows.filter((r) => evalProvider(r.model) === 'nim');
+  if (nimRows.length > 0) {
+    const dev = projectHours(nimRows, 300, PROVIDER_RPM);
+    out(
+      `NIM projection: ${fmt(dev.calls)} model calls for 300 runs × ${nimRows.length} models ` +
+        `at ${PROVIDER_RPM} calls/min shared = ${dev.hours.toFixed(1)} h`,
+    );
+  }
+  for (const r of rows.filter((x) => evalProvider(x.model) === 'groq')) {
+    const limits = GROQ_FREE_LIMITS[r.model];
+    if (!limits) continue;
+    const full = projectDays(r, TEST_RUNS_PER_MODEL, limits);
+    const usable = projectDays(r, TEST_RUNS_PER_MODEL, limits, DAILY_SHARE);
+    out(
+      `Groq projection for ${r.model}, ${TEST_RUNS_PER_MODEL} test runs: ` +
+        `${fmt(r.tokensPerRun * TEST_RUNS_PER_MODEL)} tokens and ${fmt(r.requestsPerRun * TEST_RUNS_PER_MODEL)} calls; ` +
+        `${full.days.toFixed(1)} days at the full ${fmt(limits.tokensPerDay)} tokens/day and ${fmt(limits.requestsPerDay)} calls/day ` +
+        `(tokens ${full.byTokens.toFixed(1)}, calls ${full.byRequests.toFixed(1)}); ` +
+        `${usable.days.toFixed(1)} days at the ${Math.round(DAILY_SHARE * 100)}% the runner uses; ` +
+        `largest request ${fmt(r.maxRequestedTokens)} of ${fmt(limits.tokensPerMinute)} tokens/min`,
+    );
+  }
 }

@@ -30,13 +30,7 @@ export const PRICING: Record<string, ModelPrice> = {
   },
   'openai/gpt-oss-120b': { inputPerMTok: 0, outputPerMTok: 0, source: GROQ_FREE, asOf: AS_OF },
   'qwen/qwen3.8-27b': { inputPerMTok: 0, outputPerMTok: 0, source: GROQ_FREE, asOf: AS_OF },
-  // Evaluation models, served by NVIDIA NIM (gpt-oss-20b is also on Groq's free tier).
-  'nvidia/nemotron-3-ultra-550b-a55b': {
-    inputPerMTok: 0,
-    outputPerMTok: 0,
-    source: NIM_FREE,
-    asOf: NIM_AS_OF,
-  },
+  // Evaluation models on NVIDIA NIM (gpt-oss-120b above is evaluated on Groq's free tier).
   'openai/gpt-oss-20b': { inputPerMTok: 0, outputPerMTok: 0, source: NIM_FREE, asOf: NIM_AS_OF },
   'nvidia/nemotron-3.5-bolt-e4b': {
     inputPerMTok: 0,

@@ -8,8 +8,17 @@ import {
   type MetricsRun,
 } from '../src/metrics.js';
 import { actualFor, parsePredictions } from '../src/predictions.js';
-import { Pacer, parseDuration, RateGate, rateLimited, rateLimitWaitMs } from '../src/ratelimit.js';
-import { outcomeOf, projectHours } from '../src/run.js';
+import {
+  bucketLeft,
+  DailyBudgetStop,
+  Pacer,
+  parseDuration,
+  RateGate,
+  rateLimited,
+  rateLimitWaitMs,
+  TokenBudget,
+} from '../src/ratelimit.js';
+import { outcomeOf, projectDays, projectHours } from '../src/run.js';
 
 const MODELS = ['model-a', 'model-b', 'model-weak'];
 const TARGET = 'target-listing';
@@ -226,7 +235,7 @@ describe('predictions', () => {
     expect(rows).toHaveLength(15);
     expect(rows[0]).toEqual({
       metric: 'followRate',
-      model: 'nvidia/nemotron-3-ultra-550b-a55b',
+      model: 'openai/gpt-oss-120b',
       gate: null,
       low: 0.1,
       high: 0.4,
@@ -266,10 +275,74 @@ describe('shared request pacing', () => {
       tokensPerRun: 0,
       requestsPerRun,
       tokensPerRequest: 0,
+      maxTokensPerRequest: 0,
+      maxRequestedTokens: 0,
       medianLatencyMs: null,
       rateLimited: 0,
     });
     // (4 + 4 + 4) calls × 300 runs / 40 per minute / 60 = 1.5 h
     expect(projectHours([row(4), row(4), row(4)], 300, 40)).toEqual({ calls: 3600, hours: 1.5 });
+  });
+});
+
+describe('Groq free-tier budget', () => {
+  const limits = {
+    tokensPerMinute: 8000,
+    tokensPerDay: 200_000,
+    requestsPerDay: 1000,
+    requestsPerMinute: 30,
+  };
+
+  it('waits for the minute window and records actual usage', async () => {
+    let clock = 0;
+    const waits: number[] = [];
+    const budget = new TokenBudget(
+      'm',
+      limits,
+      [],
+      async (ms) => {
+        waits.push(ms);
+        clock += ms;
+      },
+      () => clock,
+    );
+    const a = await budget.reserve(5000);
+    budget.settle(a, 4000);
+    await budget.reserve(4000); // 4000 + 4000 fits
+    await budget.reserve(1000); // would be 9000: waits for the first call to age out
+    expect(waits).toHaveLength(1);
+    // About a minute of refill (200,000 per day) has come back since the first call.
+    const used = budget.usedToday();
+    expect(used.tokens).toBeGreaterThan(8800);
+    expect(used.tokens).toBeLessThanOrEqual(9000);
+  });
+
+  it('stops for the day and refuses requests over the minute limit', async () => {
+    const seed = [{ at: Date.now() - 60_000, tokens: 199_000 }];
+    const budget = new TokenBudget('m', limits, seed);
+    expect(budget.roomForRun(20_000, 8)).toBe(false);
+    await expect(budget.reserve(6000)).rejects.toBeInstanceOf(DailyBudgetStop);
+    await expect(new TokenBudget('m', limits).reserve(9000)).rejects.toThrow(/tokens\/min|limit/);
+  });
+
+  it('refills the daily allowance continuously', () => {
+    const now = 10 * 86_400_000;
+    expect(bucketLeft(200_000, [{ at: now - 86_400_000 + 1, amount: 200_000 }], now)).toBeCloseTo(
+      200_000,
+      -1,
+    );
+    expect(bucketLeft(200_000, [{ at: now - 43_200_000, amount: 200_000 }], now)).toBeCloseTo(
+      100_000,
+      -1,
+    );
+    expect(bucketLeft(1000, [{ at: now, amount: 1 }], now)).toBe(999);
+  });
+
+  it('projects days from tokens and calls per run', () => {
+    expect(projectDays({ tokensPerRun: 10_000, requestsPerRun: 4 }, 300, limits)).toEqual({
+      byTokens: 15,
+      byRequests: 1.2,
+      days: 15,
+    });
   });
 });

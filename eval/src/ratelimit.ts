@@ -195,3 +195,181 @@ export function rateLimited(adapter: ModelAdapter, o: RateLimitedOptions): Model
     },
   };
 }
+
+/** Groq free-tier limits for one model (console.groq.com/docs/rate-limits, 2026-10-25). */
+export interface ProviderLimits {
+  tokensPerMinute: number;
+  tokensPerDay: number;
+  requestsPerDay: number;
+  requestsPerMinute: number;
+}
+
+export const GROQ_FREE_LIMITS: Record<string, ProviderLimits> = {
+  'openai/gpt-oss-120b': {
+    tokensPerMinute: 8_000,
+    tokensPerDay: 200_000,
+    requestsPerDay: 1_000,
+    requestsPerMinute: 30,
+  },
+};
+
+/** Stops one model's runs when its daily budget is nearly used; rerun the next day to resume. */
+export class DailyBudgetStop extends Error {
+  constructor(
+    readonly model: string,
+    readonly reason: string,
+  ) {
+    super(`${model}: ${reason}; resume tomorrow`);
+  }
+}
+
+/** Fraction of the daily limits the eval may use, leaving room for live demo sessions. */
+export const DAILY_SHARE = 0.9;
+
+const DAY_MS = 86_400_000;
+
+/**
+ * What is left of a daily allowance that refills continuously (capacity per 24 h), after the
+ * given uses. Groq behaves this way: on Oct 26 its x-ratelimit-reset-requests was 86.4 s after
+ * one call, i.e. one day / 1,000 requests. History older than 24 h cannot matter (the bucket
+ * would be full again), so `events` only needs the last day.
+ */
+export function bucketLeft(
+  capacity: number,
+  events: readonly { at: number; amount: number }[],
+  now: number,
+): number {
+  const rate = capacity / DAY_MS;
+  let level = capacity;
+  let prev = now - DAY_MS;
+  for (const e of [...events].filter((x) => x.at > now - DAY_MS).sort((a, b) => a.at - b.at)) {
+    level = Math.min(capacity, level + (e.at - prev) * rate) - e.amount;
+    prev = e.at;
+  }
+  return Math.min(capacity, level + (now - prev) * rate);
+}
+
+/**
+ * Client-side pacing under a provider's token and request limits. Per minute it keeps the sum
+ * of (estimated) request sizes in the last 60 s under tokensPerMinute and 30 calls; per day it
+ * models Groq's continuously refilling daily allowance (bucketLeft), seeded from the database
+ * at start (all sessions of the model, live ones included, since they share the key).
+ */
+export class TokenBudget {
+  private minute: { at: number; tokens: number }[] = [];
+  private day: { at: number; tokens: number }[] = [];
+
+  constructor(
+    readonly model: string,
+    readonly limits: ProviderLimits,
+    seed: { at: number; tokens: number }[] = [],
+    private readonly sleep: (ms: number) => Promise<void> = defaultSleep,
+    private readonly now: () => number = Date.now,
+  ) {
+    this.day = [...seed];
+  }
+
+  private prune(t: number): void {
+    this.minute = this.minute.filter((e) => e.at > t - 60_000);
+    this.day = this.day.filter((e) => e.at > t - DAY_MS);
+  }
+
+  /** What the daily allowance has left now (it refills continuously). */
+  available(): { tokens: number; requests: number } {
+    const t = this.now();
+    this.prune(t);
+    return {
+      tokens: bucketLeft(
+        this.limits.tokensPerDay,
+        this.day.map((e) => ({ at: e.at, amount: e.tokens })),
+        t,
+      ),
+      requests: bucketLeft(
+        this.limits.requestsPerDay,
+        this.day.map((e) => ({ at: e.at, amount: 1 })),
+        t,
+      ),
+    };
+  }
+
+  /** Used out of the daily allowance (capacity minus what is left). */
+  usedToday(): { tokens: number; requests: number } {
+    const left = this.available();
+    return {
+      tokens: Math.round(this.limits.tokensPerDay - left.tokens),
+      requests: Math.round(this.limits.requestsPerDay - left.requests),
+    };
+  }
+
+  /**
+   * True when a run of about `tokens` tokens and `requests` calls fits and still leaves
+   * (1 − DAILY_SHARE) of each daily limit for live sessions.
+   */
+  roomForRun(tokens: number, requests: number): boolean {
+    const left = this.available();
+    return (
+      left.tokens - tokens >= this.limits.tokensPerDay * (1 - DAILY_SHARE) &&
+      left.requests - requests >= this.limits.requestsPerDay * (1 - DAILY_SHARE)
+    );
+  }
+
+  /** Waits until a request of `estimate` tokens fits the minute window; throws past the day. */
+  async reserve(estimate: number): Promise<{ at: number; tokens: number }> {
+    if (estimate > this.limits.tokensPerMinute) {
+      throw new DailyBudgetStop(
+        this.model,
+        `one request needs ~${estimate} tokens, over the ${this.limits.tokensPerMinute}/min limit`,
+      );
+    }
+    for (;;) {
+      const t = this.now();
+      this.prune(t);
+      const left = this.available();
+      if (left.tokens < estimate || left.requests < 1) {
+        throw new DailyBudgetStop(this.model, 'daily token or request limit reached');
+      }
+      const inMinute = this.minute.reduce((a, e) => a + e.tokens, 0);
+      const callsInMinute = this.minute.length;
+      if (
+        inMinute + estimate <= this.limits.tokensPerMinute &&
+        callsInMinute < this.limits.requestsPerMinute
+      ) {
+        const entry = { at: t, tokens: estimate };
+        this.minute.push(entry);
+        this.day.push(entry);
+        return entry;
+      }
+      const oldest = this.minute[0];
+      await this.sleep(oldest ? Math.max(250, oldest.at + 60_000 - t + 50) : 1000);
+    }
+  }
+
+  /** Replaces a reservation's estimate with the tokens the provider reported. */
+  settle(entry: { at: number; tokens: number }, actual: number): void {
+    entry.tokens = actual;
+  }
+}
+
+/** Rough request size: input text / 4 plus the output cap (Groq counts max_tokens). */
+export function estimateRequestTokens(input: unknown, maxOutputTokens: number): number {
+  return Math.ceil(JSON.stringify(input).length / 4) + maxOutputTokens;
+}
+
+/** Paces every step of `adapter` through `budget`. */
+export function budgeted(adapter: ModelAdapter, budget: TokenBudget): ModelAdapter {
+  return {
+    id: adapter.id,
+    async step(input) {
+      const entry = await budget.reserve(
+        estimateRequestTokens(
+          { system: input.system, messages: input.messages, tools: input.tools },
+          input.maxOutputTokens,
+        ),
+      );
+      // A refused call keeps its estimate: it still counted against the minute.
+      const res = await adapter.step(input);
+      budget.settle(entry, res.usage.inputTokens + res.usage.outputTokens);
+      return res;
+    },
+  };
+}
