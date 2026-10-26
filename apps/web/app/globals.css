@@ -1,26 +1,276 @@
+/*
+ * Two-Key design system (phase 15). Every screen uses these tokens.
+ *
+ * DESIGN RULES
+ * 1. One accent colour (--accent). Nothing else is "brand".
+ * 2. State colours (--state-*) appear only on payment state: badges, countdowns, state rows.
+ *    Never use them for decoration, links or buttons.
+ * 3. At most one primary (accent) button per screen. Everything else is outline or ghost.
+ * 4. Numbers are right-aligned in tables (use the .num class or text-right + tabular-nums).
+ * 5. Every interactive element has a visible focus ring drawn from --focus.
+ * 6. Minimum touch target is 44 px on mobile.
+ *
+ * Colours live only in this file. Components use the tokens, never hex values.
+ * Dark mode follows prefers-color-scheme; [data-theme="light" | "dark"] on <html> overrides it.
+ */
+
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* dark: matches the OS dark preference unless overridden, or an explicit data-theme="dark". */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ---------- Colour tokens: light ---------- */
+:root {
+  color-scheme: light;
+
+  --bg: #f8f8f6;
+  --surface: #f1f1ee;
+  --surface-raised: #ffffff;
+  --text: #1b1b19;
+  --text-muted: #5c5c57;
+  --border: #e1e1dc;
+  --accent: #2747c4;
+  --accent-fg: #ffffff;
+  --focus: #2f5be0;
+
+  --state-captured-bg: #e2f3e7;
+  --state-captured-fg: #166534;
+  --state-held-bg: #fcefd4;
+  --state-held-fg: #854d0e;
+  --state-blocked-bg: #fde8e8;
+  --state-blocked-fg: #b42318;
+  --state-voided-bg: #ececea;
+  --state-voided-fg: #52524d;
+
+  --overlay: rgb(0 0 0 / 0.32);
 }
+
+/* ---------- Colour tokens: dark (OS preference, unless forced light) ---------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #111113;
+    --surface: #18181b;
+    --surface-raised: #202024;
+    --text: #ededeb;
+    --text-muted: #a3a3a0;
+    --border: #303036;
+    --accent: #8fa6ff;
+    --accent-fg: #0e1638;
+    --focus: #9db2ff;
+
+    --state-captured-bg: #12301e;
+    --state-captured-fg: #7dd8a0;
+    --state-held-bg: #382909;
+    --state-held-fg: #f2c063;
+    --state-blocked-bg: #3c1517;
+    --state-blocked-fg: #ff9c96;
+    --state-voided-bg: #28282d;
+    --state-voided-fg: #b8b8b4;
+
+    --overlay: rgb(0 0 0 / 0.6);
+  }
+}
+
+/* ---------- Colour tokens: dark (explicit override) ---------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #111113;
+  --surface: #18181b;
+  --surface-raised: #202024;
+  --text: #ededeb;
+  --text-muted: #a3a3a0;
+  --border: #303036;
+  --accent: #8fa6ff;
+  --accent-fg: #0e1638;
+  --focus: #9db2ff;
+
+  --state-captured-bg: #12301e;
+  --state-captured-fg: #7dd8a0;
+  --state-held-bg: #382909;
+  --state-held-fg: #f2c063;
+  --state-blocked-bg: #3c1517;
+  --state-blocked-fg: #ff9c96;
+  --state-voided-bg: #28282d;
+  --state-voided-fg: #b8b8b4;
+
+  --overlay: rgb(0 0 0 / 0.6);
+}
+
+/* ---------- shadcn variables, mapped onto the tokens above ---------- */
+:root {
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface-raised);
+  --card-foreground: var(--text);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-fg);
+  --secondary: var(--surface);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface);
+  --muted-foreground: var(--text-muted);
+  --accent-foreground: var(--accent-fg);
+  /* Destructive inputs and denials reuse the blocked state colour. */
+  --destructive: var(--state-blocked-fg);
+  --input: var(--border);
+  --ring: var(--focus);
+}
+
+/* ---------- Tailwind theme ---------- */
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-focus: var(--focus);
+  --color-overlay: var(--overlay);
+
+  --color-state-captured-bg: var(--state-captured-bg);
+  --color-state-captured-fg: var(--state-captured-fg);
+  --color-state-held-bg: var(--state-held-bg);
+  --color-state-held-fg: var(--state-held-fg);
+  --color-state-blocked-bg: var(--state-blocked-bg);
+  --color-state-blocked-fg: var(--state-blocked-fg);
+  --color-state-voided-bg: var(--state-voided-bg);
+  --color-state-voided-fg: var(--state-voided-fg);
+
+  /* Names the shadcn components use. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+@theme {
+  /* Type scale: 12/14/16/20/24/32/40 px. */
+  --text-*: initial;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 2rem;
+  --text-2xl: 2rem;
+  --text-2xl--line-height: 2.5rem;
+  --text-3xl: 2.5rem;
+  --text-3xl--line-height: 3rem;
+
+  /* Radii: 6, 10, 16 px (pills use rounded-full). */
+  --radius-*: initial;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* 4 px grid: p-1 = 4 px, p-4 = 16 px. */
+  --spacing: 4px;
+
+  /* One shadow only. */
+  --shadow-*: initial;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.06), 0 1px 3px 0 rgb(0 0 0 / 0.04);
+}
+
+/* ---------- Base ---------- */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    background: var(--bg);
+  }
+
+  body {
+    @apply bg-bg font-sans text-base text-text;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Rule 5: every interactive element shows a ring from --focus. */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  /* Rule 4: numbers in tables. */
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Rule 6: 44 px touch targets on small screens. */
+  @media (max-width: 639px) {
+    button,
+    [role="button"],
+    [role="tab"],
+    input:not([type="checkbox"], [type="radio"]),
+    select,
+    a[data-slot="button"] {
+      min-height: 44px;
+    }
+
+    button,
+    [role="button"] {
+      min-width: 44px;
+    }
+  }
+}
+
+/* Reduced motion: no transitions or animations. */
+/* biome-ignore-start lint/complexity/noImportantStyles: reduced motion must beat component animations */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* biome-ignore-end lint/complexity/noImportantStyles: end of reduced-motion block */

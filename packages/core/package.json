@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./money": "./src/money.ts",
+    "./payment-state": "./src/payment-state.ts"
   },
   "dependencies": {
     "canonicalize": "^2.1.0",
