@@ -76,7 +76,12 @@ const schemas = {
     COMPILER_PROVIDER: z.enum(['openai-compatible', 'anthropic']).default('openai-compatible'),
     COMPILER_BASE_URL: url.default('https://api.groq.com/openai/v1'),
     COMPILER_API_KEY: nonEmpty.optional(),
-    COMPILER_MODEL: nonEmpty.default('openai/gpt-oss-120b'),
+    /**
+     * Until the test split is done (Nov 7): qwen/qwen3.8-27b on Groq, whose per-model allowance
+     * is separate from gpt-oss-120b's (kept for its test runs). Switch back to
+     * openai/gpt-oss-120b afterwards.
+     */
+    COMPILER_MODEL: nonEmpty.default('qwen/qwen3.8-27b'),
     DAILY_BUDGET_USD_LIVE: z.coerce.number().nonnegative().default(2),
     NEXT_PUBLIC_AG_GRID_LICENSE_KEY: nonEmpty.optional(),
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: nonEmpty.optional(),

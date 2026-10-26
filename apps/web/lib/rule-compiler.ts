@@ -10,8 +10,11 @@ import {
 import { z } from 'zod';
 import { type CompilerClient, type ToolCallParams, withRetry } from './llm';
 
-/** Default model name; the live one comes from COMPILER_MODEL. */
-export const COMPILER_MODEL = 'openai/gpt-oss-120b';
+/**
+ * Default model name; the live one comes from COMPILER_MODEL. qwen/qwen3.8-27b until Nov 7 (keeps
+ * gpt-oss-120b's Groq allowance for the test runs), then openai/gpt-oss-120b again.
+ */
+export const COMPILER_MODEL = 'qwen/qwen3.8-27b';
 
 const SYSTEM_PROMPT = [
   'You convert a shopping request into spending rules by calling the emit_rules tool.',
