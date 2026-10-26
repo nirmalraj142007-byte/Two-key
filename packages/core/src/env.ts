@@ -87,6 +87,8 @@ const schemas = {
      */
     COMPILER_MODEL: nonEmpty.default('qwen/qwen3.8-27b'),
     DAILY_BUDGET_USD_LIVE: z.coerce.number().nonnegative().default(2),
+    /** Model for console runs; keep in step with agent-runner's AGENT_MODEL (NIM until Nov 7). */
+    AGENT_MODEL: nonEmpty.default('openai/gpt-oss-20b'),
     NEXT_PUBLIC_AG_GRID_LICENSE_KEY: nonEmpty.optional(),
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: nonEmpty.optional(),
     IP_HASH_SALT: nonEmpty,

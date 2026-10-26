@@ -14,6 +14,7 @@ import { createJobRunner } from './jobs/boss.js';
 import type { Jobs } from './jobs/queue.js';
 import { dbPlugin } from './plugins/db.js';
 import { agentRoutes } from './routes/agent.js';
+import { eventRoutes } from './routes/events.js';
 import { type HealthPayPal, healthRoutes } from './routes/health.js';
 import { humanRoutes } from './routes/human.js';
 import { humanApprovalRoutes } from './routes/human-approvals.js';
@@ -63,6 +64,8 @@ export interface AppDeps {
   jobs?: Jobs;
   /** Replaces the Channel3 live search (tests). */
   channel3?: Channel3Service;
+  /** SSE heartbeat interval on /human/events (tests shorten it). */
+  eventsHeartbeatMs?: number;
   now?: () => Date;
 }
 
@@ -254,6 +257,15 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
         agentTokenPepper: AGENT_TOKEN_PEPPER,
         webOrigin: WEB_ORIGIN,
         ...now,
+      });
+    });
+    app.register(async (scope) => {
+      await scope.register(eventRoutes, {
+        db: app.db,
+        databaseUrl: DATABASE_URL,
+        verifier,
+        webOrigin: WEB_ORIGIN,
+        ...(deps.eventsHeartbeatMs ? { heartbeatMs: deps.eventsHeartbeatMs } : {}),
       });
     });
     if (paypal) {
