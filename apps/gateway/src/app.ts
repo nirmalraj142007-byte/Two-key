@@ -19,8 +19,10 @@ import { type HealthPayPal, healthRoutes } from './routes/health.js';
 import { humanRoutes } from './routes/human.js';
 import { humanApprovalRoutes } from './routes/human-approvals.js';
 import { internalEvalRoutes } from './routes/internal-eval.js';
+import { merchantRoutes } from './routes/merchants.js';
 import { pushRoutes } from './routes/push.js';
 import { webhookRoutes } from './routes/webhooks.js';
+import { type BalanceService, createBalanceService } from './services/balances.js';
 import { type Channel3Service, createChannel3Service } from './services/channel3.js';
 import { loadRuleKeys } from './services/keys.js';
 import { getPayPal } from './services/paypal.js';
@@ -76,6 +78,8 @@ export interface AppDeps {
   channel3?: Channel3Service;
   /** Replaces the web-push sender (tests record pushes instead). */
   sendPush?: SendPush;
+  /** Replaces the merchant balance service (tests). */
+  balances?: BalanceService;
   /** SSE heartbeat interval on /human/events (tests shorten it). */
   eventsHeartbeatMs?: number;
   now?: () => Date;
@@ -307,6 +311,20 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
     });
     app.register(async (scope) => {
       await scope.register(pushRoutes, { db: app.db, verifier });
+    });
+    const balances =
+      deps.balances ??
+      createBalanceService({
+        get db() {
+          return app.db;
+        },
+        credentials: env.MERCHANT_API_CREDENTIALS,
+        env: env.PAYPAL_ENV ?? 'sandbox',
+        log: app.log,
+        ...now,
+      });
+    app.register(async (scope) => {
+      await scope.register(merchantRoutes, { verifier, balances });
     });
     app.register(async (scope) => {
       await scope.register(eventRoutes, {
