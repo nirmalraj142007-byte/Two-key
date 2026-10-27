@@ -36,7 +36,8 @@
     "mcp:smoke": "tsx scripts/mcp-smoke.ts",
     "channel3:smoke": "dotenv -e .env.gateway -- tsx scripts/channel3-smoke.ts",
     "agent:once": "dotenv -e .env.agent-runner -- tsx apps/agent-runner/src/worker.ts --once",
-    "eval": "dotenv -e .env.eval -- tsx eval/src/cli.ts"
+    "eval:stack": "concurrently -n gw,mcp,run -c green,magenta,yellow \"dotenv -v PORT=4010 -v EVAL_ENABLED=true -e .env.gateway -- npm run start -w @twokey/gateway\" \"dotenv -v PORT=4110 -v GATEWAY_URL=http://localhost:4010 -e .env.mcp -- npm run start -w @twokey/mcp\" \"dotenv -v PORT=4210 -v MCP_URL=http://localhost:4110/mcp -e .env.agent-runner -- npm run start -w @twokey/agent-runner\"",
+    "eval": "dotenv -v GATEWAY_URL=http://localhost:4010 -v MCP_URL=http://localhost:4110/mcp -e .env.eval -- tsx eval/src/cli.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",

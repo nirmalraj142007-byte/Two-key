@@ -1,6 +1,8 @@
 import { AppError, ErrorCode } from '@twokey/core';
 
 export const REQUEST_TIMEOUT_MS = 60_000;
+/** NIM eval models (gpt-oss-20b in particular) often take longer than a minute. */
+export const NIM_EVAL_TIMEOUT_MS = 120_000;
 const BACKOFF_MS = [1000, 4000];
 
 export interface Failure {

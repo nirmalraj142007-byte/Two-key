@@ -1,5 +1,6 @@
 import { createAnthropicAdapter } from './anthropic.js';
 import { createOpenAICompatibleAdapter } from './openai-compatible.js';
+import { NIM_EVAL_TIMEOUT_MS } from './retry.js';
 import type { ModelAdapter } from './types.js';
 
 export type { ModelAdapter, Msg } from './types.js';
@@ -60,6 +61,7 @@ export function adapterFor(model: string, cfg: LlmConfig, o: AdapterOptions = {}
       baseURL: cfg.EVAL_LLM_BASE_URL ?? 'https://integrate.api.nvidia.com/v1',
       onHeaders: cfg.onHeaders,
       reasoningEffort,
+      timeoutMs: NIM_EVAL_TIMEOUT_MS,
       keyName: 'EVAL_LLM_API_KEY',
     });
   }

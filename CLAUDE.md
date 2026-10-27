@@ -65,6 +65,21 @@ docs/             BLUEPRINT, SCHEDULE, SPIKE_RESULTS, DEPLOY, JUDGE_GAP_AUDIT, T
 
 Deployment: Render Blueprint (`render.yaml`). Staging deploys from `main`, production from `release`. Render free plans have no `preDeployCommand`, so migrations run at the start of the gateway's `startCommand` (`npm run db:migrate -w @twokey/db && npm run start -w @twokey/gateway`); they are forward-only and additive after Nov 4.
 
+## Dev and evaluation stacks
+
+Development and the test evaluation run side by side on the same local Postgres but on separate ports.
+
+| Stack | web | gateway | mcp | agent-runner |
+| --- | --- | --- | --- | --- |
+| Development (`npm run dev`) | 3000 | 4000 | 4100 | 4200 |
+| Evaluation (`npm run eval:stack`) | — | 4010 | 4110 | 4210 |
+
+- `npm run eval:stack` starts the three services with their `start` scripts (no `tsx watch`, so edits never restart them) from the same `.env.gateway`, `.env.mcp` and `.env.agent-runner`, with ports and URLs overridden. `EVAL_ENABLED=true` is set for the evaluation gateway only; it must not be in `.env.gateway`.
+- `npm run eval -- ...` targets that stack (`GATEWAY_URL=http://localhost:4010`, `MCP_URL=http://localhost:4110/mcp`), overriding `.env.eval`.
+- **Development sessions must never stop or restart the evaluation stack or the running `eval run`.** Do not kill node processes broadly, and do not change the code those services run (checked out from the working tree) in ways that need a restart while a test run is in progress.
+- Every database test creates its own throwaway `twokey_test_<hex>` database (`createTestDatabase`) and drops it, so `npm run check` never touches `eval_runs`, `eval_episodes`, `gate_decisions`, `predictions`, `agent_sessions` or `proposals` in the dev database.
+- `npm run eval -- status --split test` prints runs done, runs not recorded, average tokens per run and, for gpt-oss-120b, projected days left at Groq's 200,000 tokens/day.
+
 ## Commands
 
 ```bash

@@ -20,14 +20,17 @@ import {
   registerPredictions,
   scorePredictions,
 } from './predictions.js';
+import { GROQ_FREE_LIMITS } from './ratelimit.js';
 import { replay } from './replay.js';
 import { runEval, type Split } from './run.js';
 import { anomalySensitivity, writeSensitivity } from './sensitivity.js';
+import { evalStatus } from './status.js';
 import { loadWebshop, WEBSHOP_FILE } from './webshop.js';
 
 const SAMPLE_SIZE = 200;
 const DEV_COUNT = 100;
 const DEFAULT_MAX_CALLS = 240;
+const DEFAULT_MODELS = 'openai/gpt-oss-120b,openai/gpt-oss-20b,nvidia/nemotron-3.5-bolt-e4b';
 
 const BuildEnv = z.object({
   DATABASE_URL: z.string().url(),
@@ -275,8 +278,9 @@ async function predictionsCmd(args: string[]) {
 }
 
 const USAGE = [
-  'usage: npm run eval -- <build|freeze|run|replay|grade|metrics|predictions|checkpoint>',
+  'usage: npm run eval -- <build|freeze|run|status|replay|grade|metrics|predictions|checkpoint>',
   '  run --split dev|test [--models all|a,b] [--concurrency 3 (per model)] [--concurrency-for model=N,...] [--rpm 35 (all models)] [--pilot N (per model)] [--max-wait-minutes 60]',
+  '  status --split dev|test   per model: runs done, not recorded, average tokens, Groq days left',
   '  grade --split dev|test   labels product_detail_ok (LLM-graded, first EVAL_MODELS entry)',
   '',
 ].join('\n');
@@ -286,7 +290,22 @@ try {
   if (command === 'build') await build(rest);
   else if (command === 'freeze') await freeze(rest);
   else if (command === 'run') await run(rest);
-  else if (command === 'replay') {
+  else if (command === 'status') {
+    const split = splitFlag(rest);
+    const models = parseModelList(process.env.EVAL_MODELS || DEFAULT_MODELS);
+    const rows = await withDb((db) => evalStatus(db, split, models));
+    out(`eval status (${split})`);
+    for (const r of rows) {
+      const avg = r.avgTokensPerRun === null ? 'n/a' : Math.round(r.avgTokensPerRun).toString();
+      const days =
+        r.model in GROQ_FREE_LIMITS
+          ? ` · projected days left at ${GROQ_FREE_LIMITS[r.model]?.tokensPerDay.toLocaleString('en-US')} tokens/day: ${r.projectedDaysLeft === null ? 'n/a (no recorded runs)' : r.projectedDaysLeft.toFixed(1)}`
+          : '';
+      out(
+        `${r.model}: ${r.done}/${r.total} runs · not recorded ${r.notRecorded} · avg tokens/run ${avg}${days}`,
+      );
+    }
+  } else if (command === 'replay') {
     const split = splitFlag(rest);
     const models = modelsFlag(rest);
     const r = await withDb((db) => replay(db, split, models));

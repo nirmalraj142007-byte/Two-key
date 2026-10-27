@@ -57,6 +57,8 @@ export function createOpenAICompatibleAdapter(
     onHeaders?: ((headers: Headers) => void) | undefined;
     /** Sent as reasoning_effort; null leaves it out (models that don't support it). */
     reasoningEffort?: 'low' | 'medium' | null | undefined;
+    /** Per-request timeout; default REQUEST_TIMEOUT_MS. */
+    timeoutMs?: number | undefined;
     /** Named in the missing-key error. */
     keyName?: string | undefined;
   },
@@ -73,7 +75,7 @@ export function createOpenAICompatibleAdapter(
     apiKey: opts.apiKey,
     baseURL: opts.baseURL,
     maxRetries: 0,
-    timeout: REQUEST_TIMEOUT_MS,
+    timeout: opts.timeoutMs ?? REQUEST_TIMEOUT_MS,
   });
   return {
     id: model,
