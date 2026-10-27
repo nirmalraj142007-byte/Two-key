@@ -55,3 +55,18 @@ export function installCrashHandlers(service: ServiceName): void {
     exitAfterFlush();
   });
 }
+
+/**
+ * Every HTTP service binds all IPv4 interfaces: Render's port scan (and its load balancer)
+ * only finds a server listening on 0.0.0.0, never one on localhost.
+ */
+export const LISTEN_HOST = '0.0.0.0';
+
+/** host and port from server.address(), for the one "listening" log line each service writes. */
+export function listeningOn(address: unknown): { host: string; port: number } | null {
+  if (address === null || typeof address !== 'object') return null;
+  const a = address as { address?: unknown; port?: unknown };
+  return typeof a.address === 'string' && typeof a.port === 'number'
+    ? { host: a.address, port: a.port }
+    : null;
+}

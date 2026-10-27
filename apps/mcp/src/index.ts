@@ -1,5 +1,12 @@
 import { createRequire } from 'node:module';
-import { installCrashHandlers, loadEnv, reportStartupFailure } from '@twokey/core';
+import {
+  createLogger,
+  installCrashHandlers,
+  LISTEN_HOST,
+  listeningOn,
+  loadEnv,
+  reportStartupFailure,
+} from '@twokey/core';
 import { createHttpServer } from './http.js';
 
 const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
@@ -13,7 +20,8 @@ function main(): void {
     health: { ok: true, service: 'mcp', version, commit: process.env.RENDER_GIT_COMMIT ?? 'dev' },
   });
   server.on('error', (err) => reportStartupFailure('mcp', err));
-  server.listen(env.PORT, '0.0.0.0');
+  const log = createLogger('mcp', env.LOG_LEVEL);
+  server.listen(env.PORT, LISTEN_HOST, () => log.info(listeningOn(server.address()), 'listening'));
 }
 
 try {

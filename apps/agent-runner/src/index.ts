@@ -1,6 +1,13 @@
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
-import { createLogger, installCrashHandlers, loadEnv, reportStartupFailure } from '@twokey/core';
+import {
+  createLogger,
+  installCrashHandlers,
+  LISTEN_HOST,
+  listeningOn,
+  loadEnv,
+  reportStartupFailure,
+} from '@twokey/core';
 import { assertPriced, parseModelList } from './pricing.js';
 import { startWorker } from './worker.js';
 
@@ -31,7 +38,10 @@ async function main(): Promise<void> {
     res.end(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Not found' } }));
   });
   server.on('error', (err) => reportStartupFailure('agent-runner', err));
-  server.listen(env.PORT, '0.0.0.0', () => log.info('agent-runner ready'));
+  server.listen(env.PORT, LISTEN_HOST, () => {
+    log.info(listeningOn(server.address()), 'listening');
+    log.info('agent-runner ready');
+  });
 
   const stopWorker = await startWorker(env, log);
   const shutdown = (): void => {

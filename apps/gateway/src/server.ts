@@ -1,4 +1,10 @@
-import { installCrashHandlers, loadEnv, reportStartupFailure } from '@twokey/core';
+import {
+  installCrashHandlers,
+  LISTEN_HOST,
+  listeningOn,
+  loadEnv,
+  reportStartupFailure,
+} from '@twokey/core';
 import { createWebhookApi, createWebhookVerifier } from '@twokey/paypal';
 import { buildApp } from './app.js';
 import { startJobs } from './jobs/boss.js';
@@ -23,7 +29,8 @@ async function main(): Promise<void> {
   // Hooks, plugins and decorators must all be registered before listen(); after it,
   // Fastify throws. Only the job workers start once the server is up (pg-boss stops on close).
   try {
-    await app.listen({ port: env.PORT, host: '0.0.0.0' });
+    await app.listen({ port: env.PORT, host: LISTEN_HOST });
+    app.log.info(listeningOn(app.server.address()), 'listening');
   } catch (err) {
     await app.close().catch(() => {});
     throw err;
