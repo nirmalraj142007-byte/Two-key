@@ -19,9 +19,11 @@
     "lru-cache": "^11.5.3",
     "pg-boss": "~12.33.7",
     "postgres": "^3",
+    "web-push": "^3.6.7",
     "zod": "^4"
   },
   "devDependencies": {
+    "@types/web-push": "^3.6.4",
     "nock": "^14.0.17"
   },
   "exports": {

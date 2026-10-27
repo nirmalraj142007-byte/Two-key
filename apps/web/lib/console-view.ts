@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Shapes the gateway's /human/events stream and /human/proposals send (apps/gateway/src/routes/
 // events.ts). Parsed at the boundary; unknown keys are stripped.
 
-const PAYMENT_STATES = [
+export const PAYMENT_STATES = [
   'authorizing',
   'authorized',
   'held',

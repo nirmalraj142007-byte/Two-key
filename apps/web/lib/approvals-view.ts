@@ -1,0 +1,79 @@
+import { z } from 'zod';
+import { PAYMENT_STATES } from './console-view';
+
+/** One hold as GET /human/approvals[/:id] returns it. */
+export const ApprovalItemSchema = z.object({
+  id: z.string(),
+  status: z.enum(['pending', 'approved', 'denied', 'timed_out']),
+  deadlineAt: z.string(),
+  decidedAt: z.string().nullable(),
+  decidedVia: z.enum(['web', 'phone', 'timer']).nullable(),
+  paymentId: z.string(),
+  state: z.enum(PAYMENT_STATES),
+  amountCents: z.number().int(),
+  amount: z.string(),
+  proposalId: z.string(),
+  qty: z.number().int(),
+  product: z.string(),
+  merchant: z.string(),
+  referencePrice: z.string().nullable(),
+  referenceOffers: z.number().int().nullable(),
+  ratio: z.number().nullable(),
+});
+export type ApprovalItem = z.infer<typeof ApprovalItemSchema>;
+export type ApprovalState = ApprovalItem['state'];
+
+/** "40% above the usual price of $46.00 (3 stores)", from structured fields only. */
+export function priceLine(
+  item: Pick<ApprovalItem, 'ratio' | 'referencePrice' | 'referenceOffers'>,
+): string {
+  if (item.ratio === null || item.referencePrice === null) return 'The price looks unusual.';
+  const pct = Math.round((item.ratio - 1) * 100);
+  const where = item.referenceOffers !== null ? ` (${item.referenceOffers} stores)` : '';
+  return `${pct}% above the usual price of ${item.referencePrice}${where}`;
+}
+
+const URGENT_MS = 10 * 60 * 1000;
+
+/** Under 10 minutes from its deadline, a hold needs attention soon. */
+export function isUrgent(deadlineAt: string, now: number): boolean {
+  const left = new Date(deadlineAt).getTime() - now;
+  return left > 0 && left < URGENT_MS;
+}
+
+/** True while the person can still approve or deny. */
+export function isOpen(item: Pick<ApprovalItem, 'status' | 'state'>): boolean {
+  return item.status === 'pending' && item.state === 'held';
+}
+
+/** The one sentence a decided or closed hold shows. */
+export function outcomeSentence(state: ApprovalState): string {
+  switch (state) {
+    case 'captured':
+      return 'Approved. PayPal captured the payment.';
+    case 'capture_requested':
+      return 'Approved. Capturing with PayPal…';
+    case 'voided':
+    case 'denied':
+      return 'Voided. No charge was made.';
+    case 'void_requested':
+      return 'Voiding with PayPal… No charge will be made.';
+    case 'expired':
+      return 'This hold expired. No charge was made.';
+    case 'failed':
+      return 'Not purchased. No charge was made.';
+    default:
+      return 'Waiting for your decision.';
+  }
+}
+
+/** The VAPID public key (base64url) as the bytes PushManager wants. */
+export function urlBase64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
+  const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4))
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  const raw = atob(padded);
+  const out = new Uint8Array(new ArrayBuffer(raw.length));
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}

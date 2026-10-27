@@ -31,6 +31,7 @@ import type { AgentSession } from '../auth/agent-token.js';
 import { type Jobs, scheduleHoldTimeout } from '../jobs/queue.js';
 import { resolveListing } from './catalog.js';
 import type { RuleKeys } from './keys.js';
+import type { PushService } from './push.js';
 import { NOTIFY_CHANNEL } from './webhook-apply.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -61,6 +62,8 @@ export interface PurchaseDeps {
   now?: () => Date;
   /** Overrides the card's holdTimeoutMinutes for demo and hijack sessions. */
   demoHoldMinutes?: number | undefined;
+  /** Phone push after a hold is created; fire-and-forget, never blocks the hold. */
+  push?: Pick<PushService, 'sendApprovalPush'> | undefined;
 }
 
 export interface ProposeInput {
@@ -622,6 +625,7 @@ export async function proposePurchase(
     const minutes =
       demo && deps.demoHoldMinutes !== undefined ? deps.demoHoldMinutes : card.holdTimeoutMinutes;
     const deadline = new Date(now.getTime() + minutes * 60_000);
+    let approvalId: string | undefined;
     await movePayment(db, payment.id, {
       ...ctx,
       from: 'authorized',
@@ -630,17 +634,27 @@ export async function proposePurchase(
       payload: { holdDeadlineAt: deadline.toISOString() },
       set: { holdDeadlineAt: deadline },
       after: async (tx) => {
-        await tx.insert(approvals).values({
-          paymentId: payment.id,
-          userId: session.userId,
-          status: 'pending',
-          reason: recorded.anomaly?.detail ?? {},
-          deadlineAt: deadline,
-        });
+        const [approval] = await tx
+          .insert(approvals)
+          .values({
+            paymentId: payment.id,
+            userId: session.userId,
+            status: 'pending',
+            reason: recorded.anomaly?.detail ?? {},
+            deadlineAt: deadline,
+          })
+          .returning({ id: approvals.id });
+        approvalId = approval?.id;
       },
     });
     // The timer voids the hold at its deadline; if this send fails, the sweep still voids it.
     await scheduleHoldTimeout(deps, payment.id, deadline);
+    if (deps.push && approvalId) {
+      // Not awaited: the inbox is the source of truth and a push failure never blocks the hold.
+      deps.push.sendApprovalPush(session.userId, approvalId).catch((err: unknown) => {
+        log.warn({ proposalId, err: errorPayload(err) }, 'approval push failed');
+      });
+    }
     return loadProposalResult(db, proposalId);
   }
 

@@ -19,10 +19,17 @@ import { type HealthPayPal, healthRoutes } from './routes/health.js';
 import { humanRoutes } from './routes/human.js';
 import { humanApprovalRoutes } from './routes/human-approvals.js';
 import { internalEvalRoutes } from './routes/internal-eval.js';
+import { pushRoutes } from './routes/push.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { type Channel3Service, createChannel3Service } from './services/channel3.js';
 import { loadRuleKeys } from './services/keys.js';
 import { getPayPal } from './services/paypal.js';
+import {
+  createPushService,
+  type PushService,
+  type SendPush,
+  webPushSender,
+} from './services/push.js';
 
 export type AppEnv = Pick<Env<'gateway'>, 'LOG_LEVEL'> &
   Partial<
@@ -45,6 +52,9 @@ export type AppEnv = Pick<Env<'gateway'>, 'LOG_LEVEL'> &
       | 'HUMAN_ASSERTION_PUBLIC_KEY'
       | 'WEB_ORIGIN'
       | 'MERCHANT_API_CREDENTIALS'
+      | 'VAPID_PUBLIC_KEY'
+      | 'VAPID_PRIVATE_KEY'
+      | 'VAPID_SUBJECT'
     >
   >;
 
@@ -64,6 +74,8 @@ export interface AppDeps {
   jobs?: Jobs;
   /** Replaces the Channel3 live search (tests). */
   channel3?: Channel3Service;
+  /** Replaces the web-push sender (tests record pushes instead). */
+  sendPush?: SendPush;
   /** SSE heartbeat interval on /human/events (tests shorten it). */
   eventsHeartbeatMs?: number;
   now?: () => Date;
@@ -197,6 +209,30 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
         }
       : null,
   );
+  // Phone pushes need the VAPID key pair and subject; without them holds still work, unpushed.
+  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = env;
+  const sendPush =
+    deps.sendPush ??
+    (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY && VAPID_SUBJECT
+      ? webPushSender({
+          publicKey: VAPID_PUBLIC_KEY,
+          privateKey: VAPID_PRIVATE_KEY,
+          subject: VAPID_SUBJECT,
+        })
+      : undefined);
+  if (!sendPush && VAPID_PUBLIC_KEY) app.log.warn('VAPID_SUBJECT is not set; phone pushes are off');
+  const push: PushService | undefined =
+    sendPush && DATABASE_URL
+      ? {
+          sendApprovalPush: (userId, approvalId) =>
+            createPushService({
+              db: app.db,
+              send: sendPush,
+              log: app.log,
+              ...now,
+            }).sendApprovalPush(userId, approvalId),
+        }
+      : undefined;
   if (DATABASE_URL && RULE_HMAC_KEY && RULE_HMAC_KEY_ID && AGENT_TOKEN_PEPPER && paypal) {
     app.register(async (scope) => {
       await scope.register(agentRoutes, {
@@ -206,6 +242,7 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
         agentTokenPepper: AGENT_TOKEN_PEPPER,
         channel3: deps.channel3 ?? createChannel3Service(env.CHANNEL3_API_KEY),
         demoHoldMinutes: env.DEMO_HOLD_MINUTES,
+        push,
         merchantPayPal,
         jobs,
         ...now,
@@ -258,6 +295,9 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
         webOrigin: WEB_ORIGIN,
         ...now,
       });
+    });
+    app.register(async (scope) => {
+      await scope.register(pushRoutes, { db: app.db, verifier });
     });
     app.register(async (scope) => {
       await scope.register(eventRoutes, {

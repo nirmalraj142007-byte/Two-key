@@ -9,6 +9,7 @@ import {
   merchants,
   paymentEvents,
   payments,
+  pushSubscriptions,
   ruleCards,
   users,
   vaultTokens,
@@ -27,6 +28,7 @@ import { handleHoldTimeout } from '../src/jobs/hold-timeout.js';
 import type { JobDeps, Jobs, QueueName, SendOptions } from '../src/jobs/queue.js';
 import { reconcilePayment } from '../src/jobs/reconcile.js';
 import { runSweep } from '../src/jobs/sweep.js';
+import type { PushSubscriptionKeys } from '../src/services/push.js';
 import { ALREADY_DECIDED, HOLD_VOIDED } from '../src/services/settle.js';
 import { applyWebhookEvent } from '../src/services/webhook-apply.js';
 
@@ -58,6 +60,15 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
     async send(name, data, opts) {
       sent.push({ name, data, ...(opts ? { opts } : {}) });
     },
+  };
+  const pushes: Array<{ endpoint: string; payload: unknown }> = [];
+  /** Status the fake push service answers with, by endpoint; 201 when unset. */
+  const pushStatus = new Map<string, number | 'throw'>();
+  const sendPush = async (sub: PushSubscriptionKeys, payload: string) => {
+    const status = pushStatus.get(sub.endpoint) ?? 201;
+    if (status === 'throw') throw new Error('push service unreachable');
+    pushes.push({ endpoint: sub.endpoint, payload: JSON.parse(payload) });
+    return status;
   };
   const ids = { tr2: '', allowed: [] as string[] };
   /** A fresh user per test, so pending lists and stats are exact. */
@@ -307,6 +318,7 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
               }
             : undefined,
         jobs,
+        sendPush,
       },
     );
     await app.ready();
@@ -326,6 +338,8 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
   beforeEach(async () => {
     noMatch = [];
     sent.length = 0;
+    pushes.length = 0;
+    pushStatus.clear();
     peak = createPayPal({
       clientId: 'peak-client',
       clientSecret: 'peak-secret',
@@ -749,5 +763,113 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
     expect(await approvalOf(h.paymentId)).toMatchObject({ status: 'denied' });
     expect(nock.pendingMocks()).toEqual([]);
     expect(noMatch).toEqual([]); // no void was sent
+  });
+  async function pushRoute(method: 'POST' | 'DELETE', payload: object, token?: string) {
+    const res = await app.inject({
+      method,
+      url: '/human/push-subscriptions',
+      headers: { authorization: `Bearer ${token ?? (await assertion(user.id, 'push:manage'))}` },
+      payload: payload as Record<string, unknown>,
+    });
+    return res.statusCode;
+  }
+
+  /** The push is fire-and-forget; poll until it has finished (up to 1 s). */
+  async function waitFor(done: () => Promise<boolean>) {
+    for (let i = 0; i < 50 && !(await done()); i++) await new Promise((r) => setTimeout(r, 20));
+  }
+
+  const devices = () =>
+    conn.db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id));
+
+  const ENDPOINT = (n: number) => `https://fcm.googleapis.com/fcm/send/device-${n}-${randomUUID()}`;
+  const KEYS = { p256dh: 'BPublicKey', auth: 'authsecret' };
+
+  it('(14) push subscriptions: upsert, refuse non-push URLs and agent tokens, delete once', async () => {
+    const endpoint = ENDPOINT(1);
+    expect(await pushRoute('POST', { endpoint, keys: KEYS })).toBe(201);
+    expect(await pushRoute('POST', { endpoint, keys: { ...KEYS, auth: 'rotated' } })).toBe(201);
+    const rows = await conn.db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, endpoint));
+    expect(rows).toEqual([expect.objectContaining({ userId: user.id, auth: 'rotated' })]);
+
+    for (const bad of [
+      'http://fcm.googleapis.com/x',
+      'https://169.254.169.254/x',
+      'https://evil.test/fcm.googleapis.com',
+    ]) {
+      expect(await pushRoute('POST', { endpoint: bad, keys: KEYS })).toBe(400);
+    }
+    expect(await pushRoute('POST', { endpoint, keys: KEYS }, user.token)).toBe(401);
+    // A token for another scope is not enough.
+    expect(await pushRoute('POST', { endpoint, keys: KEYS }, await assertion(user.id))).toBe(403);
+
+    // Another user can't delete it; the owner can, once.
+    const other = await newUser();
+    expect(await pushRoute('DELETE', { endpoint }, await assertion(other.id, 'push:manage'))).toBe(
+      404,
+    );
+    expect(await pushRoute('DELETE', { endpoint })).toBe(204);
+    expect(await pushRoute('DELETE', { endpoint })).toBe(404);
+  });
+
+  it('(15) a hold pushes to each device; 410 forgets the device; a failing push never blocks the hold', async () => {
+    const ok = ENDPOINT(1);
+    const gone = ENDPOINT(2);
+    const down = ENDPOINT(3);
+    for (const endpoint of [ok, gone, down]) {
+      expect(await pushRoute('POST', { endpoint, keys: KEYS })).toBe(201);
+    }
+    pushStatus.set(gone, 410);
+    pushStatus.set(down, 'throw');
+    const h = await hold();
+    await waitFor(async () => {
+      const rows = await devices();
+      return rows.length === 2 && rows.some((r) => r.lastOkAt);
+    });
+
+    const payload = {
+      title: 'Approve $64.40 at Peak Outfitters?',
+      body: '40% above the usual price. Ignored holds are voided automatically.',
+      url: `/m/approve/${h.approvalId}`,
+    };
+    expect(pushes).toEqual(
+      expect.arrayContaining([
+        { endpoint: ok, payload },
+        { endpoint: gone, payload },
+      ]),
+    );
+    const left = await devices();
+    expect(left.map((r) => r.endpoint).sort()).toEqual([ok, down].sort());
+    expect(left.find((r) => r.endpoint === ok)?.lastOkAt).toBeInstanceOf(Date);
+    expect(left.find((r) => r.endpoint === down)?.lastOkAt).toBeNull();
+    expect((await state(h.paymentId))?.state).toBe('held');
+    expect(noMatch).toEqual([]);
+  });
+
+  it('(16) GET /human/approvals/:id: the card with its store count; another user gets 404', async () => {
+    const h = await hold();
+    const one = await human('GET', `/human/approvals/${h.approvalId}`);
+    expect(one).toEqual({
+      status: 200,
+      body: expect.objectContaining({
+        id: h.approvalId,
+        status: 'pending',
+        state: 'held',
+        product: expect.any(String),
+        merchant: 'Peak Outfitters',
+        amount: '$64.40',
+        referencePrice: '$46.00',
+        referenceOffers: 3,
+        ratio: 1.4,
+      }),
+    });
+    const other = await newUser();
+    expect(
+      (await human('GET', `/human/approvals/${h.approvalId}`, undefined, other.id)).status,
+    ).toBe(404);
+    expect((await human('GET', `/human/approvals/${randomUUID()}`)).status).toBe(404);
   });
 });

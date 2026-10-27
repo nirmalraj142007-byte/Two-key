@@ -31,19 +31,64 @@ function humanOf(req: FastifyRequest): Human {
 
 /** The anomaly hit stored on the approval (see rules/evaluate.ts). */
 const AnomalyDetail = z.object({
-  expected: z.object({ referenceCents: z.number().int().positive() }),
+  expected: z.object({
+    referenceCents: z.number().int().positive(),
+    source: z.string().optional(),
+  }),
   actual: z.object({ priceCents: z.number().int().positive() }),
 });
 
-function reference(reason: unknown) {
+function reference(reason: unknown, offers: number) {
   const parsed = AnomalyDetail.safeParse(reason);
-  if (!parsed.success) return { referencePriceCents: null, referencePrice: null, ratio: null };
+  if (!parsed.success) {
+    return { referencePriceCents: null, referencePrice: null, ratio: null, referenceOffers: null };
+  }
   const ref = parsed.data.expected.referenceCents;
   const price = parsed.data.actual.priceCents;
   return {
     referencePriceCents: ref,
     referencePrice: formatUSD(ref),
     ratio: Math.round((price / ref) * 100) / 100,
+    // Store count only when the reference is the same product's median across stores.
+    referenceOffers: parsed.data.expected.source === 'product_median' ? offers : null,
+  };
+}
+
+function approvalRows(db: HumanApprovalRouteOptions['db']) {
+  return db
+    .select({
+      id: approvals.id,
+      status: approvals.status,
+      reason: approvals.reason,
+      deadlineAt: approvals.deadlineAt,
+      decidedAt: approvals.decidedAt,
+      decidedVia: approvals.decidedVia,
+      paymentId: payments.id,
+      state: payments.state,
+      amountCents: payments.amountCents,
+      proposalId: proposals.id,
+      qty: proposals.qty,
+      product: listings.title,
+      merchant: merchants.displayName,
+      offers: listings.referenceNOffers,
+    })
+    .from(approvals)
+    .innerJoin(payments, eq(payments.id, approvals.paymentId))
+    .innerJoin(proposals, eq(proposals.id, payments.proposalId))
+    .innerJoin(listings, eq(listings.id, proposals.listingId))
+    .innerJoin(merchants, eq(merchants.id, payments.payeeMerchantId));
+}
+
+type ApprovalRow = Awaited<ReturnType<typeof approvalRows>>[number];
+
+function toItem({ reason, amountCents, deadlineAt, decidedAt, offers, ...r }: ApprovalRow) {
+  return {
+    ...r,
+    amountCents,
+    amount: formatUSD(amountCents),
+    ...reference(reason, offers),
+    deadlineAt: deadlineAt.toISOString(),
+    decidedAt: decidedAt?.toISOString() ?? null,
   };
 }
 
@@ -64,40 +109,23 @@ export const humanApprovalRoutes: FastifyPluginAsync<HumanApprovalRouteOptions> 
         'status must be pending, approved, denied or timed_out',
       );
     }
-    const rows = await db
-      .select({
-        id: approvals.id,
-        status: approvals.status,
-        reason: approvals.reason,
-        deadlineAt: approvals.deadlineAt,
-        decidedAt: approvals.decidedAt,
-        decidedVia: approvals.decidedVia,
-        paymentId: payments.id,
-        state: payments.state,
-        amountCents: payments.amountCents,
-        proposalId: proposals.id,
-        qty: proposals.qty,
-        product: listings.title,
-        merchant: merchants.displayName,
-      })
-      .from(approvals)
-      .innerJoin(payments, eq(payments.id, approvals.paymentId))
-      .innerJoin(proposals, eq(proposals.id, payments.proposalId))
-      .innerJoin(listings, eq(listings.id, proposals.listingId))
-      .innerJoin(merchants, eq(merchants.id, payments.payeeMerchantId))
+    const rows = await approvalRows(db)
       .where(and(eq(approvals.userId, userId), eq(approvals.status, query.data.status)))
       .orderBy(asc(approvals.deadlineAt))
       .limit(100);
-    return {
-      items: rows.map(({ reason, amountCents, deadlineAt, decidedAt, ...r }) => ({
-        ...r,
-        amountCents,
-        amount: formatUSD(amountCents),
-        ...reference(reason),
-        deadlineAt: deadlineAt.toISOString(),
-        decidedAt: decidedAt?.toISOString() ?? null,
-      })),
-    };
+    return { items: rows.map(toItem) };
+  });
+
+  app.get('/human/approvals/:id', { preHandler: requireHuman('approvals:decide') }, async (req) => {
+    const { userId } = humanOf(req);
+    const params = IdParams.safeParse(req.params);
+    if (!params.success) throw new AppError(ErrorCode.NOT_FOUND, 'Hold not found');
+    // Tenancy: another user's approval is the same 404 as a missing one.
+    const [row] = await approvalRows(db)
+      .where(and(eq(approvals.id, params.data.id), eq(approvals.userId, userId)))
+      .limit(1);
+    if (!row) throw new AppError(ErrorCode.NOT_FOUND, 'Hold not found');
+    return toItem(row);
   });
 
   app.post(

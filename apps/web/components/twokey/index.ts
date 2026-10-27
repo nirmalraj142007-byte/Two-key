@@ -1,3 +1,4 @@
+export { ApprovalCard, type ApprovalCardProps } from './ApprovalCard';
 export { Banner, type BannerTone } from './banner';
 export { Countdown, formatRemaining } from './countdown';
 export { Money, type MoneyProps } from './money';
