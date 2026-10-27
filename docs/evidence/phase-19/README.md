@@ -51,6 +51,26 @@ giftvault        HTTP 200  USD total 5000.00
 $5,000.00 (the three merchants with no captures report exactly that), so the card notes that
 the PayPal figure includes the account's starting funds and is not what Two-Key sent.
 
+### Payments received, from PayPal Transaction Search (2026-10-27, 18:43)
+
+`GET /v1/reporting/transactions` with each merchant's own credentials, start_date
+2026-10-19T00:00:00Z, end_date now (cut to 31 days), counting completed (status S) incoming
+payments. All five answered HTTP 200; PayPal's log was last refreshed 11:29 UTC (16:59 IST):
+
+```text
+stride-supply    22   (T0003, status S)
+peak-outfitters   2
+pacer-goods       0
+corner-pantry     0
+giftvault         0
+```
+
+`merchants-transactions.png`: each card shows "Payments received (from PayPal): N" with a note
+that PayPal's transaction log can lag up to a few hours (and when it was last updated), and
+"PayPal balance (incl. $5,000 sandbox starting funds)". Gross captured stays the main figure.
+PayPal's counts trail Two-Key's own records (Peak Outfitters 2 vs 3 captures) because of that
+lag: the most recent captures were after 11:29 UTC.
+
 ## AG Grid
 
 `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` is not set, so the grid runs Community features only and

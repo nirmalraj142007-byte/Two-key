@@ -19,6 +19,7 @@ import {
   createBalanceService,
   type MerchantBalance,
   maskMerchantId,
+  transactionWindow,
   usdBalanceCents,
 } from '../src/services/balances.js';
 
@@ -30,6 +31,17 @@ const silent = {
 } as unknown as FastifyBaseLogger;
 
 describe('balance helpers', () => {
+  it('queries from Oct 19 to now, never more than 31 days', () => {
+    expect(transactionWindow(new Date('2026-10-27T10:00:00.123Z'))).toEqual({
+      start: '2026-10-19T00:00:00Z',
+      end: '2026-10-27T10:00:00Z',
+    });
+    expect(transactionWindow(new Date('2026-12-31T00:00:00Z'))).toEqual({
+      start: '2026-11-30T00:00:00Z',
+      end: '2026-12-31T00:00:00Z',
+    });
+  });
+
   it('masks merchant IDs to the last 4 characters', () => {
     expect(maskMerchantId('KJ5QLMZCN224U')).toBe('•••••••••224U');
     expect(maskMerchantId(null)).toBeNull();
@@ -166,6 +178,7 @@ describe.skipIf(!baseUrl)('merchant balances', () => {
   it('uses PayPal where it answers, falls back where refused, and caches for 30 s', async () => {
     let t = Date.parse('2026-10-27T10:00:00Z');
     const calls: string[] = [];
+    const windows: string[] = [];
     const svc = createBalanceService({
       db: conn.db,
       credentials: {
@@ -186,6 +199,26 @@ describe.skipIf(!baseUrl)('merchant balances', () => {
           return Response.json({ access_token: `tok-${id}`, expires_in: 3600 });
         }
         const auth = String((init?.headers as Record<string, string> | undefined)?.authorization);
+        if (url.includes('/v1/reporting/transactions')) {
+          const q = new URL(url).searchParams;
+          windows.push(`${q.get('start_date')}..${q.get('end_date')}`);
+          if (auth !== 'Bearer tok-a') {
+            return Response.json({ transaction_details: [], total_pages: 0 });
+          }
+          const tx = (status: string, value: string) => ({
+            transaction_info: {
+              transaction_status: status,
+              transaction_amount: { currency_code: 'USD', value },
+            },
+          });
+          return q.get('page') === '1'
+            ? Response.json({
+                transaction_details: [tx('S', '54.00'), tx('S', '-2.07'), tx('P', '54.00')],
+                total_pages: 2,
+                last_refreshed_datetime: '2026-10-27T09:59:59Z',
+              })
+            : Response.json({ transaction_details: [tx('S', '54.00')], total_pages: 2 });
+        }
         if (auth === 'Bearer tok-a') {
           return Response.json({
             balances: [
@@ -200,12 +233,23 @@ describe.skipIf(!baseUrl)('merchant balances', () => {
     expect(bySlug(items, 'stride-supply')).toMatchObject({
       grossCapturedCents: 10800,
       paypalBalanceCents: 10453,
+      // Completed and incoming only, across both pages.
+      paypalPaymentsReceived: 2,
+      paypalTransactionsAsOf: '2026-10-27T09:59:59Z',
       source: 'paypal',
     });
+    expect(windows[0]).toBe('2026-10-19T00:00:00Z..2026-10-27T10:00:00Z');
+    // Balance refused but Transaction Search answered: the count still shows.
     expect(bySlug(items, 'giftvault')).toMatchObject({
       grossCapturedCents: 0,
       paypalBalanceCents: null,
+      paypalPaymentsReceived: 0,
       source: 'computed',
+    });
+    // No credentials: no PayPal figures at all.
+    expect(bySlug(items, 'pacer-goods')).toMatchObject({
+      paypalPaymentsReceived: null,
+      paypalTransactionsAsOf: null,
     });
     expect(calls.filter((c) => c.includes('/v1/reporting/balances'))).toHaveLength(2);
 

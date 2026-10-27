@@ -11,6 +11,10 @@ export const MerchantBalanceSchema = z.object({
   grossCapturedCents: z.number().int().nonnegative(),
   /** PayPal's reported balance after fees, in cents; null when PayPal didn't give one. */
   paypalBalanceCents: z.number().int().nonnegative().nullable(),
+  /** Completed incoming payments from PayPal Transaction Search; null when unavailable. */
+  paypalPaymentsReceived: z.number().int().nonnegative().nullable(),
+  /** When PayPal last refreshed its transaction log. */
+  paypalTransactionsAsOf: z.string().nullable(),
   source: z.enum(['paypal', 'computed']),
   asOf: z.string(),
 });

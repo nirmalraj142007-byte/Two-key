@@ -50,17 +50,24 @@ export function MerchantCard({ item, className }: { item: MerchantBalance; class
       </div>
 
       <footer className="flex flex-col gap-0.5 border-t border-border pt-3 text-sm text-text-muted">
+        <p>
+          Payments received (from PayPal):{' '}
+          <span className="font-medium tabular-nums text-text" data-testid="payments-received">
+            {item.paypalPaymentsReceived ?? 'unavailable'}
+          </span>
+        </p>
+        <p className="text-xs">
+          PayPal’s transaction log can lag up to a few hours
+          {item.paypalTransactionsAsOf
+            ? ` (last updated ${TIME.format(new Date(item.paypalTransactionsAsOf))})`
+            : ''}
+          .
+        </p>
         {item.source === 'paypal' && item.paypalBalanceCents !== null ? (
-          <>
-            <p>
-              Account balance, <span className="font-medium text-text">from PayPal</span> (net,
-              after fees):{' '}
-              <span className="tabular-nums text-text">{formatUSD(item.paypalBalanceCents)}</span>
-            </p>
-            <p className="text-xs">
-              Includes the sandbox account’s starting funds, so it is not what Two-Key sent.
-            </p>
-          </>
+          <p>
+            PayPal balance (incl. $5,000 sandbox starting funds):{' '}
+            <span className="tabular-nums text-text">{formatUSD(item.paypalBalanceCents)}</span>
+          </p>
         ) : (
           <p>
             <span className="font-medium text-text">computed from Two-Key records</span>

@@ -129,6 +129,8 @@ describe('history view', () => {
       paypalMerchantId: null,
       grossCapturedCents: 0,
       paypalBalanceCents: null,
+      paypalPaymentsReceived: null,
+      paypalTransactionsAsOf: null,
       source: 'computed' as const,
       asOf: '',
     };
