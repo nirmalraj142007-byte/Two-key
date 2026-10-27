@@ -31,6 +31,26 @@ answered `GET /v1/reporting/balances` with HTTP 403 for all four merchant apps i
 f402102cdc453), and GiftVault has no credentials. The main figure is gross captured; PayPal's
 net balance would show beneath it if PayPal reported one.
 
+### Recheck after enabling Transaction Search (2026-10-27, 18:34)
+
+Transaction Search was enabled on all five merchant apps and GiftVault was added to
+`MERCHANT_API_CREDENTIALS` (5 slugs: stride-supply, peak-outfitters, pacer-goods,
+corner-pantry, giftvault). Only the dev gateway (4000) was restarted. `GET
+/v1/reporting/balances?currency_code=USD` per merchant:
+
+```text
+stride-supply    HTTP 200  USD total 5946.66
+peak-outfitters  HTTP 200  USD total 5123.32
+pacer-goods      HTTP 200  USD total 5000.00
+corner-pantry    HTTP 200  USD total 5000.00
+giftvault        HTTP 200  USD total 5000.00
+```
+
+`merchants-paypal.png`: gross captured stays the main figure (GiftVault $0.00); beneath it,
+"Account balance, from PayPal (net, after fees)". Every sandbox business account starts with
+$5,000.00 (the three merchants with no captures report exactly that), so the card notes that
+the PayPal figure includes the account's starting funds and is not what Two-Key sent.
+
 ## AG Grid
 
 `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` is not set, so the grid runs Community features only and

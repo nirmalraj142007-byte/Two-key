@@ -51,10 +51,16 @@ export function MerchantCard({ item, className }: { item: MerchantBalance; class
 
       <footer className="flex flex-col gap-0.5 border-t border-border pt-3 text-sm text-text-muted">
         {item.source === 'paypal' && item.paypalBalanceCents !== null ? (
-          <p>
-            PayPal balance (net, after fees):{' '}
-            <span className="tabular-nums text-text">{formatUSD(item.paypalBalanceCents)}</span>
-          </p>
+          <>
+            <p>
+              Account balance, <span className="font-medium text-text">from PayPal</span> (net,
+              after fees):{' '}
+              <span className="tabular-nums text-text">{formatUSD(item.paypalBalanceCents)}</span>
+            </p>
+            <p className="text-xs">
+              Includes the sandbox account’s starting funds, so it is not what Two-Key sent.
+            </p>
+          </>
         ) : (
           <p>
             <span className="font-medium text-text">computed from Two-Key records</span>
