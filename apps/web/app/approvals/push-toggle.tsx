@@ -23,10 +23,10 @@ export function PushToggle({ vapidPublicKey }: { vapidPublicKey: string | null }
   useEffect(() => {
     setIosHint(isIOS() && !isStandalone());
     void registerServiceWorker().catch(() => undefined);
-    pushStatus()
+    pushStatus(vapidPublicKey)
       .then(setStatus)
-      .catch(() => setStatus('unsupported'));
-  }, []);
+      .catch(() => setStatus('off'));
+  }, [vapidPublicKey]);
 
   async function run(fn: () => Promise<{ status: PushStatus; message?: string }>) {
     setBusy(true);

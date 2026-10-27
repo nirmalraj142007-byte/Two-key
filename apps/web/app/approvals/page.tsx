@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { LoadingState } from '@/components/twokey/state-panels';
-import type { ApprovalItem } from '@/lib/approvals-view';
+import { type ApprovalItem, isValidVapidKey } from '@/lib/approvals-view';
 import { webEnv } from '@/lib/env';
 import { requireUser } from '@/lib/session';
 import { pendingApprovals } from './actions';
@@ -17,7 +17,13 @@ async function Inbox() {
   const env = webEnv();
   return (
     <>
-      <PushToggle vapidPublicKey={env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null} />
+      <PushToggle
+        vapidPublicKey={
+          isValidVapidKey(env.NEXT_PUBLIC_VAPID_PUBLIC_KEY)
+            ? env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+            : null
+        }
+      />
       <ApprovalsInbox gatewayUrl={env.GATEWAY_URL} initial={items ?? []} failed={items === null} />
     </>
   );

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   isOpen,
   isUrgent,
+  isValidVapidKey,
   outcomeSentence,
   priceLine,
+  sameKey,
   urlBase64ToBytes,
 } from '../lib/approvals-view';
 
@@ -37,6 +39,23 @@ describe('approvals view', () => {
     expect(outcomeSentence('voided')).toBe('Voided. No charge was made.');
     expect(outcomeSentence('expired')).toContain('No charge');
     expect(outcomeSentence('captured')).toContain('captured');
+  });
+
+  it('tells whether an existing subscription used our VAPID key', () => {
+    const key = urlBase64ToBytes('AQID_-8');
+    expect(sameKey(new Uint8Array([1, 2, 3, 255, 239]).buffer, key)).toBe(true);
+    expect(sameKey(new Uint8Array([4, 4, 4, 4, 4]).buffer, key)).toBe(false);
+    expect(sameKey(new Uint8Array([1, 2, 3]).buffer, key)).toBe(false);
+    expect(sameKey(null, key)).toBe(false);
+  });
+
+  it('accepts only a 65-byte uncompressed P-256 public key', () => {
+    const point = Buffer.from([4, ...new Array(64).fill(7)]).toString('base64url');
+    expect(isValidVapidKey(point)).toBe(true);
+    expect(isValidVapidKey('dummy')).toBe(false);
+    expect(isValidVapidKey(Buffer.from([4, 1, 2]).toString('base64url'))).toBe(false);
+    expect(isValidVapidKey(`${point.slice(0, -1)}+`)).toBe(false);
+    expect(isValidVapidKey(undefined)).toBe(false);
   });
 
   it('decodes a base64url VAPID key', () => {

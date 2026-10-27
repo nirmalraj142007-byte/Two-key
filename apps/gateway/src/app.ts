@@ -221,16 +221,25 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
         })
       : undefined);
   if (!sendPush && VAPID_PUBLIC_KEY) app.log.warn('VAPID_SUBJECT is not set; phone pushes are off');
+  // Pushes are fire-and-forget; shutdown waits for the ones still in flight.
+  const inflight = new Set<Promise<void>>();
+  app.addHook('preClose', async () => {
+    await Promise.allSettled([...inflight]);
+  });
   const push: PushService | undefined =
     sendPush && DATABASE_URL
       ? {
-          sendApprovalPush: (userId, approvalId) =>
-            createPushService({
+          sendApprovalPush: (userId, approvalId) => {
+            const p = createPushService({
               db: app.db,
               send: sendPush,
               log: app.log,
               ...now,
-            }).sendApprovalPush(userId, approvalId),
+            }).sendApprovalPush(userId, approvalId);
+            inflight.add(p);
+            void p.finally(() => inflight.delete(p));
+            return p;
+          },
         }
       : undefined;
   if (DATABASE_URL && RULE_HMAC_KEY && RULE_HMAC_KEY_ID && AGENT_TOKEN_PEPPER && paypal) {

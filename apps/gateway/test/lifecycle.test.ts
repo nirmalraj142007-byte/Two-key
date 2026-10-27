@@ -71,6 +71,7 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
     return status;
   };
   const ids = { tr2: '', allowed: [] as string[] };
+  let buildTestApp: (send: typeof sendPush) => FastifyInstance;
   /** A fresh user per test, so pending lists and stats are exact. */
   let user = { id: '', token: '' };
 
@@ -287,40 +288,43 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
     const noPayPal = async (): Promise<never> => {
       throw new Error('not used');
     };
-    app = buildApp(
-      {
-        LOG_LEVEL: 'silent',
-        DATABASE_URL: url,
-        RULE_HMAC_KEY: KEY.secret.toString('base64'),
-        RULE_HMAC_KEY_ID: KEY.id,
-        AGENT_TOKEN_PEPPER: PEPPER,
-        HUMAN_ASSERTION_PUBLIC_KEY: await exportSPKI(pair.publicKey),
-        WEB_ORIGIN: 'http://localhost:3000',
-      },
-      {
-        // A fresh client per test, so each test sees its own OAuth call.
-        paypal: {
-          createVaultedAuthorization: (i) => paypal.createVaultedAuthorization(i),
-          capture: (i) => paypal.capture(i),
-          getAuthorization: (id) => paypal.getAuthorization(id),
-          getCapture: (id) => paypal.getCapture(id),
+    const publicKey = await exportSPKI(pair.publicKey);
+    buildTestApp = (send: typeof sendPush) =>
+      buildApp(
+        {
+          LOG_LEVEL: 'silent',
+          DATABASE_URL: url,
+          RULE_HMAC_KEY: KEY.secret.toString('base64'),
+          RULE_HMAC_KEY_ID: KEY.id,
+          AGENT_TOKEN_PEPPER: PEPPER,
+          HUMAN_ASSERTION_PUBLIC_KEY: publicKey,
+          WEB_ORIGIN: 'http://localhost:3000',
         },
-        vault: {
-          createSetupToken: noPayPal,
-          createPaymentToken: noPayPal,
-          deletePaymentToken: noPayPal,
+        {
+          // A fresh client per test, so each test sees its own OAuth call.
+          paypal: {
+            createVaultedAuthorization: (i) => paypal.createVaultedAuthorization(i),
+            capture: (i) => paypal.capture(i),
+            getAuthorization: (id) => paypal.getAuthorization(id),
+            getCapture: (id) => paypal.getCapture(id),
+          },
+          vault: {
+            createSetupToken: noPayPal,
+            createPaymentToken: noPayPal,
+            deletePaymentToken: noPayPal,
+          },
+          merchantPayPal: (slug) =>
+            slug === 'peak-outfitters' && peak
+              ? {
+                  voidAuthorization: (i) => (peak as PayPal).voidAuthorization(i),
+                  getAuthorization: (id) => (peak as PayPal).getAuthorization(id),
+                }
+              : undefined,
+          jobs,
+          sendPush: send,
         },
-        merchantPayPal: (slug) =>
-          slug === 'peak-outfitters' && peak
-            ? {
-                voidAuthorization: (i) => (peak as PayPal).voidAuthorization(i),
-                getAuthorization: (id) => (peak as PayPal).getAuthorization(id),
-              }
-            : undefined,
-        jobs,
-        sendPush,
-      },
-    );
+      );
+    app = buildTestApp(sendPush);
     await app.ready();
     nock.disableNetConnect();
     nock.emitter.on('no match', onNoMatch);
@@ -871,5 +875,22 @@ describe.skipIf(!baseUrl)('hold lifecycle', () => {
       (await human('GET', `/human/approvals/${h.approvalId}`, undefined, other.id)).status,
     ).toBe(404);
     expect((await human('GET', `/human/approvals/${randomUUID()}`)).status).toBe(404);
+  });
+  it('(17) closing the gateway waits for a push still in flight', async () => {
+    expect(await pushRoute('POST', { endpoint: ENDPOINT(1), keys: KEYS })).toBe(201);
+    const main = app;
+    app = buildTestApp(async (sub, payload) => {
+      await new Promise((r) => setTimeout(r, 300));
+      return sendPush(sub, payload);
+    });
+    try {
+      await app.ready();
+      await hold();
+      expect(pushes).toEqual([]); // the hold answered before the push finished
+      await app.close();
+      expect(pushes).toHaveLength(1);
+    } finally {
+      app = main;
+    }
   });
 });

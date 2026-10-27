@@ -134,6 +134,8 @@ export function createPushService(deps: {
               { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
               payload,
             );
+            // The status only: endpoints and keys are never logged.
+            log.info({ approvalId, pushStatus: status }, 'approval push result');
             if (status === 404 || status === 410) {
               // The browser dropped this subscription; forget it.
               await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, s.id));

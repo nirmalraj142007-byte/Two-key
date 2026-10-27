@@ -26,7 +26,7 @@ import {
   users,
   vaultTokens,
 } from '@twokey/db';
-import { buildApp, loadRuleKeys, mintAgentToken } from '@twokey/gateway';
+import { buildApp, loadRuleKeys, mintAgentToken, webPushSender } from '@twokey/gateway';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -206,7 +206,27 @@ const products = [
   await demoListing('trail-runner-tr2', 'peak-outfitters'),
 ];
 
-const app = buildApp({ ...env, LOG_LEVEL: 'warn' });
+// The hold's phone push: record each push service's HTTP status (never the endpoint or keys).
+const pushStatuses: number[] = [];
+const sender = env.VAPID_SUBJECT
+  ? webPushSender({
+      publicKey: env.VAPID_PUBLIC_KEY,
+      privateKey: env.VAPID_PRIVATE_KEY,
+      subject: env.VAPID_SUBJECT,
+    })
+  : undefined;
+const app = buildApp(
+  { ...env, LOG_LEVEL: 'warn' },
+  sender
+    ? {
+        sendPush: async (sub, payload) => {
+          const status = await sender(sub, payload);
+          pushStatuses.push(status);
+          return status;
+        },
+      }
+    : {},
+);
 let exitCode = 0;
 try {
   const address = await app.listen({ port: 0, host: '127.0.0.1' });
@@ -282,7 +302,15 @@ try {
     exitCode = 1;
   }
 } finally {
+  // close() waits for the hold's push, which is sent without blocking the purchase.
   await app.close();
   await sql.end();
 }
+console.log(
+  !sender
+    ? '\npush: off (VAPID_SUBJECT not set)'
+    : pushStatuses.length === 0
+      ? '\npush: no devices subscribed for e2e@twokey.demo'
+      : `\npush: ${pushStatuses.length} device(s), push service HTTP ${pushStatuses.join(', ')}`,
+);
 process.exit(exitCode);

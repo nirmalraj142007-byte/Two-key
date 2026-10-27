@@ -77,3 +77,21 @@ export function urlBase64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
   return out;
 }
+
+/** True when a subscription's applicationServerKey is exactly this VAPID key. */
+export function sameKey(current: ArrayBuffer | null | undefined, key: Uint8Array): boolean {
+  if (!current) return false;
+  const a = new Uint8Array(current);
+  return a.length === key.length && a.every((b, i) => b === key[i]);
+}
+
+/** A usable VAPID public key: base64url of a 65-byte uncompressed P-256 point. */
+export function isValidVapidKey(key: string | null | undefined): key is string {
+  if (!key || !/^[A-Za-z0-9_-]+$/.test(key)) return false;
+  try {
+    const bytes = urlBase64ToBytes(key);
+    return bytes.length === 65 && bytes[0] === 4;
+  } catch {
+    return false;
+  }
+}
