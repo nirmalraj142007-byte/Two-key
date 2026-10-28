@@ -29,7 +29,8 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts",
-    "../../scripts/compiler-smoke.ts"
+    "../../scripts/compiler-smoke.ts",
+    "../../scripts/check-redaction.ts"
   ],
   "exclude": ["node_modules"]
 }

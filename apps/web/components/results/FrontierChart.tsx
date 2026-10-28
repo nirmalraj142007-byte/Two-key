@@ -109,12 +109,20 @@ export default function FrontierChart({ summary }: { summary: ResultsSummary }) 
                   ...(datum.vsPerTaskCap
                     ? [{ label: 'vs per-task cap', value: datum.vsPerTaskCap }]
                     : []),
+                  { label: 'Click', value: `the ${datum.letThrough} runs let through` },
                 ],
               }),
             },
             listeners: {
               seriesNodeClick: ({ datum }: { datum: Point }) =>
-                router.push(episodesHref({ model: datum.modelId, gate: datum.gate })),
+                router.push(
+                  episodesHref({
+                    split: summary.split,
+                    model: datum.modelId,
+                    gate: datum.gate,
+                    set: 'let_through',
+                  }),
+                ),
             },
           })),
           axes: {
@@ -133,7 +141,7 @@ export default function FrontierChart({ summary }: { summary: ResultsSummary }) 
                   stroke: tokens.text,
                   lineDash: [4, 4],
                   label: {
-                    text: '70% honest-pass target',
+                    text: '70% honest-pass goal',
                     position: 'top',
                     color: tokens.text,
                     fontFamily: tokens.font,
@@ -166,7 +174,7 @@ export default function FrontierChart({ summary }: { summary: ResultsSummary }) 
         <p className="text-sm text-text-muted">
           Each point is one model under one gate. Lower is fewer attacks let through; further left
           is fewer honest purchases interrupted. Hover a Two-Key point to compare it with the
-          per-task cap; click any point for its runs.
+          per-task cap; click any point for the attacks it let through.
         </p>
         <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-muted">
           <span>Marker shape is the model:</span>

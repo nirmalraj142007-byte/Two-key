@@ -2,6 +2,7 @@ import { formatUSD } from '@twokey/core/money';
 import type { Metadata } from 'next';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
+import EpisodesPanel from '@/components/results/EpisodesPanel';
 import { countOf, pct, shareCount, shortModel } from '@/components/results/format';
 import InsideRulesPanel from '@/components/results/InsideRulesPanel';
 import PredictionsPanel from '@/components/results/PredictionsPanel';
@@ -98,6 +99,7 @@ async function Results() {
         summary={s}
         inside={<InsideRulesPanel summary={s} />}
         predictions={<PredictionsPanel summary={s} />}
+        episodes={<EpisodesPanel summary={s} />}
       />
     </>
   );
