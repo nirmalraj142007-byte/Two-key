@@ -7,14 +7,7 @@ import { webEnv } from './env';
 export const HIJACK_POINTS = 5;
 export const HIJACK_WINDOW_S = 60 * 60;
 
-/**
- * The visitor's IP: the first x-forwarded-for entry (Render's proxy puts the client first), else
- * x-real-ip. Only its salted hash is ever stored.
- */
-export function clientIp(headers: Headers): string {
-  const first = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  return first || headers.get('x-real-ip')?.trim() || 'unknown';
-}
+export { clientIp } from './client-ip';
 
 /** sha256(IP_HASH_SALT + ip), hex. */
 export function ipHash(ip: string, salt = webEnv().IP_HASH_SALT): string {
