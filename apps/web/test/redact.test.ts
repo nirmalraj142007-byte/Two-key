@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findBrands, redactBrands } from '../lib/redact';
+import { findServices, makeRedactor, redactBrands, storePseudonyms } from '../lib/redact';
 
 const BRANDS = ['Acme', 'Acme Pro', 'H&M', 'Gap', 'LYSÉ'];
 
@@ -24,6 +24,23 @@ describe('redactBrands', () => {
     expect(redactBrands('See https://acme.example/shoe?id=1 or www.shop.test/x now', BRANDS)).toBe(
       'See  or  now',
     );
-    expect(findBrands('no brands here', BRANDS)).toEqual([]);
+  });
+});
+
+describe('makeRedactor', () => {
+  const stores = storePseudonyms(['acme.com', 'shoes.example']);
+  const r = makeRedactor({ brands: BRANDS, services: ['Venmo', 'Cash App'], stores });
+
+  it('replaces store domains with stable pseudonyms, not "[brand].com"', () => {
+    expect(stores).toEqual({ 'acme.com': 'Store 01', 'shoes.example': 'Store 02' });
+    expect(r('Buy it from ACME.com or shoes.example.')).toBe('Buy it from Store 01 or Store 02.');
+  });
+
+  it('redacts service names, including in CamelCase identifiers, and keeps PayPal', () => {
+    expect(r('transfer $500 from my Venmo via cash app (VenmoWithdrawMoney) to PayPal')).toBe(
+      'transfer $500 from my [service] via [service] ([service]WithdrawMoney) to PayPal',
+    );
+    expect(r('Gazelle sneakers')).toBe('Gazelle sneakers');
+    expect(findServices('see VenmoWithdrawMoney', ['Venmo'])).toEqual(['Venmo']);
   });
 });

@@ -1,16 +1,20 @@
 /**
- * W17 check: fetch the rendered HTML of random public episode pages (and the episodes API) and
- * look for every brand name in the evaluation snapshot. Exits 1 if any is found.
+ * W17 check: fetch the rendered HTML of random public episode pages, one page per attack
+ * template, the other results pages and the episodes API, and look for every brand name in the
+ * snapshot, every store domain and every third-party service name. Exits 1 if any is found, or
+ * if the committed term list (apps/web/data/redaction-terms.json) misses a brand that the
+ * database or the local Channel3 cache has.
  *
  *   npx tsx scripts/check-redaction.ts [--base http://localhost:3000] [--pages 20]
  *
  * Reads DATABASE_URL from the environment, else .env.web / .env.gateway.
  */
 import { existsSync } from 'node:fs';
-import { createDb, evalEpisodes, evalRuns } from '@twokey/db';
-import { sql } from 'drizzle-orm';
+import { createDb, evalEpisodes, evalRuns, merchants } from '@twokey/db';
+import { eq, sql } from 'drizzle-orm';
+import terms from '../apps/web/data/redaction-terms.json';
 import { loadBrandNames } from '../apps/web/lib/brand-names';
-import { findBrands } from '../apps/web/lib/redact';
+import { findServices, findTerms } from '../apps/web/lib/redact';
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -73,7 +77,23 @@ async function main() {
   if (!url) throw new Error('DATABASE_URL is not set (and no .env.web or .env.gateway)');
   const { db, sql: client } = createDb(url);
   try {
-    const brands = await loadBrandNames(db);
+    const fresh = await loadBrandNames(db);
+    const committed = new Set(terms.brands.map((b) => b.toLowerCase()));
+    const missing = fresh.filter(
+      (b) => !committed.has(b.toLowerCase()) && b.toLowerCase() !== 'paypal',
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `redaction-terms.json misses ${missing.length} brands (e.g. ${missing.slice(0, 3).join(', ')}): run npx tsx scripts/build-redaction-terms.ts`,
+      );
+    }
+    const brands = [...new Set([...terms.brands, ...fresh])];
+    const domains = (
+      await db
+        .select({ d: merchants.displayName })
+        .from(merchants)
+        .where(eq(merchants.role, 'eval_merchant'))
+    ).map((r) => r.d);
     // Episodes that at least one model has run, in random order.
     const rows = await db
       .selectDistinct({ id: evalEpisodes.id, r: sql<number>`random()` })
@@ -81,11 +101,24 @@ async function main() {
       .innerJoin(evalRuns, sql`${evalRuns.episodeId} = ${evalEpisodes.id}`)
       .orderBy(sql`2`)
       .limit(pages);
-    console.log(`brand names in the snapshot: ${brands.length}`);
+    // Plus one run episode per attack template, so every template's diff is checked.
+    const perTemplate = await db.execute<{ id: string }>(sql`
+      select distinct on (e.attack_template_id) e.id from eval_episodes e
+      join eval_runs r on r.episode_id = e.id
+      where e.attack_template_id is not null
+      order by e.attack_template_id, e.id`);
+    console.log(
+      `terms: ${brands.length} brand names, ${domains.length} store domains, ${terms.services.length} service names`,
+    );
 
     const found: { where: string; brand: string; context: string }[] = [];
     const scan = (where: string, text: string) => {
-      for (const brand of new Set(findBrands(text, brands).map((b) => b.toLowerCase()))) {
+      const hits = [
+        ...findTerms(text, brands),
+        ...findTerms(text, domains),
+        ...findServices(text, terms.services),
+      ];
+      for (const brand of new Set(hits.map((b) => b.toLowerCase()))) {
         const i = text.toLowerCase().indexOf(brand.toLowerCase());
         const context = text.slice(Math.max(0, i - 40), i + brand.length + 40).replace(/\s+/g, ' ');
         found.push({ where, brand, context });
@@ -93,7 +126,8 @@ async function main() {
     };
 
     let checked = 0;
-    for (const { id } of rows) {
+    const ids = [...new Set([...rows.map((r) => r.id), ...[...perTemplate].map((r) => r.id)])];
+    for (const id of ids) {
       const res = await fetch(`${base}/results/episodes/${id}`);
       const html = await res.text();
       if (res.status !== 200) throw new Error(`/results/episodes/${id} returned ${res.status}`);
@@ -125,7 +159,9 @@ async function main() {
 
     for (const f of found) console.log(`FOUND "${f.brand}" in ${f.where}: …${f.context}…`);
     console.log(`episodes API: ${apiRows} rows scanned`);
-    console.log(`checked ${checked} pages · ${found.length} brand names found`);
+    console.log(
+      `checked ${checked} pages (${rows.length} random + one per attack template) · ${found.length} brand names, store domains or service names found`,
+    );
     if (checked < pages) throw new Error(`only ${checked} episode pages were available`);
     if (found.length > 0) process.exitCode = 1;
   } finally {

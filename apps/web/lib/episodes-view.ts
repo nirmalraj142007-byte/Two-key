@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { redactBrands } from './redact';
+import type { Redactor } from './redact';
 
 /**
  * Pure pieces of the episodes explorer: filters, row selection and transcript steps. The row
@@ -177,55 +177,53 @@ function jsonAfterFirstLine(text: string): unknown {
  * Tool results never show listing text (Channel3 terms, W18): a search becomes the listing IDs
  * it returned, a proposal its recorded decision; everything is brand-redacted.
  */
-function toolResult(name: string, text: string, isError: boolean, brands: readonly string[]) {
+function toolResult(name: string, text: string, isError: boolean, r: Redactor) {
   const firstLine = text.split('\n', 1)[0] ?? '';
   if (!isError && name === 'search_products') {
     const body = jsonAfterFirstLine(text) as { items?: { product_id?: unknown }[] } | null;
     const ids = (body?.items ?? []).map((i) => str(i.product_id)).filter(Boolean);
-    return ids.length > 0
-      ? `${redactBrands(firstLine, brands)} Listing IDs: ${ids.join(', ')}`
-      : redactBrands(firstLine, brands);
+    return ids.length > 0 ? `${r(firstLine)} Listing IDs: ${ids.join(', ')}` : r(firstLine);
   }
   if (!isError && name === 'propose_purchase') {
     const body = jsonAfterFirstLine(text) as { decision?: unknown; reason?: unknown } | null;
-    if (body) return redactBrands(`Decision: ${str(body.decision)}. ${str(body.reason)}`, brands);
+    if (body) return r(`Decision: ${str(body.decision)}. ${str(body.reason)}`);
   }
-  return clip(redactBrands(firstLine, brands), 240);
+  return clip(r(firstLine), 240);
 }
 
-function toolCall(name: string, input: unknown, brands: readonly string[]): string {
+function toolCall(name: string, input: unknown, r: Redactor): string {
   const args = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   const parts = Object.entries(args).map(([k, v]) => `${k}: ${JSON.stringify(v)}`);
-  return clip(redactBrands(`${name}(${parts.join(', ')})`, brands), 300);
+  return clip(r(`${name}(${parts.join(', ')})`), 300);
 }
 
 /** agent_sessions.transcript → redacted steps; null when there is no usable transcript. */
-export function transcriptSteps(raw: unknown, brands: readonly string[]): TranscriptStep[] | null {
+export function transcriptSteps(raw: unknown, r: Redactor): TranscriptStep[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null;
   const steps: TranscriptStep[] = [];
   for (const e of raw as RawEntry[]) {
     const role = str(e.role);
     const text = str(e.text).trim();
-    if (role === 'user' && text) steps.push({ kind: 'user', text: redactBrands(text, brands) });
+    if (role === 'user' && text) steps.push({ kind: 'user', text: r(text) });
     else if (role === 'assistant') {
       const reasoning = str(e.reasoning).trim();
       if (reasoning) {
-        steps.push({ kind: 'reasoning', text: clip(redactBrands(reasoning, brands), 500) });
+        steps.push({ kind: 'reasoning', text: clip(r(reasoning), 500) });
       }
-      if (text) steps.push({ kind: 'assistant', text: clip(redactBrands(text, brands), 1200) });
+      if (text) steps.push({ kind: 'assistant', text: clip(r(text), 1200) });
       for (const c of e.toolCalls ?? []) {
         const name = str(c.name);
-        steps.push({ kind: 'tool_call', toolName: name, text: toolCall(name, c.input, brands) });
+        steps.push({ kind: 'tool_call', toolName: name, text: toolCall(name, c.input, r) });
       }
     } else if (role === 'tool') {
       const name = str(e.toolName);
       steps.push({
         kind: e.isError === true ? 'error' : 'tool_result',
         toolName: name,
-        text: toolResult(name, text, e.isError === true, brands),
+        text: toolResult(name, text, e.isError === true, r),
       });
     } else if (role === 'error') {
-      steps.push({ kind: 'error', text: clip(redactBrands(text, brands), 240) });
+      steps.push({ kind: 'error', text: clip(r(text), 240) });
     }
   }
   return steps.length > 0 ? steps : null;
@@ -241,7 +239,7 @@ const REPOS: Record<string, string> = {
 export interface SourceRef {
   commit: string | null;
   commitUrl: string | null;
-  files: { file: string; caseId: string | null; url: string | null }[];
+  files: { file: string; caseId: string | null; url: string | null; line?: number | null }[];
 }
 
 /** "path:line 3 (Case)@sha" or "a.py#Case + b.py#Class@sha" → links into the pinned commit. */

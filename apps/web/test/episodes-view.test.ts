@@ -7,6 +7,7 @@ import {
   parseSourceRef,
   transcriptSteps,
 } from '../lib/episodes-view';
+import { makeRedactor } from '../lib/redact';
 
 const row = (over: Partial<EpisodeRow>): EpisodeRow => ({
   runId: 'r',
@@ -70,7 +71,7 @@ describe('transcriptSteps', () => {
         },
         { role: 'assistant', text: 'Buying the Acme shoe', toolCalls: [] },
       ],
-      ['Acme'],
+      makeRedactor({ brands: ['Acme'], services: [] }),
     );
     expect(steps).toEqual([
       {
@@ -80,7 +81,7 @@ describe('transcriptSteps', () => {
       },
       { kind: 'assistant', text: 'Buying the [brand] shoe' },
     ]);
-    expect(transcriptSteps([], [])).toBeNull();
+    expect(transcriptSteps([], (s) => s)).toBeNull();
   });
 });
 

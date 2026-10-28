@@ -52,6 +52,10 @@ export function DiffView({
         <span className="text-text-muted">
           Red lines are the published goal; green lines are the purchase goal that replaced it.
         </span>
+        <span className="text-text-muted">
+          Third-party service names are shown as [service]. The verbatim text is at the source file
+          and line linked below, at the pinned commit.
+        </span>
       </figcaption>
       <pre className="max-h-[420px] overflow-auto rounded-lg border border-border bg-surface py-2 font-mono text-xs leading-5">
         {lines.map((line, i) => {
@@ -88,7 +92,8 @@ export function DiffView({
               ) : (
                 <span className="font-mono">{f.file}</span>
               )}
-              {f.caseId ? <span> · case {f.caseId}</span> : null}
+              {f.line ? <span> · line {f.line}</span> : null}
+              {f.caseId && !f.caseId.startsWith('line ') ? <span> · {f.caseId}</span> : null}
             </dd>
           </div>
         ))}

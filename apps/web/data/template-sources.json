@@ -1,0 +1,152 @@
+{
+  "data/attacker_cases_dh.jsonl:line 3 (BankManagerPayBill)@f19c9f2c79a41046eb13c03c51a24c567a8ffa07": [
+    {
+      "file": "data/attacker_cases_dh.jsonl",
+      "caseId": "line 3 (BankManagerPayBill)",
+      "line": 3,
+      "url": "https://github.com/uiuc-kang-lab/InjecAgent/blob/f19c9f2c79a41046eb13c03c51a24c567a8ffa07/data/attacker_cases_dh.jsonl#L3"
+    }
+  ],
+  "data/attacker_cases_dh.jsonl:line 4 (BankManagerTransferFunds)@f19c9f2c79a41046eb13c03c51a24c567a8ffa07": [
+    {
+      "file": "data/attacker_cases_dh.jsonl",
+      "caseId": "line 4 (BankManagerTransferFunds)",
+      "line": 4,
+      "url": "https://github.com/uiuc-kang-lab/InjecAgent/blob/f19c9f2c79a41046eb13c03c51a24c567a8ffa07/data/attacker_cases_dh.jsonl#L4"
+    }
+  ],
+  "data/attacker_cases_dh.jsonl:line 30 (VenmoWithdrawMoney)@f19c9f2c79a41046eb13c03c51a24c567a8ffa07": [
+    {
+      "file": "data/attacker_cases_dh.jsonl",
+      "caseId": "line 30 (VenmoWithdrawMoney)",
+      "line": 30,
+      "url": "https://github.com/uiuc-kang-lab/InjecAgent/blob/f19c9f2c79a41046eb13c03c51a24c567a8ffa07/data/attacker_cases_dh.jsonl#L30"
+    }
+  ],
+  "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#InjectionTask0 + src/agentdojo/attacks/important_instructions_attacks.py#ImportantInstructionsAttack@089ed468cf3ed0322acc66b0211f26d9d90dbf60": [
+    {
+      "file": "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py",
+      "caseId": "InjectionTask0",
+      "line": 21,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#L21"
+    },
+    {
+      "file": "src/agentdojo/attacks/important_instructions_attacks.py",
+      "caseId": "ImportantInstructionsAttack",
+      "line": 27,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/attacks/important_instructions_attacks.py#L27"
+    }
+  ],
+  "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#InjectionTask1 + src/agentdojo/attacks/important_instructions_attacks.py#ImportantInstructionsAttack@089ed468cf3ed0322acc66b0211f26d9d90dbf60": [
+    {
+      "file": "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py",
+      "caseId": "InjectionTask1",
+      "line": 68,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#L68"
+    },
+    {
+      "file": "src/agentdojo/attacks/important_instructions_attacks.py",
+      "caseId": "ImportantInstructionsAttack",
+      "line": 27,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/attacks/important_instructions_attacks.py#L27"
+    }
+  ],
+  "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#InjectionTask2 + src/agentdojo/attacks/important_instructions_attacks.py#ImportantInstructionsAttack@089ed468cf3ed0322acc66b0211f26d9d90dbf60": [
+    {
+      "file": "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py",
+      "caseId": "InjectionTask2",
+      "line": 115,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#L115"
+    },
+    {
+      "file": "src/agentdojo/attacks/important_instructions_attacks.py",
+      "caseId": "ImportantInstructionsAttack",
+      "line": 27,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/attacks/important_instructions_attacks.py#L27"
+    }
+  ],
+  "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#InjectionTask3 + src/agentdojo/attacks/important_instructions_attacks.py#ImportantInstructionsAttack@089ed468cf3ed0322acc66b0211f26d9d90dbf60": [
+    {
+      "file": "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py",
+      "caseId": "InjectionTask3",
+      "line": 165,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#L165"
+    },
+    {
+      "file": "src/agentdojo/attacks/important_instructions_attacks.py",
+      "caseId": "ImportantInstructionsAttack",
+      "line": 27,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/attacks/important_instructions_attacks.py#L27"
+    }
+  ],
+  "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#InjectionTask4 + src/agentdojo/attacks/important_instructions_attacks.py#ImportantInstructionsAttack@089ed468cf3ed0322acc66b0211f26d9d90dbf60": [
+    {
+      "file": "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py",
+      "caseId": "InjectionTask4",
+      "line": 215,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#L215"
+    },
+    {
+      "file": "src/agentdojo/attacks/important_instructions_attacks.py",
+      "caseId": "ImportantInstructionsAttack",
+      "line": 27,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/attacks/important_instructions_attacks.py#L27"
+    }
+  ],
+  "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#InjectionTask5 + src/agentdojo/attacks/important_instructions_attacks.py#ImportantInstructionsAttack@089ed468cf3ed0322acc66b0211f26d9d90dbf60": [
+    {
+      "file": "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py",
+      "caseId": "InjectionTask5",
+      "line": 244,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#L244"
+    },
+    {
+      "file": "src/agentdojo/attacks/important_instructions_attacks.py",
+      "caseId": "ImportantInstructionsAttack",
+      "line": 27,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/attacks/important_instructions_attacks.py#L27"
+    }
+  ],
+  "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#InjectionTask6 + src/agentdojo/attacks/important_instructions_attacks.py#ImportantInstructionsAttack@089ed468cf3ed0322acc66b0211f26d9d90dbf60": [
+    {
+      "file": "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py",
+      "caseId": "InjectionTask6",
+      "line": 279,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#L279"
+    },
+    {
+      "file": "src/agentdojo/attacks/important_instructions_attacks.py",
+      "caseId": "ImportantInstructionsAttack",
+      "line": 27,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/attacks/important_instructions_attacks.py#L27"
+    }
+  ],
+  "src/agentdojo/default_suites/v1/banking/injection_tasks.py#InjectionTask7 + src/agentdojo/attacks/important_instructions_attacks.py#ImportantInstructionsAttack@089ed468cf3ed0322acc66b0211f26d9d90dbf60": [
+    {
+      "file": "src/agentdojo/default_suites/v1/banking/injection_tasks.py",
+      "caseId": "InjectionTask7",
+      "line": 345,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/default_suites/v1/banking/injection_tasks.py#L345"
+    },
+    {
+      "file": "src/agentdojo/attacks/important_instructions_attacks.py",
+      "caseId": "ImportantInstructionsAttack",
+      "line": 27,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/attacks/important_instructions_attacks.py#L27"
+    }
+  ],
+  "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#InjectionTask8 + src/agentdojo/attacks/important_instructions_attacks.py#ImportantInstructionsAttack@089ed468cf3ed0322acc66b0211f26d9d90dbf60": [
+    {
+      "file": "src/agentdojo/default_suites/v1_2/banking/injection_tasks.py",
+      "caseId": "InjectionTask8",
+      "line": 345,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/default_suites/v1_2/banking/injection_tasks.py#L345"
+    },
+    {
+      "file": "src/agentdojo/attacks/important_instructions_attacks.py",
+      "caseId": "ImportantInstructionsAttack",
+      "line": 27,
+      "url": "https://github.com/ethz-spylab/agentdojo/blob/089ed468cf3ed0322acc66b0211f26d9d90dbf60/src/agentdojo/attacks/important_instructions_attacks.py#L27"
+    }
+  ]
+}

@@ -14,7 +14,8 @@ import {
 import { loadMetricsRows } from '@twokey/eval/src/metrics';
 import { asc, eq, inArray } from 'drizzle-orm';
 import { unstable_cache } from 'next/cache';
-import { loadBrandNames } from './brand-names';
+import redactionTerms from '@/data/redaction-terms.json';
+import templateSources from '@/data/template-sources.json';
 import { db } from './db';
 import {
   type EpisodeFilters,
@@ -33,14 +34,34 @@ import {
   type Variant,
 } from './episodes-view';
 import { type RuleChip, ruleChips } from './history-view';
-import { redactBrands } from './redact';
+import { makeRedactor, type Redactor, storePseudonyms } from './redact';
 import { getResultsSummary, type Split } from './results-queries';
 
 const chunks = <T>(xs: readonly T[], n = 500): T[][] =>
   Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
 
 /** Brand names change only when the snapshot is rebuilt; cache them for an hour. */
-export const getBrandNames = unstable_cache(() => loadBrandNames(db()), ['eval-brand-names'], {
+/** Store domain → "Store 007", numbered by merchant ID; the domains never leave the database. */
+async function loadStorePseudonyms(): Promise<Record<string, string>> {
+  const rows = await db()
+    .select({ domain: merchants.displayName })
+    .from(merchants)
+    .where(eq(merchants.role, 'eval_merchant'))
+    .orderBy(asc(merchants.id));
+  return storePseudonyms(rows.map((r) => r.domain));
+}
+
+let memo: { key: string; redactor: Redactor } | null = null;
+
+/** The committed term list (same in every environment) plus the store pseudonyms. */
+export async function getRedactor(): Promise<Redactor> {
+  const stores = await getStorePseudonyms();
+  const key = `${Object.keys(stores).length}:${JSON.stringify(Object.entries(stores).slice(0, 3))}`;
+  if (memo?.key !== key) memo = { key, redactor: makeRedactor({ ...redactionTerms, stores }) };
+  return memo.redactor;
+}
+
+const getStorePseudonyms = unstable_cache(loadStorePseudonyms, ['eval-store-pseudonyms'], {
   revalidate: 3600,
   tags: ['results'],
 });
@@ -59,9 +80,9 @@ async function listingTitles(ids: readonly string[]): Promise<Map<string, string
 
 /** Every run of a split as one grid row, built from the same rows as `eval metrics`. */
 async function loadSplitRows(split: Split): Promise<EpisodeRow[]> {
-  const [{ runs, proposals: props }, brands] = await Promise.all([
+  const [{ runs, proposals: props }, redact] = await Promise.all([
     loadMetricsRows(db(), split),
-    getBrandNames(),
+    getRedactor(),
   ]);
   const episodes = await db()
     .select({
@@ -109,7 +130,7 @@ async function loadSplitRows(split: Split): Promise<EpisodeRow[]> {
       g2: at('G2'),
       g3: at('G3'),
       g4: at('G4'),
-      proposalTitle: title ? redactBrands(title, brands) : null,
+      proposalTitle: title ? redact(title) : null,
       proposals: mine.length,
       costUsd: r.costUsd,
       hasProposal: mine.length > 0,
@@ -213,6 +234,21 @@ export interface EpisodeDetail {
   runs: RunView[];
 }
 
+const SOURCES = templateSources as Record<
+  string,
+  { file: string; caseId: string | null; line: number | null; url: string | null }[]
+>;
+
+/** Links to the exact file and line at the pinned commit; case names are redacted for display. */
+function sourceLinks(source: string, sourceRef: string, r: Redactor): SourceRef {
+  const parsed = parseSourceRef(source, sourceRef);
+  const files = SOURCES[sourceRef] ?? parsed.files.map((f) => ({ ...f, line: null }));
+  return {
+    ...parsed,
+    files: files.map((f) => ({ ...f, caseId: f.caseId ? r(f.caseId) : null })),
+  };
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function loadEpisode(id: string): Promise<EpisodeDetail | null> {
@@ -226,8 +262,7 @@ async function loadEpisode(id: string): Promise<EpisodeDetail | null> {
     .where(eq(evalEpisodes.id, id))
     .limit(1);
   if (!ep) return null;
-  const brands = await getBrandNames();
-  const r = (s: string) => redactBrands(s, brands);
+  const r = await getRedactor();
   const { episode, task, template } = ep;
 
   const shown = await d
@@ -348,10 +383,10 @@ async function loadEpisode(id: string): Promise<EpisodeDetail | null> {
     template: template
       ? {
           source: template.source,
-          sourceRef: template.sourceRef,
+          sourceRef: r(template.sourceRef),
           licence: template.licence,
           diff: r(template.diff),
-          ref: parseSourceRef(template.source, template.sourceRef),
+          ref: sourceLinks(template.source, template.sourceRef, r),
         }
       : null,
     injectedText: inserted ? r(inserted) : null,
@@ -375,7 +410,7 @@ async function loadEpisode(id: string): Promise<EpisodeDetail | null> {
       costUsd: Number(x.costUsd),
       tokensIn: x.tokensIn,
       tokensOut: x.tokensOut,
-      steps: transcriptSteps(x.transcript, brands),
+      steps: transcriptSteps(x.transcript, r),
       proposals: x.sessionId ? [...(bySession.get(x.sessionId)?.values() ?? [])] : [],
     })),
   };
