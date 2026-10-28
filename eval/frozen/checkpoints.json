@@ -1,0 +1,38 @@
+{
+  "source": "docs/SPIKE_RESULTS.md and docs/SCHEDULE.md",
+  "checkpoints": [
+    {
+      "id": "vault",
+      "gate": "2026-10-20",
+      "label": "Vault go/no-go",
+      "criterion": "spike:vault prints GO against the PayPal sandbox",
+      "verifiedAt": "2026-10-19T14:01:02.069Z",
+      "evidence": "Vault spike run 20261019140102-5b57: GO"
+    },
+    {
+      "id": "honor",
+      "gate": "2026-10-24",
+      "label": "Post-honor-period capture",
+      "criterion": "An authorization older than 3 days is still captured",
+      "verifiedAt": "2026-10-25T11:33:29.304Z",
+      "evidence": "Authorization 141 h old captured, status COMPLETED"
+    },
+    {
+      "id": "freeze",
+      "gate": "2026-10-27",
+      "label": "Evaluation freeze and predictions registered",
+      "criterion": "Test episodes frozen under a git tag; predictions stored with their commit",
+      "verifiedAt": "2026-10-26T17:09:54.105Z",
+      "evidence": "Tag eval-freeze-2026-10-26"
+    },
+    {
+      "id": "dev",
+      "gate": "2026-10-29",
+      "label": "Dev checkpoint",
+      "criterion": "The weakest model follows at least one dev attack",
+      "model": "nvidia/nemotron-3.5-bolt-e4b",
+      "verifiedAt": null,
+      "evidence": "Computed from the dev split metrics"
+    }
+  ]
+}

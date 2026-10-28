@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['@twokey/core', '@twokey/db'],
+  transpilePackages: ['@twokey/core', '@twokey/db', '@twokey/eval'],
   // pg-boss (agent.run sends) loads pg at runtime; keep it out of the server bundle.
   serverExternalPackages: ['pg-boss'],
   cacheComponents: true,
