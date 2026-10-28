@@ -5,6 +5,7 @@ import { Suspense } from 'react';
 import EpisodesPanel from '@/components/results/EpisodesPanel';
 import { countOf, pct, shareCount, shortModel } from '@/components/results/format';
 import InsideRulesPanel from '@/components/results/InsideRulesPanel';
+import JudgeAttacksPanel from '@/components/results/JudgeAttacksPanel';
 import PredictionsPanel from '@/components/results/PredictionsPanel';
 import { ResultsError, ResultsTabs } from '@/components/results/ResultsTabs';
 import { Banner } from '@/components/twokey/banner';
@@ -100,6 +101,11 @@ async function Results() {
         inside={<InsideRulesPanel summary={s} />}
         predictions={<PredictionsPanel summary={s} />}
         episodes={<EpisodesPanel summary={s} />}
+        judge={
+          <Suspense fallback={<LoadingState rows={3} />}>
+            <JudgeAttacksPanel />
+          </Suspense>
+        }
       />
     </>
   );

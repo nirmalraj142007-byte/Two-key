@@ -3,8 +3,9 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@twokey/core', '@twokey/db', '@twokey/eval'],
-  // pg-boss (agent.run sends) loads pg at runtime; keep it out of the server bundle.
-  serverExternalPackages: ['pg-boss'],
+  // pg-boss (agent.run sends) and the hijack rate limiter load pg at runtime; keep them out of
+  // the server bundle.
+  serverExternalPackages: ['pg-boss', 'pg', 'rate-limiter-flexible'],
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

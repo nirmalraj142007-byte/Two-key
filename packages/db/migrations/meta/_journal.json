@@ -29,6 +29,13 @@
       "when": 1793016138353,
       "tag": "0003_vault_token_per_user",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793167746153,
+      "tag": "0004_hijack_attempts",
+      "breakpoints": true
     }
   ]
 }

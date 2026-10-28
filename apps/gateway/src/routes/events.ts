@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { AppError, ErrorCode, type PaymentState } from '@twokey/core';
+import { AppError, ErrorCode, HijackOutcome, type PaymentState } from '@twokey/core';
 import {
   agentSessions,
   approvals,
@@ -65,7 +65,10 @@ export type EventName =
   | 'proposal.created'
   | 'payment.updated'
   | 'approval.created'
-  | 'approval.decided';
+  | 'approval.decided'
+  | 'hijack.replay'
+  | 'hijack.step'
+  | 'hijack.result';
 
 export interface OutEvent {
   event: EventName;
@@ -183,6 +186,8 @@ const Notice = z.object({
   proposalId: z.string().optional(),
   paymentId: z.string().optional(),
   entry: z.unknown().optional(),
+  outcome: z.unknown().optional(),
+  reason: z.string().max(200).optional(),
 });
 
 /** Only the fields the console shows; anything else the runner adds is dropped. */
@@ -246,6 +251,29 @@ export async function expandNotice(
       }
       return out;
     }
+    case 'hijack.step': {
+      // A recorded step replayed into a hijack session; never mixed with its live steps.
+      const entry = StepEntry.safeParse(notice.entry);
+      if (!entry.success || !notice.sessionId) return [];
+      return [{ event: 'hijack.step', data: { sessionId: notice.sessionId, entry: entry.data } }];
+    }
+    case 'hijack.replay': {
+      // A recorded run replaces this hijack session's live steps; the page shows the banner.
+      if (!notice.sessionId) return [];
+      return [
+        {
+          event: 'hijack.replay',
+          data: { sessionId: notice.sessionId, reason: notice.reason ?? '' },
+        },
+      ];
+    }
+    case 'hijack.result': {
+      const outcome = HijackOutcome.safeParse(notice.outcome);
+      if (!outcome.success || !notice.sessionId) return [];
+      return [
+        { event: 'hijack.result', data: { sessionId: notice.sessionId, outcome: outcome.data } },
+      ];
+    }
     default:
       return [];
   }
@@ -261,8 +289,18 @@ export interface Subscription {
   replay: StreamEvent[];
 }
 
+export interface SubscribeOptions {
+  /** With no Last-Event-ID, replay the user's whole buffer instead of nothing. */
+  fromStart?: boolean;
+}
+
 export interface EventHub {
-  subscribe(userId: string, send: Send, lastEventId?: string): Promise<Subscription>;
+  subscribe(
+    userId: string,
+    send: Send,
+    lastEventId?: string,
+    opts?: SubscribeOptions,
+  ): Promise<Subscription>;
   subscriberCount(): number;
   close(): Promise<void>;
 }
@@ -338,13 +376,17 @@ export function createEventHub(databaseUrl: string, db: Db, log: FastifyBaseLogg
   }
 
   return {
-    async subscribe(userId, send, lastEventId) {
+    async subscribe(userId, send, lastEventId, opts = {}) {
       await listen();
       // Same tick: take the replay and add the subscriber, so no event falls between them.
       const after = parseEventId(lastEventId, boot);
       const buffer = buffers.get(userId) ?? [];
       const replay =
-        after === null ? [] : buffer.filter((e) => (parseEventId(e.id, boot) ?? 0) > after);
+        after === null
+          ? opts.fromStart && !lastEventId
+            ? [...buffer]
+            : []
+          : buffer.filter((e) => (parseEventId(e.id, boot) ?? 0) > after);
       buffers.set(userId, buffer); // start (or refresh) this user's replay window
       let set = subs.get(userId);
       if (!set) {
@@ -388,7 +430,7 @@ export interface EventRouteOptions {
   hub?: EventHub;
 }
 
-const HEARTBEAT_MS = 15_000;
+export const HEARTBEAT_MS = 15_000;
 const ListQuery = z.object({ limit: z.coerce.number().int().min(1).max(50).default(10) });
 
 function humanOf(req: FastifyRequest): Human {
@@ -396,7 +438,7 @@ function humanOf(req: FastifyRequest): Human {
   return req.human;
 }
 
-function frame(e: StreamEvent): string {
+export function frame(e: StreamEvent): string {
   return `id: ${e.id}\nevent: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`;
 }
 

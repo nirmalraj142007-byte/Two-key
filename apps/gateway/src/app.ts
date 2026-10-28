@@ -14,8 +14,9 @@ import { createJobRunner } from './jobs/boss.js';
 import type { Jobs } from './jobs/queue.js';
 import { dbPlugin } from './plugins/db.js';
 import { agentRoutes } from './routes/agent.js';
-import { eventRoutes } from './routes/events.js';
+import { createEventHub, eventRoutes } from './routes/events.js';
 import { type HealthPayPal, healthRoutes } from './routes/health.js';
+import { hijackRoutes } from './routes/hijack.js';
 import { humanRoutes } from './routes/human.js';
 import { humanApprovalRoutes } from './routes/human-approvals.js';
 import { internalEvalRoutes } from './routes/internal-eval.js';
@@ -326,13 +327,35 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
     app.register(async (scope) => {
       await scope.register(merchantRoutes, { verifier, balances });
     });
+    // One LISTEN hub for the signed-in event stream and the public hijack stream.
+    let hub: ReturnType<typeof createEventHub> | undefined;
+    const sharedHub = () => {
+      hub ??= createEventHub(DATABASE_URL, app.db, app.log);
+      return hub;
+    };
+    app.addHook('onClose', async () => {
+      await hub?.close();
+    });
     app.register(async (scope) => {
       await scope.register(eventRoutes, {
         db: app.db,
         databaseUrl: DATABASE_URL,
         verifier,
         webOrigin: WEB_ORIGIN,
+        hub: sharedHub(),
         ...(deps.eventsHeartbeatMs ? { heartbeatMs: deps.eventsHeartbeatMs } : {}),
+      });
+    });
+    app.register(async (scope) => {
+      await scope.register(hijackRoutes, {
+        db: app.db,
+        verifier,
+        hub: sharedHub(),
+        agentTokenPepper: AGENT_TOKEN_PEPPER,
+        ruleKey: Buffer.from(RULE_HMAC_KEY, 'base64'),
+        webOrigin: WEB_ORIGIN,
+        ...(deps.eventsHeartbeatMs ? { heartbeatMs: deps.eventsHeartbeatMs } : {}),
+        ...now,
       });
     });
     if (paypal) {

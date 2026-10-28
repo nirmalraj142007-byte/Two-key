@@ -3,15 +3,39 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { AppError, type Env, ErrorCode, loadEnv } from '@twokey/core';
-import { createDb, pgBossConnection, startWithRetry, users } from '@twokey/db';
+import {
+  createDb,
+  type Db,
+  hijackUsageToday,
+  pgBossConnection,
+  startWithRetry,
+  users,
+} from '@twokey/db';
 import { eq } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import { z } from 'zod';
 import { adapterFor } from './adapters/index.js';
+import {
+  failedOutcome,
+  finishLiveAttempt,
+  HIJACK_RUN_MAX_TOKENS,
+  liveOutcome,
+  recordAttemptUsage,
+  transcriptTokens,
+} from './hijack.js';
+import { type ReplayDeps, replayAttempt } from './replay.js';
 import { mcpConnector, type RunDeps, runSession, type TranscriptEntry } from './run-session.js';
 import { createDbStore, type RunStore } from './store.js';
 
 export const AGENT_RUN_QUEUE = 'agent.run';
+/** Hijack box runs and replays have their own queues (web enqueues; only this worker runs them). */
+export const HIJACK_RUN_QUEUE = 'hijack.run';
+export const HIJACK_REPLAY_QUEUE = 'hijack.replay';
+/**
+ * Hijack runs are capped by daily attempts and tokens (HIJACK_DAILY_*), not dollars: models are
+ * priced at $0. The ledger still records each call under this unreachable cap.
+ */
+const HIJACK_USD_CAP = 999_999;
 
 const Payload = z.object({
   sessionId: z.string().min(1),
@@ -22,6 +46,13 @@ const Payload = z.object({
   mode: z.enum(['live', 'demo', 'hijack', 'eval']),
 });
 export type AgentRunPayload = z.infer<typeof Payload>;
+
+const HijackPayload = Payload.omit({ mode: true }).extend({ attemptId: z.uuid() });
+export type HijackRunPayload = z.infer<typeof HijackPayload>;
+const ReplayPayload = z.object({
+  attemptId: z.uuid(),
+  reason: z.enum(['caps', 'slow', 'failed', 'model']),
+});
 
 type RunnerEnv = Env<'agent-runner'>;
 type Logger = { info: (o: object, m: string) => void; error: (o: object, m: string) => void };
@@ -41,10 +72,83 @@ function depsFor(
     onError: (err) => log.error({ err }, 'agent run failed'),
     caps: {
       live: env.DAILY_BUDGET_USD_LIVE,
-      hijack: env.DAILY_BUDGET_USD_HIJACK,
+      hijack: HIJACK_USD_CAP,
       eval: env.DAILY_BUDGET_USD_EVAL,
     },
   };
+}
+
+const STOPPED_TEXT = {
+  max_turns: 'The agent used all its turns without finishing.',
+  budget: 'The agent stopped at its token limit.',
+  error: 'The agent stopped before finishing.',
+} as const;
+
+/**
+ * One hijack box attempt, live. Ends with a result card whatever happens: the live outcome, or a
+ * replay when today's tokens are used up or the run fails before proposing anything.
+ */
+export async function runHijack(
+  env: Pick<RunnerEnv, 'HIJACK_DAILY_TOKENS' | 'DEMO_EPISODE_ID'>,
+  i: {
+    db: Db;
+    store: RunStore;
+    log: Logger;
+    run: (p: AgentRunPayload & { maxTotalTokens: number }) => ReturnType<typeof runSession>;
+    /** Replay pacing (tests skip the waits). */
+    sleep?: ReplayDeps['sleep'];
+  },
+  payload: HijackRunPayload,
+): Promise<void> {
+  const { db, store, log } = i;
+  const { attemptId, sessionId, userId, model } = payload;
+  const replayDeps: ReplayDeps = {
+    db,
+    store,
+    demoEpisodeId: env.DEMO_EPISODE_ID,
+    log,
+    ...(i.sleep ? { sleep: i.sleep } : {}),
+  };
+  try {
+    const usage = await hijackUsageToday(db);
+    const left = env.HIJACK_DAILY_TOKENS - usage.tokens;
+    if (left <= 0) {
+      await store.finish({ sessionId, status: 'ended', transcript: [] });
+      await replayAttempt(replayDeps, attemptId, 'caps');
+      return;
+    }
+    const maxTotalTokens = Math.min(HIJACK_RUN_MAX_TOKENS, left);
+    const res = await i.run({ ...payload, mode: 'hijack', maxTotalTokens });
+    const tokens = transcriptTokens(res.transcript);
+    const cost = res.transcript.reduce((n, e) => n + (e.usage?.costUsd ?? 0), 0);
+    // Nothing was proposed: there is no live result to show, so a recorded run stands in.
+    if (res.status === 'failed' && res.proposals.length === 0 && res.reason !== 'max_turns') {
+      await recordAttemptUsage(db, attemptId, tokens, cost);
+      const dailyLimited = res.reason === 'budget' && maxTotalTokens < HIJACK_RUN_MAX_TOKENS;
+      await replayAttempt(replayDeps, attemptId, dailyLimited ? 'caps' : 'failed');
+      return;
+    }
+    const outcome = await liveOutcome(db, {
+      sessionId,
+      model,
+      transcript: res.transcript,
+      ...(res.status === 'failed' ? { message: STOPPED_TEXT[res.reason ?? 'error'] } : {}),
+    });
+    if (await finishLiveAttempt(db, attemptId, outcome, tokens, cost)) {
+      await store.notify({ type: 'hijack.result', userId, sessionId, outcome });
+    }
+  } catch (err) {
+    log.error({ err, attemptId }, 'hijack run crashed');
+    try {
+      if (await replayAttempt(replayDeps, attemptId, 'failed')) return;
+    } catch (replayErr) {
+      log.error({ err: replayErr, attemptId }, 'hijack replay crashed');
+    }
+    const outcome = failedOutcome(model, 'This attempt could not finish. Try again.');
+    if (await finishLiveAttempt(db, attemptId, outcome, 0, 0).catch(() => false)) {
+      await store.notify({ type: 'hijack.result', userId, sessionId, outcome }).catch(() => {});
+    }
+  }
 }
 
 /** Subscribes to agent.run: up to 2 sessions at once, never retried (a failed run is a result). */
@@ -68,6 +172,35 @@ export async function startWorker(env: RunnerEnv, log: Logger): Promise<() => Pr
   if (!(await boss.getQueue(AGENT_RUN_QUEUE))) {
     await boss.createQueue(AGENT_RUN_QUEUE, { retryLimit: 0 });
   }
+  for (const queue of [HIJACK_RUN_QUEUE, HIJACK_REPLAY_QUEUE]) {
+    if (!(await boss.getQueue(queue))) await boss.createQueue(queue, { retryLimit: 0 });
+  }
+  await boss.work<unknown>(HIJACK_RUN_QUEUE, { localConcurrency: 2 }, async (jobs) => {
+    for (const job of jobs) {
+      const payload = HijackPayload.parse(job.data);
+      await runHijack(
+        env,
+        {
+          db,
+          store,
+          log,
+          run: (p) => runSession(depsFor(env, store, p.model, log, 'hijack'), p),
+        },
+        payload,
+      );
+      log.info({ sessionId: payload.sessionId }, 'hijack attempt finished');
+    }
+  });
+  await boss.work<unknown>(HIJACK_REPLAY_QUEUE, { localConcurrency: 2 }, async (jobs) => {
+    for (const job of jobs) {
+      const { attemptId, reason } = ReplayPayload.parse(job.data);
+      await replayAttempt(
+        { db, store, demoEpisodeId: env.DEMO_EPISODE_ID, log },
+        attemptId,
+        reason,
+      );
+    }
+  });
   await boss.work<unknown>(AGENT_RUN_QUEUE, { localConcurrency: 2 }, async (jobs) => {
     for (const job of jobs) {
       const payload = Payload.parse(job.data);

@@ -21,6 +21,7 @@
     "check": "npm run lint && npm run typecheck && npm run test && npm run check:secrets",
     "format": "biome format --write .",
     "spike:vault": "dotenv -e .env.gateway -- tsx spikes/vault-spike.ts",
+    "vault:hijack": "dotenv -e .env.gateway -- tsx spikes/hijack-vault.ts",
     "spike:honor": "dotenv -e .env.gateway -- tsx spikes/honor-capture.ts",
     "spike:verify": "dotenv -e .env.gateway -- tsx spikes/verify-spike.ts",
     "spike:expiry": "dotenv -e .env.gateway -- tsx scripts/expiry-mock-check.ts",

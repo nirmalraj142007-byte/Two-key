@@ -56,6 +56,10 @@ services:
         sync: false
       - key: IP_HASH_SALT
         sync: false
+      - key: HIJACK_DAILY_ATTEMPTS
+        sync: false
+      - key: HIJACK_DAILY_TOKENS
+        sync: false
   - type: web
     name: gateway
     runtime: node
@@ -161,7 +165,9 @@ services:
         sync: false
       - key: DAILY_BUDGET_USD_LIVE
         sync: false
-      - key: DAILY_BUDGET_USD_HIJACK
+      - key: HIJACK_DAILY_TOKENS
+        sync: false
+      - key: DEMO_EPISODE_ID
         sync: false
       - key: PORT
         sync: false

@@ -92,6 +92,12 @@ const schemas = {
     NEXT_PUBLIC_AG_GRID_LICENSE_KEY: nonEmpty.optional(),
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: nonEmpty.optional(),
     IP_HASH_SALT: nonEmpty,
+    /**
+     * Hijack box daily caps (UTC day). Models are priced at $0, so a dollar cap never trips;
+     * live attempts and their model tokens are capped instead. Past either, attempts replay.
+     */
+    HIJACK_DAILY_ATTEMPTS: z.coerce.number().int().nonnegative().default(200),
+    HIJACK_DAILY_TOKENS: z.coerce.number().int().nonnegative().default(400_000),
   }),
   mcp: z.object({
     ...common,
@@ -124,8 +130,11 @@ const schemas = {
     ),
     MCP_URL: url,
     DAILY_BUDGET_USD_LIVE: z.coerce.number().nonnegative().default(5),
-    DAILY_BUDGET_USD_HIJACK: z.coerce.number().nonnegative().default(10),
     DAILY_BUDGET_USD_EVAL: z.coerce.number().nonnegative().default(100),
+    /** Hijack runs stop (and replay) once today's hijack tokens pass this; see web's caps. */
+    HIJACK_DAILY_TOKENS: z.coerce.number().int().nonnegative().default(400_000),
+    /** Replays prefer this evaluation episode (the demo hook's) when it has a followed run. */
+    DEMO_EPISODE_ID: z.uuid().optional(),
     PORT: z.coerce.number().int().positive().default(4200),
   }),
   eval: z.object({
@@ -171,6 +180,7 @@ export const SECRET_OWNERS: Record<string, ServiceName[]> = {
   EVAL_LLM_API_KEY: ['agent-runner', 'eval'],
   NIM_API_KEY: ['agent-runner', 'eval'],
   EVAL_ADMIN_TOKEN: ['gateway', 'eval'],
+  HIJACK_PAYPAL_PAYMENT_TOKEN_ID: ['gateway'],
 };
 
 export function loadEnv<S extends ServiceName>(

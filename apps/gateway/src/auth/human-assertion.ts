@@ -124,6 +124,11 @@ export function createHumanAssertionVerifier(
       if (requiredScope && !scope.split(' ').includes(requiredScope)) {
         throw new AssertionRejected('scope');
       }
+      // The hijack system user only ever creates hijack sessions: it never signs rules, decides
+      // holds, manages a wallet or reads events. And only it may create hijack sessions.
+      if ((role === 'hijack_system') !== (requiredScope === 'hijack:create')) {
+        throw new AssertionRejected('scope');
+      }
       return { userId: sub, role };
     },
   };

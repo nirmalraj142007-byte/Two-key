@@ -93,6 +93,7 @@ Generate the values on your machine. Nothing below is committed.
 | `GATEWAY_URL` | `https://<gateway service>.onrender.com` |
 | `ANTHROPIC_API_KEY` | your key |
 | `IP_HASH_SALT` | `openssl rand -base64 16` |
+| `HIJACK_DAILY_ATTEMPTS`, `HIJACK_DAILY_TOKENS` | *blank* (defaults 200 attempts and 400,000 tokens per UTC day) |
 | `NEXT_PUBLIC_AG_GRID_LICENSE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | *blank* for now |
 
 ### twokey-mcp
@@ -114,7 +115,7 @@ Generate the values on your machine. Nothing below is committed.
 | `AGENT_LLM_API_KEY` | your Groq key |
 | `AGENT_LLM_BASE_URL`, `AGENT_MODEL` | *blank* (defaults) |
 | `MCP_URL` | `https://<twokey-mcp service>.onrender.com` |
-| `DAILY_BUDGET_USD_LIVE`, `DAILY_BUDGET_USD_HIJACK`, `PORT` | *blank* (defaults) |
+| `DAILY_BUDGET_USD_LIVE`, `HIJACK_DAILY_TOKENS`, `DEMO_EPISODE_ID`, `PORT` | *blank* (defaults) |
 
 CI (`npm run check:secrets`) fails if `render.yaml` lists a secret on a service that may not hold
 it. Every service also refuses to start if a secret is set where it doesn't belong.

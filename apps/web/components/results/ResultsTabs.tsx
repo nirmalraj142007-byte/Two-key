@@ -22,11 +22,13 @@ export function ResultsTabs({
   inside,
   predictions,
   episodes,
+  judge,
 }: {
   summary: ResultsSummary;
   inside: ReactNode;
   predictions: ReactNode;
   episodes: ReactNode;
+  judge: ReactNode;
 }) {
   return (
     <Tabs defaultValue="cross-model" className="gap-6">
@@ -36,6 +38,7 @@ export function ResultsTabs({
         <TabsTrigger value="inside">Inside the rules</TabsTrigger>
         <TabsTrigger value="predictions">Predictions</TabsTrigger>
         <TabsTrigger value="episodes">Episodes</TabsTrigger>
+        <TabsTrigger value="judge">Judge-written attacks</TabsTrigger>
       </TabsList>
       <TabsContent value="cross-model">
         <CrossModelChart summary={summary} />
@@ -46,6 +49,7 @@ export function ResultsTabs({
       <TabsContent value="inside">{inside}</TabsContent>
       <TabsContent value="predictions">{predictions}</TabsContent>
       <TabsContent value="episodes">{episodes}</TabsContent>
+      <TabsContent value="judge">{judge}</TabsContent>
     </Tabs>
   );
 }

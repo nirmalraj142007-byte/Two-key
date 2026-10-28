@@ -5,6 +5,9 @@ import { webEnv } from './env';
 
 /** Must match apps/agent-runner/src/worker.ts. */
 export const AGENT_RUN_QUEUE = 'agent.run';
+export const HIJACK_RUN_QUEUE = 'hijack.run';
+export const HIJACK_REPLAY_QUEUE = 'hijack.replay';
+const QUEUES = [AGENT_RUN_QUEUE, HIJACK_RUN_QUEUE, HIJACK_REPLAY_QUEUE];
 
 export interface AgentRunJob {
   sessionId: string;
@@ -30,8 +33,8 @@ function boss(): Promise<PgBoss> {
     const log = createLogger('web', webEnv().LOG_LEVEL);
     b.on('error', (err) => log.error({ err }, 'pg-boss error'));
     await b.start();
-    if (!(await b.getQueue(AGENT_RUN_QUEUE))) {
-      await b.createQueue(AGENT_RUN_QUEUE, { retryLimit: 0 });
+    for (const queue of QUEUES) {
+      if (!(await b.getQueue(queue))) await b.createQueue(queue, { retryLimit: 0 });
     }
     return b;
   })().catch((err) => {
@@ -45,4 +48,23 @@ export async function enqueueAgentRun(job: AgentRunJob): Promise<void> {
   const b = await boss();
   const id = await b.send(AGENT_RUN_QUEUE, job);
   if (!id) throw new Error('agent.run was not queued');
+}
+
+export interface HijackRunJob extends Omit<AgentRunJob, 'mode'> {
+  attemptId: string;
+}
+
+/** A live hijack box run; the runner records its result card on the attempt. */
+export async function enqueueHijackRun(job: HijackRunJob): Promise<void> {
+  const id = await (await boss()).send(HIJACK_RUN_QUEUE, job);
+  if (!id) throw new Error('hijack.run was not queued');
+}
+
+/** A recorded run shown in place of a live one (caps reached, or the live model too slow). */
+export async function enqueueHijackReplay(job: {
+  attemptId: string;
+  reason: 'caps' | 'slow' | 'failed' | 'model';
+}): Promise<void> {
+  const id = await (await boss()).send(HIJACK_REPLAY_QUEUE, job);
+  if (!id) throw new Error('hijack.replay was not queued');
 }

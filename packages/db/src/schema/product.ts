@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   check,
   date,
   index,
@@ -89,8 +90,13 @@ export const catalogSnapshots = pgTable(
     frozenAt: timestamp('frozen_at', { withTimezone: true }).notNull().defaultNow(),
     contentSha256: text('content_sha256').notNull(),
     gitTag: text('git_tag'),
+    /** Hijack snapshots only: the one agent session that may search and buy from it. */
+    sessionId: uuid('session_id').references((): AnyPgColumn => agentSessions.id),
   },
-  (t) => [unique('catalog_snapshots_kind_git_tag').on(t.kind, t.gitTag)],
+  (t) => [
+    unique('catalog_snapshots_kind_git_tag').on(t.kind, t.gitTag),
+    index('catalog_snapshots_session').on(t.sessionId),
+  ],
 );
 
 /** `id` is the product_id the agent sees. */

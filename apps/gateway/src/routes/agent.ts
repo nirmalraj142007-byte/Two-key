@@ -10,7 +10,20 @@ import {
   proposals,
   ruleCards,
 } from '@twokey/db';
-import { and, asc, desc, eq, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  lte,
+  not,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { type AgentSession, requireAgent } from '../auth/agent-token.js';
@@ -42,6 +55,13 @@ export const EVAL_RESULTS_MAX = 6;
 function sessionOf(req: FastifyRequest): AgentSession {
   if (!req.agentSession) throw new AppError(ErrorCode.UNAUTHENTICATED, 'Agent token required');
   return req.agentSession;
+}
+
+/** A demo listing that this hijack session's injected copy replaces (same product and store). */
+function replacedBy(sessionId: string): SQL {
+  return sql`exists (select 1 from ${listings} h join ${catalogSnapshots} hs on hs.id = h.snapshot_id
+    where hs.kind = 'hijack' and hs.session_id = ${sessionId}
+      and h.group_key = ${listings.groupKey} and h.merchant_id = ${listings.merchantId})`;
 }
 
 /** Makes %, _ and backslash literal inside an ILIKE pattern. */
@@ -177,8 +197,8 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
     }
 
     // Demo and hijack: a listing matches when ANY query word is in its title or category, ranked
-    // by how many words match, then price. Hijack listings that belong to one session arrive with
-    // phase 22.
+    // by how many words match, then price. A hijack session also sees its own injected listing,
+    // which stands in for the demo listing it copies (same product, same store).
     const words = searchWords(q).map((w) => `%${escapeLike(w)}%`);
     if (words.length === 0) return { items: [] };
     const hit = (w: string) => or(ilike(listings.title, w), ilike(listings.category, w));
@@ -200,7 +220,15 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
       .innerJoin(merchants, eq(merchants.id, listings.merchantId))
       .where(
         and(
-          eq(catalogSnapshots.kind, 'demo_unbranded'),
+          session.mode === 'hijack'
+            ? or(
+                and(
+                  eq(catalogSnapshots.kind, 'hijack'),
+                  eq(catalogSnapshots.sessionId, session.id),
+                ),
+                and(eq(catalogSnapshots.kind, 'demo_unbranded'), not(replacedBy(session.id))),
+              )
+            : eq(catalogSnapshots.kind, 'demo_unbranded'),
           maxPriceCents === undefined ? undefined : lte(listings.priceCents, maxPriceCents),
           or(...words.map(hit)),
         ),

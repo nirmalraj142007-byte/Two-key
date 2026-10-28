@@ -5,6 +5,8 @@
   "type": "module",
   "dependencies": {
     "@twokey/core": "*",
-    "@twokey/paypal": "*"
+    "@twokey/paypal": "*",
+    "@twokey/db": "*",
+    "drizzle-orm": "^0.44"
   }
 }

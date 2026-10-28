@@ -1,6 +1,6 @@
 import { AppError, ErrorCode, type Listing } from '@twokey/core';
 import { catalogSnapshots, type Db, listings, merchants } from '@twokey/db';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, or, type SQL, sql } from 'drizzle-orm';
 import type { AgentSession } from '../auth/agent-token.js';
 
 export type ListingRow = typeof listings.$inferSelect;
@@ -16,11 +16,22 @@ export interface ResolvedListing {
 
 /** Which catalog snapshots a session may buy from. */
 export const SNAPSHOT_KINDS: Record<AgentSession['mode'], SnapshotKind[]> = {
-  demo: ['demo_unbranded', 'hijack'],
+  demo: ['demo_unbranded'],
   hijack: ['demo_unbranded', 'hijack'],
   eval: ['eval_frozen'],
   live: ['live_cache'],
 };
+
+/**
+ * The snapshots a session may see. A hijack snapshot holds one judge's injected listing and
+ * belongs to exactly one session; every other session (hijack ones included) never sees it.
+ */
+export function visibleSnapshots(session: Pick<AgentSession, 'id' | 'mode'>): SQL | undefined {
+  return and(
+    inArray(catalogSnapshots.kind, SNAPSHOT_KINDS[session.mode]),
+    or(ne(catalogSnapshots.kind, 'hijack'), eq(catalogSnapshots.sessionId, session.id)),
+  );
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -31,7 +42,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function resolveListing(
   db: Db,
   productId: string,
-  session: Pick<AgentSession, 'mode'>,
+  session: Pick<AgentSession, 'id' | 'mode'>,
 ): Promise<ResolvedListing> {
   const unknown = new AppError(ErrorCode.NOT_FOUND, 'Unknown product');
   if (!UUID.test(productId)) throw unknown;
@@ -41,9 +52,7 @@ export async function resolveListing(
     .from(listings)
     .innerJoin(catalogSnapshots, eq(catalogSnapshots.id, listings.snapshotId))
     .innerJoin(merchants, eq(merchants.id, listings.merchantId))
-    .where(
-      and(eq(listings.id, productId), inArray(catalogSnapshots.kind, SNAPSHOT_KINDS[session.mode])),
-    )
+    .where(and(eq(listings.id, productId), visibleSnapshots(session)))
     .limit(1);
   if (!row) throw unknown;
   const { listing, merchant } = row;

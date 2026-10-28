@@ -38,7 +38,10 @@ export function createVaultApi(ctx: PayPalContext): VaultApi {
               paypal: {
                 usageType: PaypalPaymentTokenUsageType.Merchant,
                 customerType: PaypalPaymentTokenCustomerType.Consumer,
-                permitMultiplePaymentTokens: false,
+                // One buyer may save a separate wallet for each Two-Key user (judges share one
+                // sandbox buyer; the hijack user has its own). Without this PayPal hands back the
+                // buyer's existing token, which another user already holds.
+                permitMultiplePaymentTokens: true,
                 experienceContext: {
                   returnUrl,
                   cancelUrl,

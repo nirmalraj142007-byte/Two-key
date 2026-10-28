@@ -6,7 +6,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./money": "./src/money.ts",
-    "./payment-state": "./src/payment-state.ts"
+    "./payment-state": "./src/payment-state.ts",
+    "./hijack": "./src/hijack.ts",
+    "./redact": "./src/redact.ts"
   },
   "dependencies": {
     "canonicalize": "^2.1.0",

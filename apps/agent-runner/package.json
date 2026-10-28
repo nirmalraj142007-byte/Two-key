@@ -22,6 +22,8 @@
     "./run-session": "./src/run-session.ts",
     "./adapters": "./src/adapters/index.ts",
     "./store": "./src/store.ts",
-    "./pricing": "./src/pricing.ts"
+    "./pricing": "./src/pricing.ts",
+    "./replay": "./src/replay.ts",
+    "./hijack": "./src/hijack.ts"
   }
 }

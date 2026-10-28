@@ -19,6 +19,7 @@
     "lru-cache": "^11.5.3",
     "pg-boss": "~12.33.7",
     "postgres": "^3",
+    "uuidv7": "^1",
     "web-push": "^3.6.7",
     "zod": "^4"
   },
