@@ -1,0 +1,8 @@
+
+> mcp:pack-smoke
+> tsx scripts/mcp-pack-smoke.ts
+
+packed twokey-mcp-0.0.0.tgz
+tools (4): get_active_rules, get_purchase_status, propose_purchase, search_products
+get_active_rules: ok
+PASS: the packed tarball runs with npx and talks to the gateway

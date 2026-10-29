@@ -1,0 +1,36 @@
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal without PAYPAL_WEBHOOK_ID > responds 503 webhook not configured
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal > (a) a capture that arrives before AUTHORIZATION.CREATED ends captured
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal > (b) the same event posted twice is stored once and reported as a duplicate
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal > (c) a FAILURE verification answers 400 and leaves the payment unchanged
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal > (c2) a verified delivery still applies after a forged event claimed its ID
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal > (d) a verification outage answers 503 and stores nothing
+ ✓  @twokey/gateway  test/purchase.test.ts > POST /agent/proposals > blocks the GiftVault gift card with zero PayPal requests and no payment row
+ ✓  @twokey/gateway  test/purchase.test.ts > POST /agent/proposals > captures with the registry payee, ignoring the payee and amount the agent sent
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal > (e) an event for an unknown authorization waits, then applies once the payment exists
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (1) approve: one capture with tk-<id>-capture, captured, approval approved via web
+ ✓  @twokey/gateway  test/purchase.test.ts > POST /agent/proposals > replays the same Idempotency-Key without a second order
+ ✓  @twokey/gateway  test/purchase.test.ts > POST /agent/proposals > records an evaluation proposal without calling PayPal
+ ✓  @twokey/gateway  test/purchase.test.ts > POST /agent/proposals > blocks on an expired rule card with an expiry hit
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal > (f) a LISTEN client receives the payment.updated notification
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal > rejects a body without event_type as VALIDATION before verifying
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal > passes the paypal-* headers, the event and the webhook ID to the verifier
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal > rejects a body that is not valid JSON with 400 VALIDATION and stores nothing
+ ✓  @twokey/gateway  test/webhooks.test.ts > POST /webhooks/paypal > sends PayPal the exact bytes received (1.10 and \u escapes intact)
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (2) deny: one void, voided, approval denied; another user gets 404
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (3) timeout job: voided, approval timed_out; running it again is a no-op
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (4) approve after the deadline: 409 and zero PayPal calls
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (5) two concurrent approves: exactly one capture, one 200 and one 409
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (6) capture 422 AUTHORIZATION_EXPIRED: expired, timed_out, never captured again
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (7) CAPTURE.COMPLETED arriving 10 minutes late stays captured, recorded ignored_stale
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (8) webhook missing: the reconcile job settles from GET authorization
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (9) sweep voids an overdue held payment
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (10) a hold at a merchant without credentials is blocked before any PayPal call
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (11) stuck void_requested: resent with the SAME request ID by the merchant, voided
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (12) stuck capture_requested: resent with the SAME request ID by the platform, captured
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (13) stuck but already settled at PayPal: no resend, state synced by the reconciler
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (14) push subscriptions: upsert, refuse non-push URLs and agent tokens, delete once
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (15) a hold pushes to each device; 410 forgets the device; a failing push never blocks the hold
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (16) GET /human/approvals/:id: the card with its store count; another user gets 404
+ ✓  @twokey/gateway  test/lifecycle.test.ts > hold lifecycle > (17) closing the gateway waits for a push still in flight
+ Test Files  3 passed (3)
+      Tests  34 passed (34)

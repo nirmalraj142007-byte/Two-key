@@ -1,0 +1,6 @@
+# PREDICTIONS.md vs the predictions table (read-only query, 2026-10-29T16:34:55Z)
+PREDICTIONS.md rows == database rows (21)
+registered_commit=f22eecaecc9ff1d723b7c50d8d3f0cf362984a18 registered_at=2026-10-26 17:09:54.105106+00 rows=21
+first_test_run_started=2026-10-26 17:10:10.506369+00
+git tag: eval-freeze-2026-10-26 -> f22eecaecc9ff1d723b7c50d8d3f0cf362984a18
+commit subject: eval freeze 2026-10-27

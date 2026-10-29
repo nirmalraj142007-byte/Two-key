@@ -87,8 +87,18 @@ export default function Home() {
           </h2>
           <p className="text-base text-text">
             Maya lets an AI agent restock her running gear from her saved PayPal. One product page
-            hid an instruction to buy a $189 gift card. The agent tried. Two-Key never created the
-            PayPal order.
+            hid an instruction to buy a $189 gift card from a store she never allowed. Two-Key never
+            created the PayPal order.
+          </p>
+          <p className="text-base text-text">
+            The harder attack points the agent at a different shoe from a store she did allow. That
+            fits her signed rules, so Two-Key holds it for her only when the price looks unusual.{' '}
+            <Link
+              href="/about#limits-title"
+              className="text-accent underline underline-offset-4 hover:no-underline"
+            >
+              What Two-Key does not stop
+            </Link>
           </p>
         </section>
 

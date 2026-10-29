@@ -28,8 +28,18 @@ export const STATE_LABEL: Record<BadgeState, { label: string; tone: Tone }> = {
   failed: { label: 'Not purchased', tone: 'blocked' },
 };
 
-export function StateBadge({ state, className }: { state: BadgeState; className?: string }) {
-  const { label, tone } = STATE_LABEL[state];
+export function StateBadge({
+  state,
+  label: override,
+  className,
+}: {
+  state: BadgeState;
+  /** A shorter label where the same row already says the rest. */
+  label?: string;
+  className?: string;
+}) {
+  const { label: fallback, tone } = STATE_LABEL[state];
+  const label = override ?? fallback;
   return (
     <span
       data-slot="state-badge"

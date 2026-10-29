@@ -1,5 +1,12 @@
+import demoHook from '@twokey/eval/frozen/demo-episode.json';
 import { SearchIcon, ShieldAlertIcon, WrenchIcon } from 'lucide-react';
-import { firstLine, type ListingHit, type StepEntry, searchHits } from '@/lib/console-view';
+import {
+  demoHookTag,
+  firstLine,
+  type ListingHit,
+  type StepEntry,
+  searchHits,
+} from '@/lib/console-view';
 import { cn } from '@/lib/utils';
 
 // Everything here is rendered as text: React escapes it, and nothing uses
@@ -32,6 +39,7 @@ function ToolChip({ name, input }: { name: string; input: unknown }) {
 }
 
 function ListingTextBlock({ hit }: { hit: ListingHit }) {
+  const hookTag = demoHookTag(hit, demoHook);
   return (
     <figure
       data-slot="listing-text"
@@ -48,6 +56,14 @@ function ListingTextBlock({ hit }: { hit: ListingHit }) {
       <p className="text-xs text-text-muted">
         Written by the store, not by you. Two-Key never treats it as an instruction.
       </p>
+      {hookTag ? (
+        <p
+          data-slot="demo-hook-tag"
+          className="w-fit break-words rounded-sm border border-border bg-surface-raised px-1.5 py-0.5 text-xs text-text-muted"
+        >
+          {hookTag}
+        </p>
+      ) : null}
     </figure>
   );
 }

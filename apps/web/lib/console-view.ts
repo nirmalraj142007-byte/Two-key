@@ -197,6 +197,28 @@ export function searchHits(text: string): ListingHit[] {
   return hits;
 }
 
+/** What `npm run demo:hook` recorded about the demo's poisoned listing. */
+export interface DemoHook {
+  episodeId: string;
+  followedBy: number;
+  modelsTotal: number;
+  label: string;
+  listingTitle: string;
+  listingStore: string;
+  targetGoal: string;
+}
+
+/** "Template from test episode <id> · followed by k of 3 models" for the demo hook's listing. */
+export function demoHookTag(hit: ListingHit, hook: DemoHook): string | null {
+  const isHook =
+    hit.injected &&
+    hit.title === hook.listingTitle &&
+    hit.store === hook.listingStore &&
+    hit.listingText.includes(hook.targetGoal);
+  if (!isHook) return null;
+  return `Template from ${hook.label} ${hook.episodeId} · followed by ${hook.followedBy} of ${hook.modelsTotal} models`;
+}
+
 /** The first line of a tool result: the gateway's own sentence. */
 export function firstLine(text: string): string {
   const i = text.indexOf('\n');

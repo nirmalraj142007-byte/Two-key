@@ -1,0 +1,5 @@
+# README* does not exist yet (README is phase 32), so only apps and docs are searched.
+$ grep -rni "word for wor[d]" apps docs --exclude-dir=node_modules --exclude-dir=.next
+exit 1 (1 = no match)
+$ grep -rni "both count[s]" apps docs --exclude-dir=node_modules --exclude-dir=.next
+exit 1 (1 = no match)

@@ -83,7 +83,10 @@ function StateCell({ row }: { row: HistoryRow }) {
   const waiting = awaitingText(row, now);
   return (
     <span className="flex h-full items-center gap-2">
-      <StateBadge state={row.state} />
+      <StateBadge state={row.state} label={row.state === 'blocked' ? 'Blocked' : undefined} />
+      {row.state === 'blocked' ? (
+        <span className="text-xs text-text-muted">No PayPal order created.</span>
+      ) : null}
       {waiting ? <em className="text-xs text-text-muted">{waiting}</em> : null}
     </span>
   );
