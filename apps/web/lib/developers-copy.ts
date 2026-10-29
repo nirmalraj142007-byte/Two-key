@@ -4,7 +4,12 @@
  * its read-only `get_order` and `list_transactions` tools.
  */
 
+import mcpRelease from '@twokey/mcp/release.json';
+
 const json = (v: unknown) => JSON.stringify(v, null, 2);
+
+/** twokey-mcp is not on npm: npx installs the GitHub release asset (apps/mcp/release.json). */
+export const MCP_RELEASE_URL = mcpRelease.url;
 
 export const PAYPAL_READ_ONLY_TOOLS = 'orders.get,transactions.list';
 
@@ -19,7 +24,7 @@ export const CONFIG_AFTER = json({
     paypal: { command: 'npx', args: ['-y', '@paypal/mcp', `--tools=${PAYPAL_READ_ONLY_TOOLS}`] },
     twokey: {
       command: 'npx',
-      args: ['-y', 'twokey-mcp'],
+      args: ['-y', MCP_RELEASE_URL],
       env: {
         TWOKEY_AGENT_TOKEN: '<demo-mode token from Connect your agent>',
         GATEWAY_URL: '<gateway url>',

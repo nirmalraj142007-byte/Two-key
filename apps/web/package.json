@@ -16,6 +16,7 @@
     "@twokey/core": "*",
     "@twokey/db": "^0.0.0",
     "@twokey/eval": "*",
+    "@twokey/mcp": "*",
     "ag-charts-community": "14.1.0",
     "ag-charts-react": "14.1.0",
     "ag-grid-community": "36.1.0",

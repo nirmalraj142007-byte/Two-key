@@ -6,6 +6,8 @@ For developers shipping agents on PayPal's MCP server. Keep PayPal's read-only t
 
 In `claude_desktop_config.json`, limit PayPal to reading orders and transactions (`orders.get` and `transactions.list`, which `@paypal/mcp` exposes as `get_order` and `list_transactions`), and add the `twokey` server. Keep your existing PayPal `env` block.
 
+`twokey-mcp` is not on npm. `npx` installs it from the v1.0.0 GitHub release asset (sha256 `1aa831a27f16d1c62c31acb281029dac7e0accd73f1c8fe093f3d953ef5f1036`, pinned in `apps/mcp/release.json`).
+
 Create a demo-mode token: live mode finds no purchasable items in the PayPal sandbox. Get it from Connect your agent (`/onboarding/agent`).
 
 Before:
@@ -42,7 +44,7 @@ After:
       "command": "npx",
       "args": [
         "-y",
-        "twokey-mcp"
+        "https://github.com/nirmalraj142007-byte/Two-key/releases/download/v1.0.0/twokey-mcp-1.0.0.tgz"
       ],
       "env": {
         "TWOKEY_AGENT_TOKEN": "<demo-mode token from Connect your agent>",

@@ -2,7 +2,8 @@
 > mcp:pack-smoke
 > tsx scripts/mcp-pack-smoke.ts
 
-packed twokey-mcp-0.0.0.tgz
+local copy of release/twokey-mcp-1.0.0.tgz matches sha256 1aa831a27f16d1c62c31acb281029dac7e0accd73f1c8fe093f3d953ef5f1036
+npx -y ./twokey-mcp-1.0.0.tgz
 tools (4): get_active_rules, get_purchase_status, propose_purchase, search_products
 get_active_rules: ok
-PASS: the packed tarball runs with npx and talks to the gateway
+PASS: the release tarball runs with npx and talks to the gateway
