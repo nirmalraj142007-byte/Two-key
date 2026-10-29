@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { ErrorState, LoadingState } from '@/components/twokey/state-panels';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { ResultsSummary } from '@/lib/results-queries';
@@ -30,8 +30,18 @@ export function ResultsTabs({
   episodes: ReactNode;
   judge: ReactNode;
 }) {
+  const [tab, setTab] = useState('cross-model');
+  // Deep link: /results#inside-the-rules opens that panel (linked from /about).
+  useEffect(() => {
+    const fromHash = () => {
+      if (window.location.hash === '#inside-the-rules') setTab('inside');
+    };
+    fromHash();
+    window.addEventListener('hashchange', fromHash);
+    return () => window.removeEventListener('hashchange', fromHash);
+  }, []);
   return (
-    <Tabs defaultValue="cross-model" className="gap-6">
+    <Tabs id="inside-the-rules" value={tab} onValueChange={setTab} className="gap-6">
       <TabsList variant="line" className="flex-wrap">
         <TabsTrigger value="cross-model">Cross-model</TabsTrigger>
         <TabsTrigger value="frontier">Frontier</TabsTrigger>

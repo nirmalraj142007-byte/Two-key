@@ -1,6 +1,8 @@
 import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { DataFooter } from '@/components/results/DataFooter';
+import { SiteFooter } from '@/components/twokey/SiteFooter';
+import { SiteHeader } from '@/components/twokey/SiteHeader';
 import { getResultsSummary } from '@/lib/results-queries';
 
 async function Footer() {
@@ -15,10 +17,12 @@ async function Footer() {
 export default function ResultsLayout({ children }: LayoutProps<'/results'>) {
   return (
     <>
+      <SiteHeader />
       {children}
       <Suspense fallback={<DataFooter />}>
         <Footer />
       </Suspense>
+      <SiteFooter />
     </>
   );
 }

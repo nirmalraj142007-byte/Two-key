@@ -224,13 +224,16 @@ export async function signRules(draftId: string): Promise<ActionState> {
 /** Mints an agent token for the user's own MCP client. Returned once; only its hash is stored. */
 export async function createAgentToken(
   _prev: ActionState<{ token: string; mcpUrl: string }>,
+  form?: FormData,
 ): Promise<ActionState<{ token: string; mcpUrl: string }>> {
   const user = await requireUser();
+  // Demo unless live is asked for: live search finds nothing purchasable in the sandbox.
+  const mode = form?.get('mode') === 'live' ? 'live' : 'demo';
   try {
     // A new token replaces the old one: end earlier external sessions so only one works.
     const res = await gatewayFetch<{ sessionId: string; token: string }>('/human/sessions', {
       method: 'POST',
-      body: { mode: 'live', model: EXTERNAL_MODEL },
+      body: { mode, model: EXTERNAL_MODEL },
       scope: 'sessions:create',
     });
     await db()

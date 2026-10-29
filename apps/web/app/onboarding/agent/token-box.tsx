@@ -58,6 +58,20 @@ export function ExternalAgentToken({ alreadyIssued }: { alreadyIssued: boolean }
       {alreadyIssued ? (
         <p className="text-sm text-text-muted">Token already issued — create a new one.</p>
       ) : null}
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1 text-sm font-medium text-text">Catalog</legend>
+        <label className="flex items-start gap-2 text-sm text-text">
+          <input type="radio" name="mode" value="demo" defaultChecked className="mt-1" />
+          <span>
+            Demo — the fictional sandbox stores. Use this to try it: live mode finds no purchasable
+            items in the PayPal sandbox.
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm text-text">
+          <input type="radio" name="mode" value="live" className="mt-1" />
+          <span>Live — real product search.</span>
+        </label>
+      </fieldset>
       <Button type="submit" size="lg" className="w-fit" disabled={pending}>
         {pending ? 'Creating…' : alreadyIssued ? 'Create a new token' : 'Create agent token'}
       </Button>
