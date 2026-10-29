@@ -22,7 +22,7 @@ export const STATE_LABEL: Record<BadgeState, { label: string; tone: Tone }> = {
   expired: { label: 'Expired · no charge', tone: 'voided' },
   denied: { label: 'Denied · no charge', tone: 'voided' },
   authorizing: { label: 'Authorizing…', tone: 'pending' },
-  authorized: { label: 'Authorizing…', tone: 'pending' },
+  authorized: { label: 'Authorized · waiting for PayPal', tone: 'pending' },
   capture_requested: { label: 'Capturing…', tone: 'pending' },
   void_requested: { label: 'Voiding…', tone: 'pending' },
   failed: { label: 'Not purchased', tone: 'blocked' },

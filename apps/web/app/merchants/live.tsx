@@ -5,7 +5,7 @@ import { MerchantCard } from '@/components/twokey/MerchantCard';
 import { ErrorState, PartialNotice } from '@/components/twokey/state-panels';
 import type { ConsoleEvent } from '@/lib/console-view';
 import { useTwoKeyEvents } from '@/lib/events-client';
-import { type MerchantBalance, sortMerchants } from '@/lib/merchants-view';
+import { type MerchantBalance, sortMerchants, sourceNotice } from '@/lib/merchants-view';
 import { merchantBalances } from './actions';
 
 const REFRESH_DEBOUNCE_MS = 1000;
@@ -58,8 +58,10 @@ export function MerchantBalances({
     );
   }
 
+  const notice = sourceNotice(items);
   return (
     <div className="flex flex-col gap-4">
+      {notice ? <PartialNotice text={notice} /> : null}
       {stale ? (
         <PartialNotice text="Couldn’t refresh the balances. These figures may be out of date." />
       ) : null}

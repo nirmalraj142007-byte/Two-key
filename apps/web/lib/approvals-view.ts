@@ -67,6 +67,38 @@ export function outcomeSentence(state: ApprovalState): string {
   }
 }
 
+const WHERE = { web: 'on the web', phone: 'on your phone' } as const;
+
+/**
+ * The sentence a closed hold shows, with the time it closed when known: "This hold was voided
+ * at 10:42. No charge was made.", or "Already approved on the web at 10:42. ..." when it was
+ * decided on the other screen. `time` formats an ISO timestamp as HH:MM.
+ */
+export function closedSentence(
+  item: Pick<ApprovalItem, 'status' | 'decidedAt' | 'decidedVia'>,
+  state: ApprovalState,
+  via: 'web' | 'phone',
+  time: (iso: string) => string,
+): string {
+  const at = item.decidedAt ? time(item.decidedAt) : null;
+  const by = item.decidedVia;
+  if (at && by && by !== 'timer' && by !== via && item.status !== 'pending') {
+    const verb = item.status === 'approved' ? 'approved' : 'denied';
+    const tail =
+      state === 'captured'
+        ? 'PayPal captured the payment.'
+        : state === 'capture_requested'
+          ? 'Capturing with PayPal…'
+          : 'No charge was made.';
+    return `Already ${verb} ${WHERE[by]} at ${at}. ${tail}`;
+  }
+  if (at && (state === 'voided' || state === 'denied')) {
+    return `This hold was voided at ${at}. No charge was made.`;
+  }
+  if (at && state === 'expired') return `This hold expired at ${at}. No charge was made.`;
+  return outcomeSentence(state);
+}
+
 /** The VAPID public key (base64url) as the bytes PushManager wants. */
 export function urlBase64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4))

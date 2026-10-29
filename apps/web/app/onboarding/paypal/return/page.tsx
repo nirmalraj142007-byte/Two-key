@@ -8,15 +8,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   CANCELLED_MESSAGE,
   checkReturn,
+  EXPIRED_MESSAGE,
   MISMATCH_MESSAGE,
   returnedSetupTokenId,
   SETUP_COOKIE,
 } from '@/lib/onboarding';
 import { requireUser } from '@/lib/session';
+import { readForced } from '@/lib/test-states';
 import { FailureNotice } from '../../failure-notice';
 import { CompleteConnection, SavedConnection } from './complete';
 
 export const metadata: Metadata = { title: 'Connecting PayPal · Two-Key' };
+
+const FORCED = ['cancelled', 'expired', 'mismatch', 'saving', 'saved', 'error'] as const;
 
 async function ReturnStep({
   searchParams,
@@ -25,11 +29,27 @@ async function ReturnStep({
 }) {
   const user = await requireUser();
   const query = await searchParams;
-  const check = checkReturn({
-    query,
-    cookie: (await cookies()).get(SETUP_COOKIE)?.value,
-    userId: user.userId,
-  });
+  const forced = readForced(query, FORCED);
+  if (forced === 'saving' || forced === 'error') {
+    return <CompleteConnection query={{}} forced={forced} />;
+  }
+  if (forced === 'expired') {
+    return (
+      <FailureNotice
+        failure={{
+          message: EXPIRED_MESSAGE,
+          next: { label: 'Start again', href: '/onboarding/paypal' },
+        }}
+      />
+    );
+  }
+  const check = forced
+    ? { kind: forced }
+    : checkReturn({
+        query,
+        cookie: (await cookies()).get(SETUP_COOKIE)?.value,
+        userId: user.userId,
+      });
 
   if (check.kind === 'cancelled') {
     return (
@@ -52,6 +72,7 @@ async function ReturnStep({
       />
     );
   }
+  if (check.kind !== 'ok') return null;
   const returned = returnedSetupTokenId(query);
   return <CompleteConnection query={returned ? { approval_token_id: returned } : {}} />;
 }

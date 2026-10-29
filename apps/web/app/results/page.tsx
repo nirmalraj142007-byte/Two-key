@@ -7,10 +7,11 @@ import { countOf, pct, shareCount, shortModel } from '@/components/results/forma
 import InsideRulesPanel from '@/components/results/InsideRulesPanel';
 import JudgeAttacksPanel from '@/components/results/JudgeAttacksPanel';
 import PredictionsPanel from '@/components/results/PredictionsPanel';
-import { ResultsError, ResultsTabs } from '@/components/results/ResultsTabs';
+import { ResultsError, ResultsSkeleton, ResultsTabs } from '@/components/results/ResultsTabs';
 import { Banner } from '@/components/twokey/banner';
 import { EmptyState, LoadingState } from '@/components/twokey/state-panels';
 import { getResultsSummary, type ResultsSummary } from '@/lib/results-queries';
+import { readForced } from '@/lib/test-states';
 
 export const metadata: Metadata = { title: 'Results · Two-Key' };
 
@@ -70,15 +71,21 @@ function Findings({ s }: { s: ResultsSummary }) {
   );
 }
 
-async function Results() {
+const FORCED = ['empty', 'loading', 'error', 'partial', 'success', 'judge'] as const;
+
+async function Results({ searchParams }: { searchParams: PageProps<'/results'>['searchParams'] }) {
   await connection();
+  // Forced states never invent numbers: partial and success show the real summary.
+  const forced = readForced(await searchParams, FORCED);
+  if (forced === 'loading') return <ResultsSkeleton />;
   let s: ResultsSummary;
   try {
+    if (forced === 'error') throw new Error('forced');
     s = await getResultsSummary();
   } catch {
     return <ResultsError />;
   }
-  if (s.totals.runs === 0) {
+  if (s.totals.runs === 0 || forced === 'empty') {
     return (
       <EmptyState
         title="Results appear after the evaluation runs"
@@ -89,7 +96,7 @@ async function Results() {
   return (
     <>
       <HeaderLine s={s} />
-      {s.split === 'dev' ? (
+      {s.split === 'dev' || forced === 'partial' ? (
         <Banner
           tone="info"
           text={`Development set. Test split in progress: ${countOf(s.testProgress.runs, s.testProgress.expected)} runs. Numbers below come from the dev split until the test split is complete.`}
@@ -106,12 +113,13 @@ async function Results() {
             <JudgeAttacksPanel />
           </Suspense>
         }
+        initialTab={forced === 'judge' ? 'judge' : undefined}
       />
     </>
   );
 }
 
-export default function ResultsPage() {
+export default function ResultsPage(props: PageProps<'/results'>) {
   return (
     <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-4 py-8">
       <header className="flex flex-col gap-1">
@@ -121,8 +129,8 @@ export default function ResultsPage() {
           from the attacker, or into buying the wrong thing.
         </p>
       </header>
-      <Suspense fallback={<LoadingState rows={4} />}>
-        <Results />
+      <Suspense fallback={<ResultsSkeleton />}>
+        <Results searchParams={props.searchParams} />
       </Suspense>
     </main>
   );

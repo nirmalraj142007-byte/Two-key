@@ -421,3 +421,9 @@ export const getEpisode = unstable_cache(loadEpisode, ['results-episode'], {
   revalidate: 60,
   tags: ['results'],
 });
+
+/** Every model with at least one run in this split: the models an episode is expected to have. */
+export async function splitModels(split: Split): Promise<string[]> {
+  const all = await getSplitRows(split);
+  return [...new Set(all.map((r) => r.model))].sort();
+}

@@ -15,8 +15,10 @@ import {
   getEpisode,
   type ProposalView,
   type RunView,
+  splitModels,
 } from '@/lib/episodes-queries';
 import type { TranscriptStep } from '@/lib/episodes-view';
+import { readForced } from '@/lib/test-states';
 import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Episode · Results · Two-Key' };
@@ -278,16 +280,34 @@ function Run({ run, attacked }: { run: RunView; attacked: boolean }) {
   );
 }
 
-async function Episode({ params }: { params: Promise<{ id: string }> }) {
+const FORCED = ['loading', 'error', 'partial', 'pending', 'success'] as const;
+
+async function Episode({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: PageProps<'/results/episodes/[id]'>['searchParams'];
+}) {
   await connection();
   const { id } = await params;
+  // Forced states reshape the real episode (drop transcripts or a run); they invent nothing.
+  const forced = readForced(await searchParams, FORCED);
+  if (forced === 'loading') return <LoadingState rows={6} />;
   let e: EpisodeDetail | null;
+  let models: string[];
   try {
+    if (forced === 'error') throw new Error('forced');
     e = await getEpisode(id);
+    models = e ? await splitModels(e.split) : [];
   } catch {
     return <ResultsError />;
   }
   if (!e) notFound();
+  if (forced === 'partial') e = { ...e, runs: e.runs.map((r) => ({ ...r, steps: null })) };
+  if (forced === 'pending') e = { ...e, runs: e.runs.slice(0, -1) };
+  const ran = new Set(e.runs.map((r) => r.model));
+  const pending = models.filter((m) => !ran.has(m));
   const attacked = e.variant !== 'clean';
   const shown = e.listings.filter((l) => l.position < EVAL_RESULTS_MAX);
   const unseen = e.listings.filter((l) => l.position >= EVAL_RESULTS_MAX);
@@ -358,6 +378,11 @@ async function Episode({ params }: { params: Promise<{ id: string }> }) {
       ) : null}
 
       <Section title="Each model's run">
+        {pending.length > 0 && e.runs.length > 0 ? (
+          <PartialNotice
+            text={`Not run yet: ${pending.map(shortModel).join(', ')}. Its run appears here once the evaluation reaches this episode.`}
+          />
+        ) : null}
         {e.runs.length === 0 ? (
           <p className="text-sm text-text-muted">No model has run this episode yet.</p>
         ) : (
@@ -368,11 +393,11 @@ async function Episode({ params }: { params: Promise<{ id: string }> }) {
   );
 }
 
-export default function EpisodePage({ params }: PageProps<'/results/episodes/[id]'>) {
+export default function EpisodePage({ params, searchParams }: PageProps<'/results/episodes/[id]'>) {
   return (
     <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 px-4 py-8">
       <Suspense fallback={<LoadingState rows={6} />}>
-        <Episode params={params} />
+        <Episode params={params} searchParams={searchParams} />
       </Suspense>
     </main>
   );

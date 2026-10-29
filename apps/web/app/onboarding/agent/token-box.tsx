@@ -1,6 +1,7 @@
 'use client';
 
 import { CopyIcon } from 'lucide-react';
+import Link from 'next/link';
 import { useActionState } from 'react';
 import { toast } from 'sonner';
 import { Banner } from '@/components/twokey/banner';
@@ -35,8 +36,37 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function ExternalAgentToken({ alreadyIssued }: { alreadyIssued: boolean }) {
-  const [state, action, pending] = useActionState(createAgentToken, idle);
+/** `?__state=` screenshots only (lib/test-states.ts). */
+const FIXTURE_TOKEN = 'tk_agent_example-token-for-screenshots-only';
+
+function forcedState(forced: 'loading' | 'error' | 'partial' | undefined): ActionState<Issued> {
+  if (forced === 'partial') {
+    return { status: 'ok', data: { token: FIXTURE_TOKEN, mcpUrl: 'http://localhost:4100/mcp' } };
+  }
+  if (forced === 'error') {
+    return {
+      status: 'error',
+      failure: {
+        message: "We couldn't create a token. Nothing was changed.",
+        next: { label: 'Try again' },
+      },
+    };
+  }
+  return idle;
+}
+
+export function ExternalAgentToken({
+  alreadyIssued,
+  firstProposal,
+  forced,
+}: {
+  alreadyIssued: boolean;
+  /** The current token's agent has proposed at least one purchase. */
+  firstProposal: boolean;
+  forced?: 'loading' | 'error' | 'partial' | undefined;
+}) {
+  const [state, action, actionPending] = useActionState(createAgentToken, forcedState(forced));
+  const pending = actionPending || forced === 'loading';
 
   if (state.status === 'ok') {
     return (
@@ -48,6 +78,9 @@ export function ExternalAgentToken({ alreadyIssued }: { alreadyIssued: boolean }
           Send it as <code className="font-mono">Authorization: Bearer &lt;token&gt;</code>. A new
           token replaces this one.
         </p>
+        <p role="status" className="text-sm text-text-muted">
+          Waiting for your agent’s first proposal. It shows up in History.
+        </p>
       </div>
     );
   }
@@ -55,7 +88,14 @@ export function ExternalAgentToken({ alreadyIssued }: { alreadyIssued: boolean }
   return (
     <form action={action} className="flex flex-col gap-4">
       {state.status === 'error' && !pending ? <FailureNotice failure={state.failure} /> : null}
-      {alreadyIssued ? (
+      {firstProposal ? (
+        <div className="flex flex-col gap-1">
+          <Banner tone="info" text="First proposal received from your agent." />
+          <Link href="/history" className="text-sm font-medium text-accent">
+            See it in History
+          </Link>
+        </div>
+      ) : alreadyIssued ? (
         <p className="text-sm text-text-muted">Token already issued — create a new one.</p>
       ) : null}
       <fieldset className="flex flex-col gap-2">

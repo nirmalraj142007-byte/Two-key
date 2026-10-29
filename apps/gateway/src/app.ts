@@ -67,6 +67,8 @@ export interface AppDeps {
   paypalHealth?: HealthPayPal;
   /** Replaces the `select 1` DB check (tests). */
   checkDb?: () => Promise<void>;
+  /** Replaces the webhook-lag query behind /healthz/paypal (tests). */
+  webhookLagSince?: (since: Date) => Promise<boolean>;
   /** Replaces the process-wide PayPal client (tests). */
   paypal?: PayPalOps;
   /** Replaces the process-wide PayPal vault client (tests). */
@@ -153,6 +155,23 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
           }
         : undefined),
     paypal: deps.paypalHealth,
+    webhookLagSince:
+      deps.webhookLagSince ??
+      (env.DATABASE_URL
+        ? async (since: Date) => {
+            // Payments waiting on a PayPal webhook since before `since`, and none received after.
+            const at = since.toISOString();
+            const rows = await app.db.execute<{ lagging: boolean }>(sql`
+              select exists (
+                select 1 from payments
+                where state in ('authorizing', 'capture_requested', 'void_requested')
+                  and updated_at < ${at}::timestamptz
+              ) and not exists (
+                select 1 from webhook_events where received_at >= ${at}::timestamptz
+              ) as lagging`);
+            return rows[0]?.lagging === true;
+          }
+        : undefined),
     webhookId: env.PAYPAL_WEBHOOK_ID,
     publicBaseUrl: env.PUBLIC_BASE_URL,
   });

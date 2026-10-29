@@ -1,17 +1,33 @@
+import { AppError, ErrorCode } from '@twokey/core';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Banner } from '@/components/twokey/banner';
 import { LoadingState } from '@/components/twokey/state-panels';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { toFailure } from '@/lib/onboarding';
 import { SAVED_MESSAGE } from '@/lib/onboarding-copy';
+import { readForced } from '@/lib/test-states';
 import { FailureNotice } from '../failure-notice';
 import { getProgress } from '../progress';
 import { ConnectPayPal } from './connect-button';
 
 export const metadata: Metadata = { title: 'Connect PayPal · Two-Key' };
 
-async function PayPalStep() {
-  const progress = await getProgress();
+const FORCED = ['empty', 'loading', 'error', 'saved'] as const;
+
+async function PayPalStep({
+  searchParams,
+}: {
+  searchParams: PageProps<'/onboarding/paypal'>['searchParams'];
+}) {
+  const forced = readForced(await searchParams, FORCED);
+  if (forced === 'empty') return <ConnectPayPal />;
+  if (forced === 'loading') return <ConnectPayPal forced={{ pending: true }} />;
+  if (forced === 'error') {
+    const failure = toFailure(new AppError(ErrorCode.UPSTREAM_PAYPAL, 'PayPal error'), 'paypal');
+    return <ConnectPayPal forced={{ failure }} />;
+  }
+  const progress = forced === 'saved' ? { vaultConnected: true } : await getProgress();
   if (progress === null) {
     return (
       <FailureNotice
@@ -33,7 +49,7 @@ async function PayPalStep() {
   return <ConnectPayPal />;
 }
 
-export default function PayPalPage() {
+export default function PayPalPage(props: PageProps<'/onboarding/paypal'>) {
   return (
     <Card>
       <CardHeader>
@@ -45,7 +61,7 @@ export default function PayPalPage() {
       </CardHeader>
       <CardContent>
         <Suspense fallback={<LoadingState rows={1} />}>
-          <PayPalStep />
+          <PayPalStep searchParams={props.searchParams} />
         </Suspense>
       </CardContent>
     </Card>

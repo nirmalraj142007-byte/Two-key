@@ -1,4 +1,4 @@
-import { agentSessions } from '@twokey/db';
+import { agentSessions, proposals } from '@twokey/db';
 import { and, eq } from 'drizzle-orm';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -9,14 +9,32 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { db } from '@/lib/db';
 import { EXTERNAL_MODEL } from '@/lib/onboarding';
 import { requireUser } from '@/lib/session';
+import { readForced } from '@/lib/test-states';
 import { FailureNotice } from '../failure-notice';
 import { getProgress } from '../progress';
 import { ExternalAgentToken } from './token-box';
 
 export const metadata: Metadata = { title: 'Your agent · Two-Key' };
 
-async function OwnAgent() {
+const FORCED = ['empty', 'loading', 'error', 'partial', 'success'] as const;
+
+async function OwnAgent({
+  searchParams,
+}: {
+  searchParams: PageProps<'/onboarding/agent'>['searchParams'];
+}) {
   const user = await requireUser();
+  const forced = readForced(await searchParams, FORCED);
+  if (forced) {
+    return forced === 'empty' || forced === 'success' ? (
+      <ExternalAgentToken
+        alreadyIssued={forced === 'success'}
+        firstProposal={forced === 'success'}
+      />
+    ) : (
+      <ExternalAgentToken alreadyIssued={false} firstProposal={false} forced={forced} />
+    );
+  }
   const progress = await getProgress();
   if (progress && !progress.vaultConnected) {
     return (
@@ -49,10 +67,20 @@ async function OwnAgent() {
       ),
     )
     .limit(1);
-  return <ExternalAgentToken alreadyIssued={issued !== undefined} />;
+  // The token has been used once the agent's first proposal reached the gateway.
+  const [first] = issued
+    ? await db()
+        .select({ id: proposals.id })
+        .from(proposals)
+        .where(eq(proposals.sessionId, issued.id))
+        .limit(1)
+    : [];
+  return (
+    <ExternalAgentToken alreadyIssued={issued !== undefined} firstProposal={first !== undefined} />
+  );
 }
 
-export default function AgentPage() {
+export default function AgentPage(props: PageProps<'/onboarding/agent'>) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
@@ -82,7 +110,7 @@ export default function AgentPage() {
         </CardHeader>
         <CardContent>
           <Suspense fallback={<LoadingState rows={1} />}>
-            <OwnAgent />
+            <OwnAgent searchParams={props.searchParams} />
           </Suspense>
         </CardContent>
       </Card>

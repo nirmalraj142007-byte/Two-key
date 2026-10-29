@@ -92,3 +92,77 @@ describe('GET /healthz/deep', () => {
     }
   });
 });
+
+describe('GET /healthz/paypal', () => {
+  function paypalSetup(over: { authFails?: boolean; lagging?: boolean; missing?: boolean } = {}) {
+    const paypal = {
+      checkAuth: vi.fn(async () => {
+        if (over.authFails) throw new Error('401');
+      }),
+      listWebhooks: vi.fn(
+        async (): Promise<WebhookSubscription[]> => [
+          {
+            id: HOOK_ID,
+            url: `${BASE}/webhooks/paypal`,
+            eventTypes: over.missing
+              ? REQUIRED_WEBHOOK_EVENTS.filter((e) => e !== 'PAYMENT.CAPTURE.DENIED')
+              : [...REQUIRED_WEBHOOK_EVENTS],
+          },
+        ],
+      ),
+    };
+    const webhookLagSince = vi.fn(async (_since: Date) => over.lagging === true);
+    const app = buildApp(
+      { LOG_LEVEL: 'silent', PAYPAL_WEBHOOK_ID: HOOK_ID, PUBLIC_BASE_URL: BASE },
+      { paypalHealth: paypal, checkDb: async () => undefined, webhookLagSince },
+    );
+    return { app, paypal, webhookLagSince };
+  }
+
+  it('is public and reports healthy', async () => {
+    const { app } = paypalSetup();
+    const res = await app.inject({ method: 'GET', url: '/healthz/paypal' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ degraded: false });
+  });
+
+  it('is degraded when PayPal auth fails', async () => {
+    const { app } = paypalSetup({ authFails: true });
+    const res = await app.inject({ method: 'GET', url: '/healthz/paypal' });
+    expect(res.json()).toEqual({ degraded: true, reason: 'paypal_unreachable' });
+  });
+
+  it('is degraded when the webhook subscription is incomplete', async () => {
+    const { app } = paypalSetup({ missing: true });
+    const res = await app.inject({ method: 'GET', url: '/healthz/paypal' });
+    expect(res.json()).toEqual({ degraded: true, reason: 'webhook_subscription' });
+  });
+
+  it('is degraded when payments wait and no webhook arrived in 30 minutes', async () => {
+    const { app, webhookLagSince } = paypalSetup({ lagging: true });
+    const before = Date.now();
+    const res = await app.inject({ method: 'GET', url: '/healthz/paypal' });
+    expect(res.json()).toEqual({ degraded: true, reason: 'webhook_lag' });
+    const since = webhookLagSince.mock.calls[0]?.[0];
+    expect(since).toBeInstanceOf(Date);
+    expect(before - (since as Date).getTime()).toBeGreaterThanOrEqual(30 * 60_000 - 1000);
+  });
+
+  it('caches its answer for 60 seconds', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-19T00:00:00Z'));
+      const { app, webhookLagSince } = paypalSetup();
+      await app.inject({ method: 'GET', url: '/healthz/paypal' });
+      vi.setSystemTime(new Date('2026-10-19T00:00:59Z'));
+      const res = await app.inject({ method: 'GET', url: '/healthz/paypal' });
+      expect(res.headers['cache-control']).toBe('public, max-age=60');
+      expect(webhookLagSince).toHaveBeenCalledTimes(1);
+      vi.setSystemTime(new Date('2026-10-19T00:01:00Z'));
+      await app.inject({ method: 'GET', url: '/healthz/paypal' });
+      expect(webhookLagSince).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

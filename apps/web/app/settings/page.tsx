@@ -12,6 +12,7 @@ import { db } from '@/lib/db';
 import { webEnv } from '@/lib/env';
 import { gatewayFetch } from '@/lib/gateway';
 import { requireUser } from '@/lib/session';
+import { readForced } from '@/lib/test-states';
 import { PushToggle } from '../approvals/push-toggle';
 import { ActionButton } from './action-button';
 import { disconnectPayPal, revokeRules, signOutAction } from './actions';
@@ -23,9 +24,28 @@ const sectionClass = 'flex flex-col gap-3 rounded-lg border border-border bg-sur
 const fmt = (d: Date) =>
   new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' }).format(d);
 
-async function Settings() {
+const FORCED = ['empty', 'loading', 'saving', 'error', 'partial', 'success'] as const;
+type Forced = (typeof FORCED)[number];
+
+/** `?__state=` screenshots only (lib/test-states.ts): what the Revoke button shows. */
+function forcedButton(forced: Forced | null) {
+  if (forced === 'saving') return 'saving' as const;
+  if (forced === 'error') {
+    return { status: 'error', message: 'Could not revoke your rules. Try again.' } as const;
+  }
+  if (forced === 'success') return { status: 'ok' } as const;
+  return undefined;
+}
+
+async function Settings({
+  searchParams,
+}: {
+  searchParams: PageProps<'/settings'>['searchParams'];
+}) {
   const user = await requireUser();
-  const [cards, me] = await Promise.all([
+  const forced = readForced(await searchParams, FORCED);
+  if (forced === 'loading') return <LoadingState rows={3} />;
+  const [realCards, me] = await Promise.all([
     db()
       .select({ id: ruleCards.id, version: ruleCards.version, expiresAt: ruleCards.expiresAt })
       .from(ruleCards)
@@ -39,6 +59,13 @@ async function Settings() {
       .orderBy(desc(ruleCards.version)),
     gatewayFetch<{ vaultConnected: boolean }>('/human/me').catch(() => null),
   ]);
+  const fixtureCard = {
+    id: '01900000-0000-7000-8000-00000000d001',
+    version: 1,
+    expiresAt: new Date(Date.now() + 7 * 86_400_000),
+  };
+  const cards =
+    forced === 'empty' ? [] : forced && realCards.length === 0 ? [fixtureCard] : realCards;
   const env = webEnv();
   const demo = user.role === 'judge_demo';
 
@@ -71,6 +98,7 @@ async function Settings() {
                   action={revokeRules.bind(null, c.id)}
                   label="Revoke"
                   pendingLabel="Revoking…"
+                  forced={forcedButton(forced)}
                 />
               </li>
             ))}
@@ -136,6 +164,7 @@ async function Settings() {
             ? env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
             : null
         }
+        forcedStatus={forced === 'partial' ? 'denied' : undefined}
       />
 
       <form action={signOutAction}>
@@ -147,7 +176,7 @@ async function Settings() {
   );
 }
 
-export default function SettingsPage() {
+export default function SettingsPage(props: PageProps<'/settings'>) {
   return (
     <>
       <SiteHeader />
@@ -157,7 +186,7 @@ export default function SettingsPage() {
           <p className="text-base text-text-muted">Your rules, your PayPal wallet and alerts.</p>
         </header>
         <Suspense fallback={<LoadingState rows={3} />}>
-          <Settings />
+          <Settings searchParams={props.searchParams} />
         </Suspense>
       </main>
       <SiteFooter />

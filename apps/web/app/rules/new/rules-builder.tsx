@@ -23,7 +23,7 @@ import { ManualRulesForm } from './manual-form';
 export const EXAMPLE_REQUEST =
   'Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week.';
 
-type Phase =
+export type Phase =
   | { kind: 'input' }
   | { kind: 'compiling' }
   | { kind: 'manual' }
@@ -150,9 +150,16 @@ function ReviewCard({
   );
 }
 
-export function RulesBuilder({ stores }: { stores: StoreOption[] }) {
-  const [request, setRequest] = useState('');
-  const [phase, setPhase] = useState<Phase>({ kind: 'input' });
+export function RulesBuilder({
+  stores,
+  initialPhase,
+}: {
+  stores: StoreOption[];
+  /** `?__state=` screenshots only (lib/test-states.ts). */
+  initialPhase?: Phase | undefined;
+}) {
+  const [request, setRequest] = useState(initialPhase ? EXAMPLE_REQUEST : '');
+  const [phase, setPhase] = useState<Phase>(initialPhase ?? { kind: 'input' });
 
   const build = async () => {
     setPhase({ kind: 'compiling' });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  closedSentence,
   isOpen,
   isUrgent,
   isValidVapidKey,
@@ -60,5 +61,32 @@ describe('approvals view', () => {
 
   it('decodes a base64url VAPID key', () => {
     expect([...urlBase64ToBytes('AQID_-8')]).toEqual([1, 2, 3, 255, 239]);
+  });
+});
+
+describe('closedSentence', () => {
+  const time = (iso: string) => iso.slice(11, 16);
+  const at = '2026-10-29T10:42:00.000Z';
+
+  it('says when a hold was voided', () => {
+    const item = { status: 'timed_out' as const, decidedAt: at, decidedVia: 'timer' as const };
+    expect(closedSentence(item, 'voided', 'phone', time)).toBe(
+      'This hold was voided at 10:42. No charge was made.',
+    );
+  });
+
+  it('says a hold was already decided on the other screen', () => {
+    const item = { status: 'approved' as const, decidedAt: at, decidedVia: 'web' as const };
+    expect(closedSentence(item, 'captured', 'phone', time)).toBe(
+      'Already approved on the web at 10:42. PayPal captured the payment.',
+    );
+    expect(closedSentence(item, 'captured', 'web', time)).toBe(
+      'Approved. PayPal captured the payment.',
+    );
+  });
+
+  it('falls back to the outcome sentence without a time', () => {
+    const item = { status: 'pending' as const, decidedAt: null, decidedVia: null };
+    expect(closedSentence(item, 'voided', 'web', time)).toBe('Voided. No charge was made.');
   });
 });

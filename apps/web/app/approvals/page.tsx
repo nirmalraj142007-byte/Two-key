@@ -5,15 +5,43 @@ import { LoadingState } from '@/components/twokey/state-panels';
 import { type ApprovalItem, isValidVapidKey } from '@/lib/approvals-view';
 import { webEnv } from '@/lib/env';
 import { requireUser } from '@/lib/session';
+import { fixtureApproval } from '@/lib/state-fixtures';
+import { readForced } from '@/lib/test-states';
 import { pendingApprovals } from './actions';
 import { ApprovalsInbox } from './live';
 import { PushToggle } from './push-toggle';
 
 export const metadata: Metadata = { title: 'Approvals · Two-Key' };
 
-async function Inbox() {
+const FORCED = ['empty', 'loading', 'error', 'partial', 'success'] as const;
+const URGENT_MS = 8 * 60_000;
+
+/** `?__state=` screenshots only (lib/test-states.ts). */
+function forcedItems(forced: (typeof FORCED)[number]): ApprovalItem[] | null {
+  if (forced === 'error') return null;
+  if (forced === 'partial') {
+    return [fixtureApproval({ deadlineAt: new Date(Date.now() + URGENT_MS).toISOString() })];
+  }
+  if (forced === 'success') {
+    return [
+      fixtureApproval({
+        status: 'approved',
+        state: 'captured',
+        decidedAt: new Date(Date.now() - 60_000).toISOString(),
+        decidedVia: 'web',
+      }),
+    ];
+  }
+  return [];
+}
+
+async function Inbox({ searchParams }: { searchParams: PageProps<'/approvals'>['searchParams'] }) {
   await requireUser();
-  const items = await pendingApprovals().catch((): ApprovalItem[] | null => null);
+  const forced = readForced(await searchParams, FORCED);
+  if (forced === 'loading') return <LoadingState rows={2} />;
+  const items = forced
+    ? forcedItems(forced)
+    : await pendingApprovals().catch((): ApprovalItem[] | null => null);
   const env = webEnv();
   return (
     <>
@@ -29,7 +57,7 @@ async function Inbox() {
   );
 }
 
-export default function ApprovalsPage() {
+export default function ApprovalsPage(props: PageProps<'/approvals'>) {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8">
       <header className="flex flex-col gap-1">
@@ -43,7 +71,7 @@ export default function ApprovalsPage() {
         </Link>
       </header>
       <Suspense fallback={<LoadingState rows={2} />}>
-        <Inbox />
+        <Inbox searchParams={props.searchParams} />
       </Suspense>
     </main>
   );

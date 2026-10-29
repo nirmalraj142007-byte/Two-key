@@ -4,22 +4,31 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Banner } from '@/components/twokey/banner';
 import { Button } from '@/components/ui/button';
+import type { Failure } from '@/lib/onboarding';
 import { SAVED_MESSAGE } from '@/lib/onboarding-copy';
 import { type ActionState, completePayPalConnect } from '../../actions';
 import { FailureNotice } from '../../failure-notice';
 
 /** Saves the approved wallet once on arrival (the server action re-checks the session match). */
-export function CompleteConnection({ query }: { query: { approval_token_id?: string } }) {
-  const [state, setState] = useState<ActionState | { status: 'saving' }>({ status: 'saving' });
-  const started = useRef(false);
+const SAVE_FAILED: Failure = { message: 'Not saved — retry.', next: { label: 'Try again' } };
+
+export function CompleteConnection({
+  query,
+  forced,
+}: {
+  query: { approval_token_id?: string };
+  /** `?__state=` screenshots only (lib/test-states.ts): show this state, call nothing. */
+  forced?: 'saving' | 'error' | undefined;
+}) {
+  const [state, setState] = useState<ActionState | { status: 'saving' }>(
+    forced === 'error' ? { status: 'error', failure: SAVE_FAILED } : { status: 'saving' },
+  );
+  const started = useRef(forced !== undefined);
 
   const run = useCallback(() => {
     setState({ status: 'saving' });
     completePayPalConnect(query).then(setState, () =>
-      setState({
-        status: 'error',
-        failure: { message: 'Not saved — retry.', next: { label: 'Try again' } },
-      }),
+      setState({ status: 'error', failure: SAVE_FAILED }),
     );
   }, [query]);
 

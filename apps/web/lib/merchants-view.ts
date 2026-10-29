@@ -30,3 +30,16 @@ export function sortMerchants(items: MerchantBalance[]): MerchantBalance[] {
       a.displayName.localeCompare(b.displayName),
   );
 }
+
+/**
+ * The note above the cards when PayPal didn't report every balance: none (PayPal unreachable,
+ * every figure computed from Two-Key records) or some. Null when PayPal reported them all.
+ */
+export function sourceNotice(items: MerchantBalance[]): string | null {
+  const fromPayPal = items.filter((m) => m.source === 'paypal').length;
+  if (items.length === 0 || fromPayPal === items.length) return null;
+  if (fromPayPal === 0) {
+    return 'PayPal is unreachable right now. Every figure below is computed from Two-Key records.';
+  }
+  return `PayPal reported ${fromPayPal} of ${items.length} balances. The others are computed from Two-Key records.`;
+}

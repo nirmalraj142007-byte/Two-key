@@ -14,19 +14,27 @@ import {
 } from '@/lib/push-client';
 
 /** "Phone alerts" switch: subscribes this browser to approval pushes. */
-export function PushToggle({ vapidPublicKey }: { vapidPublicKey: string | null }) {
-  const [status, setStatus] = useState<PushStatus | null>(null);
+export function PushToggle({
+  vapidPublicKey,
+  forcedStatus,
+}: {
+  vapidPublicKey: string | null;
+  /** `?__state=` screenshots only (lib/test-states.ts). */
+  forcedStatus?: PushStatus | undefined;
+}) {
+  const [status, setStatus] = useState<PushStatus | null>(forcedStatus ?? null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [iosHint, setIosHint] = useState(false);
 
   useEffect(() => {
     setIosHint(isIOS() && !isStandalone());
+    if (forcedStatus) return;
     void registerServiceWorker().catch(() => undefined);
     pushStatus(vapidPublicKey)
       .then(setStatus)
       .catch(() => setStatus('off'));
-  }, [vapidPublicKey]);
+  }, [vapidPublicKey, forcedStatus]);
 
   async function run(fn: () => Promise<{ status: PushStatus; message?: string }>) {
     setBusy(true);
@@ -56,7 +64,7 @@ export function PushToggle({ vapidPublicKey }: { vapidPublicKey: string | null }
             {status === 'enabled'
               ? 'On. This device gets a notification when a purchase is held.'
               : status === 'denied'
-                ? 'Blocked in this browser’s settings. Allow notifications for this site, then reload.'
+                ? 'Using in-app inbox: notifications are blocked in this browser, so holds show up in Approvals. To get alerts, allow notifications for this site, then reload.'
                 : status === 'unsupported'
                   ? iosHint
                     ? 'On iPhone, add Two-Key to your Home Screen first (Share → Add to Home Screen), then open it from there.'

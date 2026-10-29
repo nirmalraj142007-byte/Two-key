@@ -32,7 +32,7 @@ const SLOW_MS = 30_000;
 /** Nothing at all by then: end with a failed card. */
 const GIVE_UP_MS = 120_000;
 
-type Phase =
+export type Phase =
   | { kind: 'idle' }
   | { kind: 'starting' }
   | { kind: 'running'; attemptId: string; startedAt: number }
@@ -55,12 +55,25 @@ function StatusLine({ status }: { status: HijackStatus | null }) {
   );
 }
 
-export function HijackBox({ gatewayUrl }: { gatewayUrl: string }) {
+/** `?__state=` screenshots only (lib/test-states.ts): shown as is, nothing is sent. */
+export interface ForcedHijack {
+  phase: Phase;
+  attempt: AttemptState;
+  status: HijackStatus;
+}
+
+export function HijackBox({
+  gatewayUrl,
+  forced,
+}: {
+  gatewayUrl: string;
+  forced?: ForcedHijack | undefined;
+}) {
   const [draft, setDraft] = useState(EXAMPLE_INJECTION);
-  const [accepted, setAccepted] = useState(false);
-  const [status, setStatus] = useState<HijackStatus | null>(null);
-  const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
-  const [attempt, setAttempt] = useState<AttemptState>(EMPTY_ATTEMPT);
+  const [accepted, setAccepted] = useState(forced !== undefined);
+  const [status, setStatus] = useState<HijackStatus | null>(forced?.status ?? null);
+  const [phase, setPhase] = useState<Phase>(forced?.phase ?? { kind: 'idle' });
+  const [attempt, setAttempt] = useState<AttemptState>(forced?.attempt ?? EMPTY_ATTEMPT);
   const stop = useRef<AbortController | null>(null);
 
   const refreshStatus = useCallback(() => {
@@ -73,7 +86,9 @@ export function HijackBox({ gatewayUrl }: { gatewayUrl: string }) {
       .catch(() => undefined);
   }, []);
 
-  useEffect(refreshStatus, [refreshStatus]);
+  useEffect(() => {
+    if (!forced) refreshStatus();
+  }, [refreshStatus, forced]);
 
   // A result (from the stream or the poll) ends the attempt.
   useEffect(() => {

@@ -3,13 +3,24 @@
 import Link from 'next/link';
 import { useActionState } from 'react';
 import { Button } from '@/components/ui/button';
+import type { Failure } from '@/lib/onboarding';
 import { type ActionState, startPayPalConnect } from '../actions';
 import { FailureNotice } from '../failure-notice';
 
 const idle: ActionState = { status: 'idle' };
 
-export function ConnectPayPal({ reconnect = false }: { reconnect?: boolean }) {
-  const [state, action, pending] = useActionState(startPayPalConnect, idle);
+export function ConnectPayPal({
+  reconnect = false,
+  forced,
+}: {
+  reconnect?: boolean;
+  /** `?__state=` screenshots only (lib/test-states.ts). */
+  forced?: { pending: true } | { failure: Failure } | undefined;
+}) {
+  const initial: ActionState =
+    forced && 'failure' in forced ? { status: 'error', failure: forced.failure } : idle;
+  const [state, action, actionPending] = useActionState(startPayPalConnect, initial);
+  const pending = actionPending || (forced !== undefined && 'pending' in forced);
   return (
     <form action={action} className="flex flex-col gap-4">
       {state.status === 'error' && !pending ? <FailureNotice failure={state.failure} /> : null}

@@ -17,7 +17,10 @@ const HistoryGrid = dynamic(() => import('@/components/grids/HistoryGrid'), {
 
 const REFRESH_DEBOUNCE_MS = 1500;
 
-type Load = { status: 'loading' } | { status: 'error' } | { status: 'ready'; rows: HistoryRow[] };
+export type Load =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'ready'; rows: HistoryRow[] };
 
 async function fetchHistory(): Promise<HistoryRow[]> {
   const res = await fetch('/api/history', { cache: 'no-store' });
@@ -43,11 +46,14 @@ function useDebounced(fn: () => void, ms: number) {
 export function HistoryLive({
   gatewayUrl,
   initialOpen,
+  forcedLoad,
 }: {
   gatewayUrl: string;
   initialOpen: number | null;
+  /** `?__state=` screenshots only (lib/test-states.ts): shown as is, never fetched. */
+  forcedLoad?: Load | undefined;
 }) {
-  const [load, setLoad] = useState<Load>({ status: 'loading' });
+  const [load, setLoad] = useState<Load>(forcedLoad ?? { status: 'loading' });
   const [open, setOpen] = useState<number | null>(initialOpen);
   const grid = useRef<HistoryGridHandle | null>(null);
 
@@ -63,7 +69,9 @@ export function HistoryLive({
       .catch(() => undefined);
   }, []);
 
-  useEffect(reload, [reload]);
+  useEffect(() => {
+    if (!forcedLoad) reload();
+  }, [reload, forcedLoad]);
 
   const staleRows = useDebounced(reload, REFRESH_DEBOUNCE_MS);
   const staleStats = useDebounced(refreshStats, REFRESH_DEBOUNCE_MS / 3);

@@ -11,6 +11,7 @@ import { EmptyState, LoadingState } from '@/components/twokey/state-panels';
 import { type EpisodesPage, listEpisodes } from '@/lib/episodes-queries';
 import { type EpisodeFilters, FILTER_KEYS, parseEpisodeFilters } from '@/lib/episodes-view';
 import { getResultsSummary } from '@/lib/results-queries';
+import { FORCED_STATE_PARAM, readForced } from '@/lib/test-states';
 
 export const metadata: Metadata = { title: 'Episodes · Results · Two-Key' };
 
@@ -120,12 +121,26 @@ function Pager({ p }: { p: EpisodesPage }) {
   );
 }
 
+const FORCED = ['empty', 'loading', 'error', 'success'] as const;
+
 async function Episodes({ searchParams }: { searchParams: Promise<Params> }) {
   await connection();
-  const { filters, invalid } = parseEpisodeFilters(await searchParams);
+  const params = await searchParams;
+  const forced = readForced(params, FORCED);
+  if (forced === 'loading') return <LoadingState rows={6} />;
+  if (forced === 'empty') {
+    return (
+      <EmptyState
+        title="No runs match these filters"
+        body="Remove a filter above to see more runs."
+      />
+    );
+  }
+  const { filters, invalid } = parseEpisodeFilters(params);
   let page: EpisodesPage;
   let staticCapCents: number;
   try {
+    if (forced === 'error') throw new Error('forced');
     [page, { staticCapCents }] = await Promise.all([listEpisodes(filters), getResultsSummary()]);
   } catch {
     return <ResultsError />;
@@ -133,7 +148,7 @@ async function Episodes({ searchParams }: { searchParams: Promise<Params> }) {
   const first = (page.page - 1) * page.pageSize + 1;
   return (
     <>
-      {invalid.length > 0 ? (
+      {invalid.filter((v) => !v.startsWith(FORCED_STATE_PARAM)).length > 0 ? (
         <Banner tone="info" text={`Ignored an unknown filter value: ${invalid.join(', ')}.`} />
       ) : null}
       {page.split === 'dev' && !filters.split ? (

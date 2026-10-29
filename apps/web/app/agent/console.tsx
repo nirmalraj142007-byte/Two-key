@@ -31,7 +31,7 @@ const DEMO_REQUEST =
   'Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week.';
 const STATUS_POLL_MS = 2500;
 
-type Run =
+export type Run =
   | { status: 'idle' }
   | { status: 'starting'; message: string }
   | { status: 'running' | 'ended'; message: string; sessionId: string }
@@ -90,16 +90,21 @@ export function AgentConsole({
   vaultConnected,
   initialProposals,
   historyFailed,
+  initialRun,
+  initialSteps,
 }: {
   gatewayUrl: string;
   card: CardSummary | null;
   vaultConnected: boolean;
   initialProposals: ProposalView[];
   historyFailed: boolean;
+  /** `?__state=` screenshots only (lib/test-states.ts). A forced run is never polled. */
+  initialRun?: Run | undefined;
+  initialSteps?: Record<string, StepEntry[]> | undefined;
 }) {
   const [draft, setDraft] = useState('');
-  const [run, setRun] = useState<Run>({ status: 'idle' });
-  const [steps, setSteps] = useState<Record<string, StepEntry[]>>({});
+  const [run, setRun] = useState<Run>(initialRun ?? { status: 'idle' });
+  const [steps, setSteps] = useState<Record<string, StepEntry[]>>(initialSteps ?? {});
   const [proposals, setProposals] = useState(initialProposals);
   /** The latest session seen on the stream: followed when no run was started from this tab. */
   const [seen, setSeen] = useState<string | null>(null);
@@ -142,7 +147,7 @@ export function AgentConsole({
 
   // The runner sends no event when a session ends, so ask while it runs.
   useEffect(() => {
-    if (run.status !== 'running') return;
+    if (run.status !== 'running' || run === initialRun) return;
     const id = run.sessionId;
     const t = setInterval(() => {
       runStatus(id)
@@ -165,7 +170,7 @@ export function AgentConsole({
         .catch(() => undefined);
     }, STATUS_POLL_MS);
     return () => clearInterval(t);
-  }, [run]);
+  }, [run, initialRun]);
 
   function send(message: string) {
     setRun({ status: 'starting', message });
@@ -264,9 +269,14 @@ export function AgentConsole({
           <LiveIndicator status={live} />
         </div>
         {sessionId === null ? (
-          <p className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-text-muted">
-            Send a request. The agent's steps and every purchase it proposes appear here.
-          </p>
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-text-muted">
+            <p>Send a request. The agent's steps and every purchase it proposes appear here.</p>
+            {ready && !busy ? (
+              <Button variant="outline" size="sm" onClick={() => send(DEMO_REQUEST)}>
+                Try the suggested request
+              </Button>
+            ) : null}
+          </div>
         ) : (
           <>
             <AgentTranscript steps={currentSteps} />

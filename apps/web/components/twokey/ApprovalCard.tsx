@@ -7,14 +7,16 @@ import { Button } from '@/components/ui/button';
 import {
   type ApprovalItem,
   type ApprovalState,
+  closedSentence,
   isOpen,
-  outcomeSentence,
   priceLine,
 } from '@/lib/approvals-view';
 import { cn } from '@/lib/utils';
 import { Countdown } from './countdown';
 import { Money } from './money';
 import { StateBadge } from './state-badge';
+
+const TIME = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 
 export interface ApprovalCardProps {
   item: ApprovalItem;
@@ -130,10 +132,15 @@ export function ApprovalCard({ item, via, liveState, onDecided, className }: App
           </div>
         </>
       ) : (
-        <p role="status" className="rounded-sm bg-surface px-3 py-2 text-sm text-text">
+        // Times are in the reader's own time zone, so server and browser text may differ.
+        <p
+          role="status"
+          suppressHydrationWarning
+          className="rounded-sm bg-surface px-3 py-2 text-sm text-text"
+        >
           {timeUp && state === 'held'
             ? 'Time is up. Two-Key is voiding this hold. No charge will be made.'
-            : outcomeSentence(state)}
+            : closedSentence(item, state, via, (iso) => TIME.format(new Date(iso)))}
         </p>
       )}
 
