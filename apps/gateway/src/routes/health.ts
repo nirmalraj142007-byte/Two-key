@@ -42,13 +42,17 @@ interface PayPalHealth {
   missing?: string[];
 }
 
-const CHECK_TIMEOUT_MS = 5_000;
+const DB_TIMEOUT_MS = 5_000;
+/** Sandbox sign-in alone has taken ~4 s; a slow PayPal is not a down PayPal. */
+export const PAYPAL_TIMEOUT_MS = 10_000;
+/** /healthz/paypal says degraded only after this many failed checks in a row; one success clears it. */
+export const FAILURES_TO_DEGRADE = 2;
 
-function withTimeout<T>(p: Promise<T>): Promise<T> {
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
     p,
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('health check timed out')), CHECK_TIMEOUT_MS).unref(),
+      setTimeout(() => reject(new Error('health check timed out')), ms).unref(),
     ),
   ]);
 }
@@ -60,7 +64,8 @@ async function checkPayPal(
   const { paypal, webhookId, publicBaseUrl } = opts;
   if (!paypal) return { paypalAuth: 'not_configured', webhookSubscriptions: 'not_configured' };
   try {
-    await withTimeout(paypal.checkAuth());
+    // Reuses the client's cached OAuth token; PayPal is asked only when it has expired.
+    await withTimeout(paypal.checkAuth(), PAYPAL_TIMEOUT_MS);
   } catch (err) {
     log.warn({ err }, 'deep health: paypal auth failed');
     return { paypalAuth: 'fail', webhookSubscriptions: 'fail' };
@@ -69,7 +74,9 @@ async function checkPayPal(
     return { paypalAuth: 'ok', webhookSubscriptions: 'not_configured' };
   }
   try {
-    const hook = (await withTimeout(paypal.listWebhooks())).find((w) => w.id === webhookId);
+    const hook = (await withTimeout(paypal.listWebhooks(), PAYPAL_TIMEOUT_MS)).find(
+      (w) => w.id === webhookId,
+    );
     if (!hook) return { paypalAuth: 'ok', webhookSubscriptions: 'not_found' };
     if (hook.url !== webhookUrlFor(publicBaseUrl)) {
       return { paypalAuth: 'ok', webhookSubscriptions: 'wrong_url' };
@@ -89,7 +96,8 @@ async function checkPayPal(
  * GET /healthz/deep is for humans and uptime monitors: 503 unless the DB answers, PayPal
  * accepts our credentials and the webhook subscription is complete.
  * GET /healthz/paypal is public: { degraded, reason? } from the PayPal parts of the deep check
- * plus "no webhook received in 30 min while payments are pending", cached 60 s.
+ * plus "no webhook received in 30 min while payments are pending", cached 60 s. It reports
+ * degraded only after 2 failed checks in a row (about a minute), and clears after 1 success.
  */
 export const healthRoutes: FastifyPluginAsync<HealthRouteOptions> = async (app, opts) => {
   const cacheMs = opts.cacheMs ?? 60_000;
@@ -104,8 +112,8 @@ export const healthRoutes: FastifyPluginAsync<HealthRouteOptions> = async (app, 
     return cached.result;
   };
 
-  async function paypalStatus(): Promise<PayPalStatus> {
-    const health = await paypalHealth();
+  /** One check's own answer, before the consecutive-failure rule. */
+  async function checkStatus(health: PayPalHealth): Promise<PayPalStatus> {
     if (health.paypalAuth === 'fail') return { degraded: true, reason: 'paypal_unreachable' };
     if (health.webhookSubscriptions !== 'ok' && health.webhookSubscriptions !== 'not_configured') {
       return { degraded: true, reason: 'webhook_subscription' };
@@ -113,7 +121,7 @@ export const healthRoutes: FastifyPluginAsync<HealthRouteOptions> = async (app, 
     if (opts.webhookLagSince) {
       try {
         const since = new Date(now().getTime() - WEBHOOK_LAG_MS);
-        if (await withTimeout(opts.webhookLagSince(since))) {
+        if (await withTimeout(opts.webhookLagSince(since), DB_TIMEOUT_MS)) {
           return { degraded: true, reason: 'webhook_lag' };
         }
       } catch (err) {
@@ -122,6 +130,21 @@ export const healthRoutes: FastifyPluginAsync<HealthRouteOptions> = async (app, 
       }
     }
     return { degraded: false };
+  }
+
+  // Consecutive failed checks. A check is one PayPal health result (shared with /healthz/deep),
+  // counted once however many times it is read.
+  let failures = 0;
+  let counted: Promise<PayPalHealth> | undefined;
+
+  async function paypalStatus(): Promise<PayPalStatus> {
+    const result = paypalHealth();
+    const status = await checkStatus(await result);
+    if (counted !== result) {
+      counted = result;
+      failures = status.degraded ? failures + 1 : 0;
+    }
+    return failures >= FAILURES_TO_DEGRADE ? status : { degraded: false };
   }
 
   app.get('/healthz', async () => ({
@@ -135,7 +158,7 @@ export const healthRoutes: FastifyPluginAsync<HealthRouteOptions> = async (app, 
     let db: Check = 'not_configured';
     if (opts.checkDb) {
       try {
-        await withTimeout(opts.checkDb());
+        await withTimeout(opts.checkDb(), DB_TIMEOUT_MS);
         db = 'ok';
       } catch (err) {
         req.log.warn({ err }, 'deep health: db check failed');

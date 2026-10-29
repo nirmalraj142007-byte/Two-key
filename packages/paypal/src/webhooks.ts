@@ -47,6 +47,8 @@ function createRestClient(cfg: WebhookVerifierConfig): RestClient {
   const doFetch = cfg.fetch ?? fetch;
   const timeoutMs = cfg.timeoutMs ?? 10_000;
   let token: { value: string; expiresAt: number } | undefined;
+  /** A sign-in in flight, shared so concurrent callers don't each ask PayPal for a token. */
+  let signingIn: Promise<string> | undefined;
 
   async function call(path: string, init: RequestInit): Promise<Record<string, unknown>> {
     let res: Response;
@@ -76,8 +78,16 @@ function createRestClient(cfg: WebhookVerifierConfig): RestClient {
     }
   }
 
-  async function accessToken(): Promise<string> {
-    if (token && token.expiresAt > Date.now()) return token.value;
+  /** The cached token while it is valid (expires_in minus 60 s); signs in only when it isn't. */
+  function accessToken(): Promise<string> {
+    if (token && token.expiresAt > Date.now()) return Promise.resolve(token.value);
+    signingIn ??= signIn().finally(() => {
+      signingIn = undefined;
+    });
+    return signingIn;
+  }
+
+  async function signIn(): Promise<string> {
     const basic = Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64');
     const raw = await call('/v1/oauth2/token', {
       method: 'POST',

@@ -147,3 +147,60 @@ describe('createWebhookApi', () => {
     ]);
   });
 });
+
+describe('access token reuse (health checks)', () => {
+  const ok = (expiresIn = 32400) => json(200, { access_token: 'A21', expires_in: expiresIn });
+
+  function apiWith(token: () => Response | Promise<Response>) {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) =>
+      String(input).endsWith('/v1/oauth2/token') ? token() : json(200, { webhooks: [] }),
+    );
+    const api = createWebhookApi({ clientId: 'id', clientSecret: 's', env: 'sandbox', fetch });
+    const signIns = () =>
+      fetch.mock.calls.filter(([u]) => String(u).endsWith('/v1/oauth2/token')).length;
+    return { api, signIns };
+  }
+
+  it('signs in once and reuses the token for later checks', async () => {
+    const { api, signIns } = apiWith(() => ok());
+    await api.checkAuth();
+    await api.checkAuth();
+    await api.listWebhooks();
+    expect(signIns()).toBe(1);
+  });
+
+  it('shares one sign-in between concurrent checks', async () => {
+    const { api, signIns } = apiWith(() => ok());
+    await Promise.all([api.checkAuth(), api.checkAuth(), api.listWebhooks()]);
+    expect(signIns()).toBe(1);
+  });
+
+  it('signs in again only once the token has expired', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-19T00:00:00Z'));
+      // A 120 s token is reused for 60 s: a minute is kept as margin.
+      const { api, signIns } = apiWith(() => ok(120));
+      await api.checkAuth();
+      vi.setSystemTime(new Date('2026-10-19T00:00:59Z'));
+      await api.checkAuth();
+      expect(signIns()).toBe(1);
+      vi.setSystemTime(new Date('2026-10-19T00:01:01Z'));
+      await api.checkAuth();
+      expect(signIns()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tries a fresh sign-in after a failed one', async () => {
+    let fail = true;
+    const { api, signIns } = apiWith(() =>
+      fail ? json(500, { name: 'INTERNAL_SERVER_ERROR' }) : ok(),
+    );
+    await expect(api.checkAuth()).rejects.toBeInstanceOf(AppError);
+    fail = false;
+    await api.checkAuth();
+    expect(signIns()).toBe(2);
+  });
+});
