@@ -15,6 +15,7 @@ import { uuidv7 } from 'uuidv7';
 import { z } from 'zod';
 import { mintAgentToken } from '../auth/agent-token.js';
 import { createRequireHuman, type HumanAssertionVerifier } from '../auth/human-assertion.js';
+import { RATE_LIMITS, rateLimitIp } from '../rate-limits.js';
 import { type EventHub, frame, HEARTBEAT_MS, type OutEvent, type StreamEvent } from './events.js';
 import { CONNECT_PAYPAL_FIRST, SIGN_RULES_FIRST } from './human.js';
 
@@ -121,7 +122,6 @@ export const hijackRoutes: FastifyPluginAsync<HijackRouteOptions> = async (app, 
   const requireHuman = createRequireHuman(opts.verifier);
   const key = attemptKey(opts.ruleKey);
   const heartbeatMs = opts.heartbeatMs ?? HEARTBEAT_MS;
-  const origin = new URL(opts.webOrigin).origin;
   const open = new Set<FastifyReply>();
   // Users whose events the hub buffers from their first hijack session on, so a public stream
   // that opens a moment after the run starts still receives every step.
@@ -231,14 +231,12 @@ export const hijackRoutes: FastifyPluginAsync<HijackRouteOptions> = async (app, 
 
   // ---- public stream ----------------------------------------------------------------------
 
-  app.addHook('onRequest', async (req, reply) => {
-    if (req.url.startsWith('/public/hijack/')) {
-      reply.header('access-control-allow-origin', origin);
-      reply.header('vary', 'origin');
-    }
-  });
+  // CORS for /public/* is set app-wide (app.ts). 60 connections a minute per client IP.
+  const publicLimit = {
+    rateLimit: { max: RATE_LIMITS.public, timeWindow: '1 minute', keyGenerator: rateLimitIp },
+  };
 
-  app.get('/public/hijack/:attemptId/events', async (req, reply) => {
+  app.get('/public/hijack/:attemptId/events', { config: publicLimit }, async (req, reply) => {
     const notFound = new AppError(ErrorCode.NOT_FOUND, 'Not found');
     const params = Params.safeParse(req.params);
     const query = Query.safeParse(req.query);

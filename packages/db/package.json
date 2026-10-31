@@ -20,6 +20,7 @@
     "zod": "^4"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31"
+    "drizzle-kit": "^0.31",
+    "pg-boss": "~12.33.7"
   }
 }

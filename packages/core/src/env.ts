@@ -63,6 +63,10 @@ const schemas = {
       .transform((v) => v === 'true'),
     /** Shared with the eval CLI; sent as x-eval-token. */
     EVAL_ADMIN_TOKEN: z.string().min(32).optional(),
+    /** Bearer token for GET /metrics; without it /metrics always answers 401. */
+    METRICS_TOKEN: z.string().min(32).optional(),
+    /** Set by Render; a name ending in -prod marks the production service. */
+    RENDER_SERVICE_NAME: z.string().optional(),
   }),
   web: z.object({
     ...common,
@@ -184,7 +188,11 @@ export const SECRET_OWNERS: Record<string, ServiceName[]> = {
   EVAL_LLM_API_KEY: ['agent-runner', 'eval'],
   NIM_API_KEY: ['agent-runner', 'eval'],
   EVAL_ADMIN_TOKEN: ['gateway', 'eval'],
+  METRICS_TOKEN: ['gateway'],
+  /** The database owner's URL, used only by migrations at gateway start (docs/DEPLOY.md). */
+  MIGRATE_DATABASE_URL: ['gateway'],
   HIJACK_PAYPAL_PAYMENT_TOKEN_ID: ['gateway'],
+  HIJACK_PAYPAL_CUSTOMER_ID: ['gateway'],
 };
 
 export function loadEnv<S extends ServiceName>(

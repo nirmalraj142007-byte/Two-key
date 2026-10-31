@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { requestIdFrom } from '@twokey/core';
 import { GatewayClient } from './gateway-client.js';
 import { createTwoKeyServer } from './server.js';
 
@@ -52,7 +53,11 @@ export function createHttpServer(opts: HttpOptions): Server {
     }
 
     // Stateless: a new server and transport per request, holding only this request's token.
-    const server = createTwoKeyServer(new GatewayClient(opts.gatewayUrl, token), { token });
+    const requestId = requestIdFrom(req.headers['x-request-id']);
+    res.setHeader('x-request-id', requestId);
+    const server = createTwoKeyServer(new GatewayClient(opts.gatewayUrl, token, requestId), {
+      token,
+    });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => {
       void transport.close();

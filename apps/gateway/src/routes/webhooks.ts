@@ -5,7 +5,9 @@ import { ne, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { type Jobs, scheduleWebhookRetry } from '../jobs/queue.js';
-import { applyWebhookEvent } from '../services/webhook-apply.js';
+import { webhookEventsTotal, webhookLag, webhookLagSeconds } from '../metrics.js';
+import { RATE_LIMITS } from '../rate-limits.js';
+import { applyWebhookEventDetailed } from '../services/webhook-apply.js';
 
 export interface WebhookRouteOptions {
   webhookId?: string | undefined;
@@ -18,6 +20,7 @@ const envelope = z.looseObject({
   id: z.string().min(1),
   event_type: z.string().min(1),
   resource: z.looseObject({ id: z.string().optional() }).optional(),
+  create_time: z.string().optional(),
 });
 
 function stringHeaders(headers: Record<string, string | string[] | undefined>) {
@@ -38,7 +41,13 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRouteOptions> = async (app
     done(null, body),
   );
 
-  app.post('/webhooks/paypal', async (req, reply) => {
+  // 600 deliveries a minute in all: PayPal is the only legitimate sender.
+  const limit = {
+    rateLimit: { max: RATE_LIMITS.webhooks, timeWindow: '1 minute', keyGenerator: () => 'paypal' },
+  };
+
+  app.post('/webhooks/paypal', { config: limit }, async (req, reply) => {
+    const receivedAt = new Date();
     const { webhookId, verify } = opts;
     if (!webhookId || !verify || !app.hasDecorator('db')) {
       throw new AppError(ErrorCode.CONFIG_INVALID, 'webhook not configured', { httpStatus: 503 });
@@ -75,6 +84,10 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRouteOptions> = async (app
         retryable: true,
       });
     }
+
+    webhookEventsTotal.inc({ type: meta.eventType, verification });
+    const lagSeconds = webhookLag(parsed.data.create_time, receivedAt);
+    if (lagSeconds !== undefined) webhookLagSeconds.observe(lagSeconds);
 
     const row = {
       paypalEventId: meta.eventId,
@@ -114,8 +127,8 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRouteOptions> = async (app
       return reply.send({ duplicate: true });
     }
 
-    const result = await applyWebhookEvent(app.db, inserted);
-    req.log.info({ ...meta, result }, 'paypal webhook received');
+    const { result, ...ids } = await applyWebhookEventDetailed(app.db, inserted);
+    req.log.info({ ...meta, ...ids, type: meta.eventType, result, lagSeconds }, 'webhook.applied');
     // Usually the API response that writes the payment row is a moment behind the webhook.
     if (result === 'no_payment' && opts.jobs)
       await scheduleWebhookRetry({ jobs: opts.jobs, log: req.log });

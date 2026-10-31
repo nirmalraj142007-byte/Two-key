@@ -1,6 +1,8 @@
 import {
   AppError,
+  addLogContext,
   canTransition,
+  currentLogContext,
   decideGate,
   ErrorCode,
   formatUSD,
@@ -29,6 +31,7 @@ import { and, count, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import type { AgentSession } from '../auth/agent-token.js';
 import { type Jobs, scheduleHoldTimeout } from '../jobs/queue.js';
+import { decisionsTotal } from '../metrics.js';
 import { resolveListing } from './catalog.js';
 import type { RuleKeys } from './keys.js';
 import type { PushService } from './push.js';
@@ -415,16 +418,19 @@ export async function proposePurchase(
   const cardCheck = await loadCard(deps, session, now);
 
   // d. Decide and record under a per-user lock, so the frequency count is serialized.
-  let recorded: {
+  type RecordedDecision = {
     proposalId: string;
     outcome: 'capture' | 'hold' | 'block' | 'ask_every_time';
+    /** The first failed rule, when the outcome is a block. */
+    blockedBy?: string;
     card?: RuleCard;
     anomaly?: RuleHit;
     payment?: { id: string; vaultId: string; payeeId: string };
     noPayee?: boolean;
   };
+  let recorded: RecordedDecision;
   try {
-    recorded = await db.transaction(async (tx) => {
+    recorded = await db.transaction(async (tx): Promise<RecordedDecision> => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${session.userId}))`);
 
       let outcome: 'capture' | 'hold' | 'block' | 'ask_every_time';
@@ -496,9 +502,11 @@ export async function proposePurchase(
         state: outcome,
       });
 
+      const blockedBy = outcome === 'block' ? hits.find((h) => !h.passed)?.rule : undefined;
       const result = {
         proposalId: proposal.id,
         outcome,
+        ...(blockedBy ? { blockedBy } : {}),
         ...(cardCheck.ok ? { card: cardCheck.card } : {}),
         ...(outcome === 'hold'
           ? { anomaly: hits.find((h) => h.rule === 'anomaly') as RuleHit }
@@ -530,7 +538,12 @@ export async function proposePurchase(
         type: 'payment.created',
         fromState: null,
         toState: 'authorizing',
-        payload: { amountCents, payeeMerchantId: merchant.id },
+        // The proposal's request ID ties later webhook.applied lines back to this request.
+        payload: {
+          amountCents,
+          payeeMerchantId: merchant.id,
+          requestId: currentLogContext().requestId,
+        },
       });
       await notify(tx, {
         type: 'payment.updated',
@@ -558,6 +571,21 @@ export async function proposePurchase(
   }
 
   const { proposalId } = recorded;
+  addLogContext({ proposalId, ...(recorded.payment ? { paymentId: recorded.payment.id } : {}) });
+  decisionsTotal.inc({ outcome: recorded.outcome });
+  log.info(
+    {
+      gate: 'G4',
+      gateVersion: GATE_VERSION,
+      outcome: recorded.outcome,
+      blockedBy: recorded.blockedBy ?? null,
+      mode: session.mode,
+      sessionId: session.id,
+      proposalId,
+      ...(recorded.payment ? { paymentId: recorded.payment.id } : {}),
+    },
+    'decision.made',
+  );
   // e. Blocked, f. evaluation, or no vault token: nothing more to do, and no PayPal call.
   if (recorded.noPayee) throw missingPayee();
   const payment = recorded.payment;

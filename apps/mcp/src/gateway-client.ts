@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { AppError, ErrorCode } from '@twokey/core';
 
 const TIMEOUT_MS = 10_000;
@@ -42,9 +43,14 @@ const KNOWN_CODES = new Set<string>(Object.values(ErrorCode));
 export class GatewayClient implements Gateway {
   private readonly baseUrl: string;
 
+  /**
+   * `requestId`: the incoming x-request-id (HTTP mode), forwarded so one ID follows the call
+   * from the agent's request into the gateway. Without one, each call gets a fresh UUID.
+   */
   constructor(
     baseUrl: string,
     private readonly token: string,
+    private readonly requestId?: string,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
   }
@@ -83,6 +89,7 @@ export class GatewayClient implements Gateway {
         method,
         headers: {
           authorization: `Bearer ${this.token}`,
+          'x-request-id': this.requestId ?? randomUUID(),
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
           ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
         },

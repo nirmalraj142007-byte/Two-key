@@ -1,4 +1,4 @@
-import { AppError, ErrorCode } from '@twokey/core';
+import { AppError, addLogContext, ErrorCode, userIdHash } from '@twokey/core';
 import type { preHandlerAsyncHookHandler } from 'fastify';
 import { importSPKI, type JWTPayload, errors as joseErrors, jwtVerify } from 'jose';
 import { LRUCache } from 'lru-cache';
@@ -140,6 +140,7 @@ export function createRequireHuman(verifier: HumanAssertionVerifier) {
     async (req) => {
       try {
         req.human = await verifier.verifyHumanAssertion(req.headers.authorization, scope);
+        addLogContext({ userIdHash: userIdHash(req.human.userId) });
       } catch (err) {
         if (err instanceof AssertionRejected) {
           req.log.warn({ reason: err.reason, scope }, 'human assertion rejected');

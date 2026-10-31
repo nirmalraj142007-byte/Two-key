@@ -1,4 +1,4 @@
-import { createPayPal, type Logger } from './client.js';
+import { createPayPal, type Logger, type PayPalConfig } from './client.js';
 import type { OrdersApi } from './orders.js';
 
 /** What Two-Key does with a payee merchant's own credentials: release its authorizations. */
@@ -20,7 +20,7 @@ export type MerchantPayPalLookup = (slug: string) => MerchantPayPal | undefined;
  */
 export function createMerchantPayPal(
   credentials: Record<string, MerchantCredentials>,
-  cfg: { env: 'sandbox' | 'live'; logger: Logger },
+  cfg: { env: 'sandbox' | 'live'; logger: Logger; onCall?: PayPalConfig['onCall'] },
 ): MerchantPayPalLookup {
   const clients = new Map<string, MerchantPayPal>();
   return (slug) => {
@@ -33,6 +33,7 @@ export function createMerchantPayPal(
         clientSecret: c.clientSecret,
         env: cfg.env,
         logger: cfg.logger.child({ merchant: slug }),
+        ...(cfg.onCall ? { onCall: cfg.onCall } : {}),
       });
       client = {
         voidAuthorization: (i) => pp.voidAuthorization(i),

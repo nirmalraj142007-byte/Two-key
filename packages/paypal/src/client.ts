@@ -15,11 +15,23 @@ import { createVaultApi, type VaultApi } from './vault.js';
 
 export type Logger = ReturnType<typeof createLogger>;
 
+/** One finished PayPal call, as logged (`paypal.call`) and counted in metrics. */
+export interface PayPalCallEvent {
+  /** Method and templated path, e.g. `POST /v2/payments/authorizations/{id}/capture`. */
+  op: string;
+  /** HTTP status, or 0 when PayPal could not be reached. */
+  status: number;
+  durationMs: number;
+  debugId: string | undefined;
+}
+
 export interface PayPalConfig {
   clientId: string;
   clientSecret: string;
   env: 'sandbox' | 'live';
   logger: Logger;
+  /** Called once per call, after it finishes (metrics). Must not throw. */
+  onCall?: (e: PayPalCallEvent) => void;
 }
 
 export const PAYPAL_BASE_URL = {
@@ -61,6 +73,14 @@ function parseRaw(body: unknown): Record<string, unknown> {
   }
 }
 
+/** `/v2/payments/authorizations/5O1901…/capture` → `/v2/payments/authorizations/{id}/capture`. */
+export function templatePath(path: string): string {
+  return path
+    .split('/')
+    .map((seg) => (/\d/.test(seg) && !/^v\d+$/.test(seg) ? '{id}' : seg))
+    .join('/');
+}
+
 function debugIdOf(headers: Record<string, string> | undefined, raw?: Record<string, unknown>) {
   const fromBody = raw?.debug_id;
   return headers?.['paypal-debug-id'] ?? (typeof fromBody === 'string' ? fromBody : undefined);
@@ -82,40 +102,44 @@ export function createPayPal(cfg: PayPalConfig): PayPal {
     run: () => Promise<ApiResponse<unknown>>,
   ): Promise<PayPalResult> {
     const started = Date.now();
+    const opName = `${op.method} ${templatePath(op.path)}`;
+    const done = (status: number, debugId: string | undefined) => {
+      const e = { op: opName, status, durationMs: Date.now() - started, debugId };
+      try {
+        cfg.onCall?.(e);
+      } catch {
+        // metrics never break a payment
+      }
+      return e;
+    };
     try {
       const res = await run();
       const raw = parseRaw(res.body);
-      log.info(
-        {
-          ...op,
-          status: res.statusCode,
-          debug_id: debugIdOf(res.headers),
-          ms: Date.now() - started,
-        },
-        'paypal call',
-      );
+      log.info(done(res.statusCode, debugIdOf(res.headers)), 'paypal.call');
       return { status: res.statusCode, raw };
     } catch (err) {
       // PayPal answered 2xx but the SDK's response schema disagreed: trust PayPal's JSON.
       if (err instanceof ResponseValidationError && err.statusCode < 300) {
         const raw = parseRaw(err.body);
         log.warn(
-          {
-            ...op,
-            status: err.statusCode,
-            debug_id: debugIdOf(err.headers),
-            ms: Date.now() - started,
-          },
-          'paypal call (sdk response schema mismatch, using raw body)',
+          { ...done(err.statusCode, debugIdOf(err.headers)), schemaMismatch: true },
+          'paypal.call',
         );
         return { status: err.statusCode, raw };
       }
       if (err instanceof ApiError) {
         const appErr = mapPayPalError({ status: err.statusCode, headers: err.headers }, err.body);
-        log.warn({ ...op, ...appErr.details, ms: Date.now() - started }, 'paypal call failed');
+        const debugId = appErr.details?.debug_id;
+        log.warn(
+          {
+            ...done(err.statusCode, typeof debugId === 'string' ? debugId : undefined),
+            issues: appErr.details?.issues,
+          },
+          'paypal.call',
+        );
         throw appErr;
       }
-      log.error({ ...op, ms: Date.now() - started, err: String(err) }, 'paypal call errored');
+      log.error({ ...done(0, undefined), err: String(err) }, 'paypal.call');
       throw new AppError(ErrorCode.UPSTREAM_PAYPAL, 'PayPal unreachable', {
         retryable: true,
         cause: err,

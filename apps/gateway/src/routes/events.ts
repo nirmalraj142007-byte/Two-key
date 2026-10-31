@@ -450,23 +450,10 @@ export const eventRoutes: FastifyPluginAsync<EventRouteOptions> = async (app, op
   const hub = opts.hub ?? createEventHub(opts.databaseUrl, db, app.log);
   const heartbeatMs = opts.heartbeatMs ?? HEARTBEAT_MS;
   const open = new Set<FastifyReply>();
-  const origin = new URL(opts.webOrigin).origin;
 
   app.decorateRequest('human', null);
-
-  // CORS for the web app's browser (no cookies: the bearer assertion is the credential). Set on
-  // every response here, errors included, so the browser can read a 401 and mint a new one.
-  app.addHook('onRequest', async (_req, reply) => {
-    reply.header('access-control-allow-origin', origin);
-    reply.header('vary', 'origin');
-  });
-  app.options('/human/events', async (_req, reply) => {
-    reply
-      .header('access-control-allow-methods', 'GET')
-      .header('access-control-allow-headers', 'authorization, last-event-id, cache-control')
-      .header('access-control-max-age', '600');
-    return reply.status(204).send();
-  });
+  // CORS for the web app's browser is set app-wide for /human/* (see app.ts), on every
+  // response, errors included, so the browser can read a 401 and mint a new assertion.
 
   app.get('/human/proposals', { preHandler: requireHuman('events:read') }, async (req) => {
     const { userId } = humanOf(req);

@@ -107,6 +107,10 @@ services:
         sync: false
       - key: MERCHANT_API_CREDENTIALS
         sync: false
+      # Bearer token for GET /metrics (gateway only). EVAL_ENABLED and EVAL_ADMIN_TOKEN are
+      # local-only and never listed here; the gateway refuses EVAL_ENABLED in production.
+      - key: METRICS_TOKEN
+        sync: false
   - type: web
     name: twokey-mcp
     runtime: node

@@ -81,6 +81,12 @@ Generate the values on your machine. Nothing below is committed.
 | `PUBLIC_BASE_URL` | `https://<gateway service>.onrender.com` (no trailing slash) |
 | `PORT` | *blank* (Render supplies `PORT`) |
 | `MERCHANT_API_CREDENTIALS` | *blank* |
+| `METRICS_TOKEN` | `openssl rand -hex 32` (gateway only; for `GET /metrics`, see OPERATIONS.md) |
+| `MIGRATE_DATABASE_URL` | *blank* until the database roles are applied (below); then the owner's URL |
+
+Never set `EVAL_ENABLED` or `EVAL_ADMIN_TOKEN` on Render: they are local-only, and the gateway
+refuses to start with `EVAL_ENABLED=true` in production or on a service whose name ends in
+`-prod`.
 
 ### web
 
@@ -156,6 +162,52 @@ psql "$STAGING_DATABASE_URL" -c "select event_type, verification, received_at fr
 ```
 
 If the gateway was asleep, allow a few minutes for PayPal's retries.
+
+## Database roles (least privilege)
+
+Until this is done every service connects as the Neon owner. `scripts/db-roles.sql` creates
+one role per service: `twokey_gateway` (full DML, no DDL), `twokey_web` (reads all, writes
+only what the web app writes, never payments, approvals or gate decisions) and
+`twokey_runner`. It also creates `twokey_jobs`, a no-login role that owns pg-boss's schema.
+SECURITY.md lists what each role may do; `packages/db/test/roles.test.ts` proves the denials.
+Do this in phase 30, for staging first, then production:
+
+1. **Back up.** Neon console → the project → **Branches** → create a branch from the current
+   state (a free, instant copy to roll back to).
+2. **Apply the script as the owner**, after the latest deploy has run its migrations and
+   started once (that installs pg-boss's schema):
+
+   ```bash
+   psql "$OWNER_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/db-roles.sql
+   ```
+
+   It is idempotent. Run it again after any migration that adds a table.
+3. **Set the passwords**, one long random value per role, never committed:
+
+   ```bash
+   psql "$OWNER_DATABASE_URL" -c "alter role twokey_gateway password '<openssl rand -hex 24>'"
+   psql "$OWNER_DATABASE_URL" -c "alter role twokey_web password '<…>'"
+   psql "$OWNER_DATABASE_URL" -c "alter role twokey_runner password '<…>'"
+   ```
+
+   On Neon, roles made through SQL work like any other; the connection string is the owner's
+   with the user and password swapped (keep the host, database and `sslmode=require`).
+4. **Point each service at its role** (Render → service → **Environment**):
+
+   | Service | `DATABASE_URL` user | Also |
+   | --- | --- | --- |
+   | gateway | `twokey_gateway` | `MIGRATE_DATABASE_URL` = the owner's URL: the start command runs migrations with it, then the gateway serves as `twokey_gateway` |
+   | web | `twokey_web` | — |
+   | agent-runner | `twokey_runner` | — |
+   | twokey-mcp | *none* (it talks only to the gateway; remove `DATABASE_URL` if set) | — |
+
+   **Save and deploy** the gateway first, then web and agent-runner.
+5. **Verify**: `/healthz/deep` is 200; run one console purchase (captured), one blocked and
+   one held then denied; check the agent-runner logs show `job.done`, and the web logs show no
+   `permission denied`. A `permission denied for …` in any log names the missing grant; add it
+   to the script (and the test), never connect as the owner to work around it.
+6. **Roll back** by restoring each service's `DATABASE_URL` to the owner's URL (the roles can
+   stay). Dropping the roles needs `drop owned by twokey_jobs` first.
 
 ## Rollback
 

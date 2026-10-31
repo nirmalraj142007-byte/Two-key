@@ -14,5 +14,6 @@ playwright-report/
 eval/vendor/
 eval/data/
 eval/logs/
+logs/
 # twokey-mcp release asset (npm run mcp:release)
 /release

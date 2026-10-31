@@ -26,7 +26,9 @@ import {
 } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { safeErr } from '../app.js';
 import { type AgentSession, requireAgent } from '../auth/agent-token.js';
+import { RATE_LIMITS } from '../rate-limits.js';
 import { evalListingText, searchWords } from '../services/catalog.js';
 import type { Channel3Service } from '../services/channel3.js';
 import { loadProposalResult, type PurchaseDeps, proposePurchase } from '../services/purchase.js';
@@ -80,7 +82,18 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
   app.decorateRequest('agentSession', null);
   app.addHook('preHandler', requireAgent(db, opts.agentTokenPepper));
 
-  app.post('/agent/proposals', async (req) => {
+  // 30 proposals a minute per agent session. Checked after the token (preHandler), so the key
+  // is the verified session, never something the caller chose.
+  const proposalLimit = {
+    rateLimit: {
+      max: RATE_LIMITS.proposals,
+      timeWindow: '1 minute',
+      hook: 'preHandler' as const,
+      keyGenerator: (req: FastifyRequest) => `session:${sessionOf(req).id}`,
+    },
+  };
+
+  app.post('/agent/proposals', { config: proposalLimit }, async (req) => {
     const session = sessionOf(req);
     const body = parse(ProposalBody, req.body, 'Body must be { product_id, qty (1–20) }');
     const idempotencyKey = parse(
@@ -96,7 +109,7 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
     } catch (err) {
       if (err instanceof AppError) throw err;
       // Fail closed: if a decision can't be persisted, nothing is bought.
-      req.log.error({ err, sessionId: session.id }, 'proposal failed');
+      req.log.error({ err: safeErr(err), sessionId: session.id }, 'proposal failed');
       throw new AppError(ErrorCode.INTERNAL, 'Not purchased — retry', { retryable: true });
     }
   });

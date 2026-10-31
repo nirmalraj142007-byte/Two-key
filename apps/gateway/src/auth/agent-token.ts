@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { AppError, ErrorCode } from '@twokey/core';
+import { AppError, addLogContext, ErrorCode, userIdHash } from '@twokey/core';
 import { agentSessions, type Db } from '@twokey/db';
 import { and, eq } from 'drizzle-orm';
 import type { preHandlerAsyncHookHandler } from 'fastify';
@@ -54,6 +54,8 @@ export async function verifyAgentToken(
 /** Fastify preHandler: attaches `request.agentSession` or rejects with 401. */
 export function requireAgent(db: Db, pepper: string): preHandlerAsyncHookHandler {
   return async (req) => {
-    req.agentSession = await verifyAgentToken(db, req.headers.authorization, pepper);
+    const session = await verifyAgentToken(db, req.headers.authorization, pepper);
+    req.agentSession = session;
+    addLogContext({ sessionId: session.id, userIdHash: userIdHash(session.userId) });
   };
 }

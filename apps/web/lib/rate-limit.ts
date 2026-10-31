@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import pg from 'pg';
-import { RateLimiterPostgres, type RateLimiterRes } from 'rate-limiter-flexible';
+import { RateLimiterMemory, RateLimiterPostgres, type RateLimiterRes } from 'rate-limiter-flexible';
 import { webEnv } from './env';
 
 /** Hijack box: 5 attempts per IP per rolling hour. */
@@ -64,4 +64,35 @@ export async function consumeHijackPoint(key: string): Promise<ConsumeResult> {
 export async function hijackPointsLeft(key: string): Promise<number> {
   const res = await (await limiter()).get(key);
   return res ? Math.max(0, res.remainingPoints) : HIJACK_POINTS;
+}
+
+/** Sign-in: 5 attempts per IP hash per minute. A successful sign-in clears the count. */
+export const LOGIN_POINTS = 5;
+export const LOGIN_WINDOW_S = 60;
+
+// In memory: the web service runs as one instance, and a restart only forgives a minute.
+const lg = globalThis as { twokeyLoginLimiter?: RateLimiterMemory };
+function loginLimiter(): RateLimiterMemory {
+  lg.twokeyLoginLimiter ??= new RateLimiterMemory({
+    keyPrefix: 'login',
+    points: LOGIN_POINTS,
+    duration: LOGIN_WINDOW_S,
+  });
+  return lg.twokeyLoginLimiter;
+}
+
+/** Takes one sign-in attempt for this IP hash; false once the minute's 5 are used. */
+export async function consumeLoginAttempt(key: string): Promise<boolean> {
+  try {
+    await loginLimiter().consume(key);
+    return true;
+  } catch (rej) {
+    if (isLimiterRes(rej)) return false;
+    throw rej;
+  }
+}
+
+/** Called after a successful sign-in, so people who type their password right are never slowed. */
+export async function clearLoginAttempts(key: string): Promise<void> {
+  await loginLimiter().delete(key);
 }

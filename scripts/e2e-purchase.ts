@@ -12,7 +12,9 @@
  * allows 50 purchases per 24 h, so repeated runs never hit the frequency rule. The hold's
  * timer is queued in pg-boss; a running gateway (`npm run dev`) voids it at the deadline.
  */
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { AppError, ErrorCode, loadEnv, type RuleCard, signCard, verifyCard } from '@twokey/core';
 import {
   agentSessions,
@@ -215,8 +217,12 @@ const sender = env.VAPID_SUBJECT
       subject: env.VAPID_SUBJECT,
     })
   : undefined;
+// Gateway log lines (decision.made, paypal.call, …) go to this file as well as stdout, so one
+// purchase can be traced with `grep <requestId> logs/*.log`; the dev gateway that receives
+// PayPal's webhooks writes logs/gateway.log (its npm dev script sets LOG_FILE).
+process.env.LOG_FILE ??= fileURLToPath(new URL('../logs/e2e-purchase.log', import.meta.url));
 const app = buildApp(
-  { ...env, LOG_LEVEL: 'warn' },
+  { ...env, LOG_LEVEL: 'info' },
   sender
     ? {
         sendPush: async (sub, payload) => {
@@ -232,9 +238,15 @@ try {
   const address = await app.listen({ port: 0, host: '127.0.0.1' });
   const rows: string[][] = [];
   for (const p of products) {
+    const requestId = randomUUID();
+    console.log(`requestId=${requestId} product=${p.slug}`);
     const res = await fetch(`${address}/agent/proposals`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-request-id': requestId,
+      },
       body: JSON.stringify({ product_id: p.id, qty: 1 }),
     });
     const json: unknown = await res.json();

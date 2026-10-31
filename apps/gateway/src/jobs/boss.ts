@@ -1,6 +1,8 @@
+import { withLogContext } from '@twokey/core';
 import { pgBossConnection, startWithRetry } from '@twokey/db';
 import type { FastifyInstance } from 'fastify';
 import { PgBoss, type Queue } from 'pg-boss';
+import { safeErr } from '../app.js';
 import { processPendingWebhooks } from '../services/webhook-apply.js';
 import { handleHoldTimeout } from './hold-timeout.js';
 import { type JobDeps, type Jobs, type Logger, QUEUES, type QueueName } from './queue.js';
@@ -103,12 +105,21 @@ export async function startJobs(app: FastifyInstance): Promise<void> {
     run: (data: T) => Promise<unknown>,
   ): Promise<void> {
     for (const job of jobs) {
-      try {
-        await run(job.data);
-      } catch (err) {
-        log.error({ queue, jobId: job.id, paymentId: job.data.paymentId, err }, 'job failed');
-        throw err;
-      }
+      const paymentId = typeof job.data.paymentId === 'string' ? job.data.paymentId : undefined;
+      // Each job gets its own context, so the PayPal calls it makes carry its payment ID.
+      await withLogContext({ ...(paymentId ? { paymentId } : {}) }, async () => {
+        const started = Date.now();
+        try {
+          await run(job.data);
+          log.info({ queue, jobId: job.id, durationMs: Date.now() - started }, 'job.done');
+        } catch (err) {
+          log.error(
+            { queue, jobId: job.id, durationMs: Date.now() - started, err: safeErr(err) },
+            'job failed',
+          );
+          throw err;
+        }
+      });
     }
   }
 

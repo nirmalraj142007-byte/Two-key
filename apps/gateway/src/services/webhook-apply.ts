@@ -12,6 +12,15 @@ import type { FastifyBaseLogger } from 'fastify';
 
 export type WebhookEventRow = typeof webhookEvents.$inferSelect;
 export type ApplyResult = 'applied' | 'stale' | 'no_payment' | 'ignored';
+
+/** What applying an event did, plus the IDs that tie it back to the purchase in the logs. */
+export interface ApplyOutcome {
+  result: ApplyResult;
+  paymentId?: string;
+  proposalId?: string;
+  /** x-request-id of the proposal that created the payment (stored on payment.created). */
+  originRequestId?: string;
+}
 type Logger = Pick<FastifyBaseLogger, 'info' | 'warn' | 'error'>;
 
 /** After this many attempts an event for an unknown payment stops being retried. */
@@ -54,6 +63,13 @@ function paymentMatch(eventType: string, resource: unknown): SQL | null {
  * backward events are recorded as `ignored_stale` and never change state.
  */
 export async function applyWebhookEvent(db: Db, eventRow: WebhookEventRow): Promise<ApplyResult> {
+  return (await applyWebhookEventDetailed(db, eventRow)).result;
+}
+
+export async function applyWebhookEventDetailed(
+  db: Db,
+  eventRow: WebhookEventRow,
+): Promise<ApplyOutcome> {
   const eventId = eventRow.paypalEventId;
   const eventType = eventRow.eventType;
   const resource = (eventRow.raw as { resource?: unknown } | null)?.resource;
@@ -67,7 +83,9 @@ export async function applyWebhookEvent(db: Db, eventRow: WebhookEventRow): Prom
       .from(webhookEvents)
       .where(eq(webhookEvents.paypalEventId, eventId))
       .for('update');
-    if (!current || current.processedAt || current.verification !== 'SUCCESS') return 'ignored';
+    if (!current || current.processedAt || current.verification !== 'SUCCESS') {
+      return { result: 'ignored' };
+    }
 
     const markProcessed = () =>
       tx
@@ -78,12 +96,21 @@ export async function applyWebhookEvent(db: Db, eventRow: WebhookEventRow): Prom
     if (!target) {
       // VAULT.* and other types are not payment-state events (VAULT.* handled separately).
       await markProcessed();
-      return 'ignored';
+      return { result: 'ignored' };
     }
 
     const [payment] = match
       ? await tx
-          .select({ id: payments.id, state: payments.state, userId: agentSessions.userId })
+          .select({
+            id: payments.id,
+            state: payments.state,
+            userId: agentSessions.userId,
+            proposalId: payments.proposalId,
+            originRequestId: sql<
+              string | null
+            >`(select pe.payload->>'requestId' from ${paymentEvents} pe
+              where pe.payment_id = ${payments.id} and pe.type = 'payment.created' limit 1)`,
+          })
           .from(payments)
           .innerJoin(proposals, eq(proposals.id, payments.proposalId))
           .innerJoin(agentSessions, eq(agentSessions.id, proposals.sessionId))
@@ -97,8 +124,13 @@ export async function applyWebhookEvent(db: Db, eventRow: WebhookEventRow): Prom
         .update(webhookEvents)
         .set({ attempts: sql`${webhookEvents.attempts} + 1` })
         .where(eq(webhookEvents.paypalEventId, eventId));
-      return 'no_payment';
+      return { result: 'no_payment' };
     }
+    const ids = {
+      paymentId: payment.id,
+      proposalId: payment.proposalId,
+      ...(payment.originRequestId ? { originRequestId: payment.originRequestId } : {}),
+    };
 
     const payload = {
       eventType,
@@ -117,7 +149,7 @@ export async function applyWebhookEvent(db: Db, eventRow: WebhookEventRow): Prom
         payload: { ...payload, target },
       });
       await markProcessed();
-      return 'stale';
+      return { result: 'stale', ...ids };
     }
 
     const captureId = eventType.startsWith('PAYMENT.CAPTURE.') ? field(resource, 'id') : '';
@@ -146,7 +178,7 @@ export async function applyWebhookEvent(db: Db, eventRow: WebhookEventRow): Prom
       state: target,
     };
     await tx.execute(sql`select pg_notify(${NOTIFY_CHANNEL}, ${JSON.stringify(notice)})`);
-    return 'applied';
+    return { result: 'applied', ...ids };
   });
 }
 
@@ -176,11 +208,14 @@ export async function processPendingWebhooks(
       resourceId: row.resourceId,
     };
     try {
-      const result = await applyWebhookEvent(db, row);
+      const { result, ...ids } = await applyWebhookEventDetailed(db, row);
       counts[result] += 1;
-      if (result !== 'no_payment')
-        logger.info({ ...log, result }, 'paypal webhook applied (retry)');
-      else if (row.attempts + 1 >= MAX_WEBHOOK_ATTEMPTS) {
+      if (result !== 'no_payment') {
+        logger.info(
+          { ...log, ...ids, type: row.eventType, result, retry: true },
+          'webhook.applied',
+        );
+      } else if (row.attempts + 1 >= MAX_WEBHOOK_ATTEMPTS) {
         logger.warn(log, 'paypal webhook gave up: no matching payment');
       }
     } catch (err) {

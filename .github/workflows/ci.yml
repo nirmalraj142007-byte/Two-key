@@ -5,6 +5,27 @@ on:
   pull_request:
 
 jobs:
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      # Fails on any high or critical advisory in production dependencies that is not a
+      # documented exception (docs/SECURITY.md, scripts/audit-gate.mjs).
+      - run: node scripts/audit-gate.mjs
+
   check:
     runs-on: ubuntu-latest
     services:

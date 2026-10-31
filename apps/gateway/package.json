@@ -4,11 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "dotenv -e ../../.env.gateway -- tsx watch src/server.ts",
+    "dev": "dotenv -v LOG_FILE=../../logs/gateway.log -e ../../.env.gateway -- tsx watch src/server.ts",
     "start": "tsx src/server.ts"
   },
   "dependencies": {
     "@channel3/sdk": "^4.5.0",
+    "@fastify/cors": "^11.3.1",
+    "@fastify/helmet": "^13.2.0",
+    "@fastify/rate-limit": "^11.2.1",
     "@twokey/core": "*",
     "@twokey/db": "*",
     "@twokey/paypal": "*",
@@ -19,6 +22,7 @@
     "lru-cache": "^11.5.3",
     "pg-boss": "~12.33.7",
     "postgres": "^3",
+    "prom-client": "^15.1.3",
     "uuidv7": "^1",
     "web-push": "^3.6.7",
     "zod": "^4"

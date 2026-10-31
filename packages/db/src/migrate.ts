@@ -14,7 +14,9 @@ export async function runMigrations(url: string): Promise<void> {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const url = process.env.DATABASE_URL;
+  // With least-privilege roles (scripts/db-roles.sql) the service role cannot run DDL, so
+  // migrations use the owner URL when MIGRATE_DATABASE_URL is set (docs/DEPLOY.md).
+  const url = process.env.MIGRATE_DATABASE_URL || process.env.DATABASE_URL;
   if (!url) {
     process.stderr.write('DATABASE_URL is not set\n');
     process.exit(1);

@@ -1,5 +1,17 @@
-import { randomUUID } from 'node:crypto';
-import { AppError, createLogger, type Env, ErrorCode, toHttp } from '@twokey/core';
+import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
+import {
+  AppError,
+  createLogger,
+  type Env,
+  ErrorCode,
+  enterLogContext,
+  type LogContext,
+  requestIdFrom,
+  toHttp,
+} from '@twokey/core';
+import { payments } from '@twokey/db';
 import {
   createMerchantPayPal,
   type MerchantPayPalLookup,
@@ -7,11 +19,13 @@ import {
   type VaultApi,
   type VerifyWebhookSignature,
 } from '@twokey/paypal';
-import { sql } from 'drizzle-orm';
-import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import { count, inArray, sql } from 'drizzle-orm';
+import Fastify, { type FastifyBaseLogger, type FastifyInstance, LogController } from 'fastify';
 import { createHumanAssertionVerifier } from './auth/human-assertion.js';
 import { createJobRunner } from './jobs/boss.js';
 import type { Jobs } from './jobs/queue.js';
+import { OPEN_STATES } from './jobs/sweep.js';
+import { openAuthorizations, recordPayPalCall } from './metrics.js';
 import { dbPlugin } from './plugins/db.js';
 import { agentRoutes } from './routes/agent.js';
 import { createEventHub, eventRoutes } from './routes/events.js';
@@ -21,6 +35,7 @@ import { humanRoutes } from './routes/human.js';
 import { humanApprovalRoutes } from './routes/human-approvals.js';
 import { internalEvalRoutes } from './routes/internal-eval.js';
 import { merchantRoutes } from './routes/merchants.js';
+import { metricsRoutes } from './routes/metrics.js';
 import { pushRoutes } from './routes/push.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { type BalanceService, createBalanceService } from './services/balances.js';
@@ -58,6 +73,8 @@ export type AppEnv = Pick<Env<'gateway'>, 'LOG_LEVEL'> &
       | 'VAPID_PUBLIC_KEY'
       | 'VAPID_PRIVATE_KEY'
       | 'VAPID_SUBJECT'
+      | 'METRICS_TOKEN'
+      | 'RENDER_SERVICE_NAME'
     >
   >;
 
@@ -85,6 +102,8 @@ export interface AppDeps {
   balances?: BalanceService;
   /** SSE heartbeat interval on /human/events (tests shorten it). */
   eventsHeartbeatMs?: number;
+  /** How often twokey_open_authorizations is refreshed (tests shorten it). */
+  openAuthorizationsRefreshMs?: number;
   now?: () => Date;
 }
 
@@ -121,15 +140,88 @@ export function safeErr(err: unknown): unknown {
   };
 }
 
+/** Request bodies above this are refused with 413 (the largest real one, a webhook, is ~5 KB). */
+export const BODY_LIMIT_BYTES = 64 * 1024;
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    logContext: LogContext;
+  }
+}
+
 export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
+  // Evaluation session minting: only when explicitly enabled, never in production.
+  if (
+    env.EVAL_ENABLED &&
+    (env.NODE_ENV === 'production' || env.RENDER_SERVICE_NAME?.endsWith('-prod'))
+  ) {
+    throw new AppError(ErrorCode.CONFIG_INVALID, 'EVAL_ENABLED must not be set in production');
+  }
+
   const app = Fastify({
     loggerInstance: createLogger('gateway', env.LOG_LEVEL) as FastifyBaseLogger,
-    genReqId: () => randomUUID(),
+    // Keep the caller's x-request-id (web, MCP) when it is a UUID, so one ID follows a request.
+    genReqId: (req) => requestIdFrom(req.headers['x-request-id']),
+    logController: new LogController({ requestIdLogLabel: 'requestId' }),
+    bodyLimit: BODY_LIMIT_BYTES,
+    // Render's proxy is the one trusted hop: req.ip is the rightmost x-forwarded-for entry,
+    // the same key clientIp() picks for every rate limit.
+    trustProxy: (_address, hop) => hop === 0,
   });
 
-  app.addHook('onRequest', async (req, reply) => {
+  // Every log line written while serving a request carries its requestId, and the user,
+  // session, proposal and payment once known. Body parsing loses async context, so the same
+  // context object is entered again before validation.
+  app.decorateRequest('logContext', null as unknown as LogContext);
+  app.addHook('onRequest', (req, reply, done) => {
     reply.header('x-request-id', req.id);
+    req.logContext = { requestId: req.id };
+    enterLogContext(req.logContext, done);
   });
+  app.addHook('preValidation', (req, _reply, done) => {
+    enterLogContext(req.logContext, done);
+  });
+
+  app.register(helmet, {
+    // A JSON and event-stream API: nothing here is ever rendered as a page.
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },
+    },
+  });
+  // The web app's browser calls /human/* (event stream) and /public/* (hijack stream) directly;
+  // no other route answers cross-origin. No cookies: the bearer assertion is the credential.
+  const webOrigin = env.WEB_ORIGIN ? new URL(env.WEB_ORIGIN).origin : undefined;
+  app.register(cors, {
+    hook: 'onRequest',
+    strictPreflight: false,
+    delegator: (req, cb) => {
+      const path = (req.url ?? '').split('?')[0] ?? '';
+      const allowed = webOrigin && (path.startsWith('/human/') || path.startsWith('/public/'));
+      cb(
+        null,
+        allowed
+          ? {
+              origin: webOrigin,
+              methods: ['GET', 'POST', 'DELETE'],
+              allowedHeaders: ['authorization', 'content-type', 'last-event-id', 'cache-control'],
+              exposedHeaders: ['x-request-id'],
+              maxAge: 600,
+              strictPreflight: false,
+            }
+          : { origin: false },
+      );
+    },
+  });
+  // Limits are set per route (config.rateLimit); a 429 uses the standard error body.
+  app.register(rateLimit, {
+    global: false,
+    errorResponseBuilder: (_req, ctx) =>
+      new AppError(ErrorCode.RATE_LIMITED, 'Too many requests. Wait a minute and retry.', {
+        details: { limit: ctx.max, retryAfterSeconds: Math.ceil(ctx.ttl / 1000) },
+      }),
+  });
+  app.register(metricsRoutes, { token: env.METRICS_TOKEN });
 
   app.setErrorHandler((err, req, reply) => {
     const mapped = isClientError(err)
@@ -186,6 +278,28 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
   app.decorate('jobs', jobs);
   if (runner) app.addHook('onClose', () => runner.stop());
 
+  // twokey_open_authorizations: one count query every 30 s while the app runs.
+  if (env.DATABASE_URL) {
+    let timer: NodeJS.Timeout | undefined;
+    const refresh = async () => {
+      try {
+        const [row] = await app.db
+          .select({ n: count() })
+          .from(payments)
+          .where(inArray(payments.state, OPEN_STATES));
+        openAuthorizations.set(row?.n ?? 0);
+      } catch (err) {
+        app.log.warn({ err: safeErr(err) }, 'open authorizations gauge refresh failed');
+      }
+    };
+    app.addHook('onReady', async () => {
+      void refresh();
+      timer = setInterval(refresh, deps.openAuthorizationsRefreshMs ?? 30_000);
+      timer.unref();
+    });
+    app.addHook('onClose', async () => clearInterval(timer));
+  }
+
   app.register(webhookRoutes, {
     webhookId: env.PAYPAL_WEBHOOK_ID,
     verify: deps.verifyWebhookSignature,
@@ -204,6 +318,7 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
             PAYPAL_ENV: env.PAYPAL_ENV,
           },
           app.log as unknown as Parameters<typeof getPayPal>[1],
+          recordPayPalCall,
         )
       : undefined;
   const paypal = deps.paypal ?? shared;
@@ -216,6 +331,7 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
       ? createMerchantPayPal(env.MERCHANT_API_CREDENTIALS, {
           env: env.PAYPAL_ENV,
           logger: app.log as unknown as Parameters<typeof getPayPal>[1],
+          onCall: recordPayPalCall,
         })
       : () => undefined);
   app.decorate(
@@ -283,10 +399,6 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
     });
   }
 
-  // Evaluation session minting: only when explicitly enabled, never in production.
-  if (env.EVAL_ENABLED && env.NODE_ENV === 'production') {
-    throw new AppError(ErrorCode.CONFIG_INVALID, 'EVAL_ENABLED must not be set in production');
-  }
   if (env.EVAL_ENABLED && DATABASE_URL && RULE_HMAC_KEY && RULE_HMAC_KEY_ID && AGENT_TOKEN_PEPPER) {
     const { EVAL_ADMIN_TOKEN } = env;
     if (!EVAL_ADMIN_TOKEN) {
