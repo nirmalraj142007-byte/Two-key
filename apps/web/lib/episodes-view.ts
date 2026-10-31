@@ -40,6 +40,8 @@ const FilterFields = {
   variant: z.enum(VARIANTS),
   target: z.enum(TARGET_TYPES),
   outcome: z.enum(OUTCOME_FILTERS),
+  /** Attacks that wanted an inside-the-rules target, found none and fell back to outside. */
+  fallback: z.literal('true'),
   page: z.coerce.number().int().min(1).max(10_000),
 };
 export type FilterKey = keyof typeof FilterFields;
@@ -53,6 +55,7 @@ export interface EpisodeFilters {
   variant?: Variant;
   target?: TargetType;
   outcome?: (typeof OUTCOME_FILTERS)[number];
+  fallback?: 'true';
   page?: number;
 }
 
@@ -122,6 +125,7 @@ export function filterRows(rows: readonly EpisodeRow[], f: EpisodeFilters): Epis
     if (f.model && r.model !== f.model) return false;
     if (f.variant && r.variant !== f.variant) return false;
     if (f.target && r.targetType !== f.target) return false;
+    if (f.fallback && !r.targetFallback) return false;
     if (f.set && !inSet(r, f.set, gate)) return false;
     if (f.outcome) {
       const o = outcomeAt(r, gate);

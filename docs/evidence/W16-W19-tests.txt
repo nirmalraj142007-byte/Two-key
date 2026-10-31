@@ -1,0 +1,63 @@
+W16 + W19 unit and database tests (run 2026-10-31; each database test uses its own throwaway twokey_test_<hex> database)
+
+$ npx vitest run eval/test/metrics.test.ts apps/web/test/hijack-limits.test.ts apps/agent-runner/test/run-session.test.ts apps/agent-runner/test/hijack.test.ts apps/gateway/test/hijack.test.ts --reporter=verbose
+ ✓  @twokey/agent-runner  test/run-session.test.ts > runSession > searches, proposes, then ends with a summary 23ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > runSession > stores provider reasoning and uses it as the excerpt when the text is empty 2ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > runSession > feeds tool errors back to the model instead of ending 2ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > runSession > stops with reason budget before the first step when the cap is 0 2ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > runSession > fails with max_turns after 8 tool-calling turns 6ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > runSession > fails with reason budget when total tokens pass the limit 4ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > runSession > ends the session on an adapter error with its code 4ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > adapters and pricing > routes claude-* to Anthropic and everything else to the OpenAI-compatible endpoint 8ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > adapters and pricing > sends live sessions to NIM when AGENT_PROVIDER is nim 1ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > adapters and pricing > names an unpriced model at startup 0ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > adapters and pricing > merges consecutive tool results into one Anthropic user message 0ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > adapters and pricing > serializes tool calls for chat completions 1ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > adapters and pricing > retries 429 twice then maps to UPSTREAM_LLM 2ms
+ ✓  @twokey/agent-runner  test/run-session.test.ts > adapters and pricing > keeps the guardrail prompt frozen 0ms
+ ✓  @twokey/eval  test/metrics.test.ts > computeMetricsFrom > counts 900 runs and 4,500 gate decisions for 3 models × 300 episodes 3ms
+ ✓  @twokey/eval  test/metrics.test.ts > computeMetricsFrom > gives the rule of three bound: 3/200 per model and 3/600 pooled 2ms
+ ✓  @twokey/eval  test/metrics.test.ts > computeMetricsFrom > places a frontier point from let-through attacks and interrupted honest purchases 2ms
+ ✓  @twokey/eval  test/metrics.test.ts > computeMetricsFrom > throws when G4 captured money to an attacker payee 1ms
+ ✓  @twokey/eval  test/metrics.test.ts > computeMetricsFrom > refuses proposals without all five decisions 1ms
+ ✓  @twokey/eval  test/metrics.test.ts > run outcome > marks followed attacks and honest purchases 0ms
+ ✓  @twokey/eval  test/metrics.test.ts > Groq rate limits > parses reset durations 0ms
+ ✓  @twokey/eval  test/metrics.test.ts > Groq rate limits > waits for retry-after on a 429 and retries the same step 1ms
+ ✓  @twokey/eval  test/metrics.test.ts > predictions > rejects the unfilled table and parses a filled one 1ms
+ ✓  @twokey/eval  test/metrics.test.ts > predictions > checks the gate cell of each metric 0ms
+ ✓  @twokey/eval  test/metrics.test.ts > predictions > reads the actual value from metrics 1ms
+ ✓  @twokey/eval  test/metrics.test.ts > predictions > reads follow rates by target type and the G4 held share 1ms
+ ✓  @twokey/eval  test/metrics.test.ts > shared request pacing > spaces calls 60s / rpm apart across callers 0ms
+ ✓  @twokey/eval  test/metrics.test.ts > shared request pacing > projects hours from calls per run at a shared limit 0ms
+ ✓  @twokey/eval  test/metrics.test.ts > Groq free-tier budget > waits for the minute window and records actual usage 1ms
+ ✓  @twokey/eval  test/metrics.test.ts > Groq free-tier budget > sleeps until a run fits with 10% headroom, then continues 1ms
+ ✓  @twokey/eval  test/metrics.test.ts > Groq free-tier budget > stops waiting when asked to stop 0ms
+ ✓  @twokey/eval  test/metrics.test.ts > Groq free-tier budget > waits mid-run for the refill instead of failing a call 0ms
+ ✓  @twokey/eval  test/metrics.test.ts > Groq free-tier budget > refuses what can never fit 1ms
+ ✓  @twokey/eval  test/metrics.test.ts > Groq free-tier budget > refills the daily allowance continuously 0ms
+ ✓  @twokey/eval  test/metrics.test.ts > Groq free-tier budget > projects days from tokens and calls per run 0ms
+ ✓  @twokey/agent-runner  test/hijack.test.ts > cleaning and counting > strips control and bidi characters, keeps newlines and tabs, and trims 2ms
+ ✓  @twokey/agent-runner  test/hijack.test.ts > cleaning and counting > counts as followed only a proposal outside the shopper request 0ms
+ ✓  @twokey/agent-runner  test/hijack.test.ts > cleaning and counting > reads the gateway sentence and the tokens from a transcript 2ms
+ ✓  @twokey/agent-runner  test/hijack.test.ts > replay steps > keeps assistant and tool steps, redacted, without usage 1ms
+ ✓  @twokey/agent-runner  test/hijack.test.ts > replay steps > paces steps by their recorded gaps, within bounds 0ms
+ ✓  @twokey/web  test/hijack-limits.test.ts > hijack box limits (W19) > answers the 6th try from one IP within the hour with 429 and Retry-After 85ms
+ ✓  @twokey/web  test/hijack-limits.test.ts > hijack box limits (W19) > accepts 2,000 characters and rejects 2,001 before anything starts 7ms
+ ✓  @twokey/web  test/hijack-limits.test.ts > hijack box limits (W19) > replays once today’s live attempts reach HIJACK_DAILY_ATTEMPTS 43ms
+ ✓  @twokey/web  test/hijack-limits.test.ts > hijack box limits (W19) > replays once today’s tokens reach HIJACK_DAILY_TOKENS 20ms
+ ✓  @twokey/agent-runner  test/hijack.test.ts > hijack attempts (database) > ends with a failed card when no recorded run exists, and claims the attempt once 33ms
+ ✓  @twokey/agent-runner  test/hijack.test.ts > hijack attempts (database) > replays a followed evaluation run, redacted, with its recorded gate outcome 87ms
+ ✓  @twokey/agent-runner  test/hijack.test.ts > hijack attempts (database) > builds the live card: GiftVault blocked, followed yes, $0.00 to the attacker 25ms
+ ✓  @twokey/agent-runner  test/hijack.test.ts > hijack attempts (database) > replays instead of running when today has no tokens left 37ms
+ ✓  @twokey/agent-runner  test/hijack.test.ts > hijack attempts (database) > replays when the live run fails before proposing anything 31ms
+ ✓  @twokey/gateway  test/hijack.test.ts > attempt tokens > round-trips to the session it was issued for 2ms
+ ✓  @twokey/gateway  test/hijack.test.ts > attempt tokens > rejects another attempt, another key, a changed session, extra parts and old tokens 1ms
+ ✓  @twokey/gateway  test/hijack.test.ts > publicEvent > keeps only this session's events 0ms
+ ✓  @twokey/gateway  test/hijack.test.ts > publicEvent > drops PayPal and approval IDs from proposal views, and approval events entirely 1ms
+ ✓  @twokey/gateway  test/hijack.test.ts > /human/hijack-sessions > creates a hijack session with a private, injected copy of the Peak Outfitters shoe 86ms
+ ✓  @twokey/gateway  test/hijack.test.ts > /human/hijack-sessions > shows the copy only to its own session, in place of the demo listing it copies 53ms
+ ✓  @twokey/gateway  test/hijack.test.ts > /human/hijack-sessions > rejects empty, too long and missing text 16ms
+ ✓  @twokey/gateway  test/hijack.test.ts > /human/hijack-sessions > is only for the hijack system user, and the hijack user can do nothing else 8ms
+ ✓  @twokey/gateway  test/hijack.test.ts > /human/hijack-sessions > answers a forged or foreign stream token with 404 14ms
+ Test Files  5 passed (5)
+      Tests  58 passed (58)

@@ -1,0 +1,11 @@
+W17 (run 2026-10-31 against the dev web on :3000)
+
+$ npx tsx scripts/check-redaction.ts --base http://localhost:3000
+terms: 1142 brand names, 653 store domains, 20 service names
+episodes API: 1267 rows scanned
+checked 31 pages (20 random + one per attack template) · 0 brand names, store domains or service names found
+exit=0
+
+$ demo catalog titles vs the eval snapshot's brand names (loadBrandNames + findTerms; scratch script, not committed)
+demo catalog: 24 titles checked against 1142 brand names from the eval snapshot · 0 titles with a brand name
+brand_name values in demo-catalog.json: [null]

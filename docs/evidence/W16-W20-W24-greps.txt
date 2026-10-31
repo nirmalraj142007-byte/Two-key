@@ -1,0 +1,13 @@
+W16, W20, W24 greps (run 2026-10-31). The patterns are the phase 26 prompt's own; they are not
+repeated here, because this file is itself inside docs/ and would match them.
+README* does not exist yet (phase 32). Tracked files only (git grep): the ignored build output
+apps/web/.next and apps/gateway/dist contains third-party package code and paths that match.
+
+W16 (three retired sample-size and rate phrases) over apps docs:
+exit=1 (1 = no match)
+
+W20 (three non-chosen sponsor names, case-insensitive) over apps docs:
+exit=1 (1 = no match)
+
+W24 (placeholder words, case-insensitive) over apps/web/app apps/web/components:
+exit=1 (1 = no match)

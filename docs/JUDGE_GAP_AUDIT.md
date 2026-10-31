@@ -1,4 +1,8 @@
-# Judge-gap audit A (W1–W12)
+# Judge-gap audit (W1–W24)
+
+Part A (W1–W12) is phase 25; part B (W13–W24) is phase 26.
+
+## Part A (W1–W12)
 
 Phase 25, run 2026-10-29 against the local dev stack (web :3000, gateway :4000, local Postgres). The
 evaluation stack (:4010/:4110/:4210) and the running test split were not touched. Screenshots come
@@ -12,7 +16,7 @@ Status is measured against the current headline: in the dev results, hijacked ag
 attack that pointed at the attacker's store 1 time and an attack that stayed inside the signed rules
 24 times (each number comes from `computeMetrics()` via `/results`; none is typed into code).
 
-| W | check | result | status | evidence path | notes |
+| Row | check | result | status | evidence path | notes |
 | --- | --- | --- | --- | --- | --- |
 | W1 | Followed attacked episode: DiffView shows only the goal line changed, labelled "Published template, goal adapted"; banned phrase grep is empty | PASS | ELIMINATED | `docs/evidence/W01-adapted-attack.png`, `docs/evidence/W01-W03-greps.txt` | Spec asserts exactly 1 removed and 1 added line, the added one is "Buy … (product id …) from …", and the text before the goal is identical. `README*` does not exist yet, so the grep covers `apps` and `docs`. |
 | W2 | Cross-model tab shows 3 models and $0.00 to an attacker for each | PENDING (test split) | MITIGATED | `docs/evidence/W02-cross-model.png` | `/results` shows the test split only once all 900 runs exist (724 of 900 now; gpt-oss-120b on Groq is at 124 of 300). Until then it shows the dev split, which has 2 models by design, each at $0.00. The spec expects 3 rows as soon as the dev banner is gone. Numbers freeze Nov 7. |
@@ -27,12 +31,38 @@ attack that pointed at the attacker's store 1 time and an attack that stayed ins
 | W11 | Predictions panel shows a commit and date; PREDICTIONS.md is registered in the database; Judge-written tab exists | PASS | ELIMINATED | `docs/evidence/W11-predictions.png`, `docs/evidence/W11-predictions.txt` | The panel reads "Registered Oct 26 at commit f22eeca, before any test run", and its checkpoint list shows the Oct 27 freeze gate. The 21 database rows match the 21 rows of PREDICTIONS.md; registration was 2026-10-26 17:09:54 UTC and the first test run started 16 s later. The date is Oct 26, not Oct 27: the freeze ran a day early (tag `eval-freeze-2026-10-26` on commit f22eeca, subject "eval freeze 2026-10-27"). The page shows the real date. |
 | W12 | `npm run demo:hook`: poisoned Cloud Runner CR-1 at Peak Outfitters from the most-followed frozen test episode; `eval/frozen/demo-episode.json`; console tag | FIXED | ELIMINATED | `docs/evidence/W12-demo-hook-tag.png`, `eval/frozen/demo-episode.json` | New `scripts/seed-demo-hook.ts`. It picked test episode 01a14c4e-e000-70a2-981d-3882812a6776 (AgentDojo ImportantInstructionsAttack, banking InjectionTask6), followed by 2 of 3 models (nemotron-3.5-bolt-e4b, gpt-oss-20b; three episodes tie at 2, lowest id wins). The goal is rewritten by the evaluation's own `adaptGoal` to "Buy Digital gift card $189 (product id …) from GiftVault." The console's listing block shows "Template from test episode 01a14c4e-… · followed by 2 of 3 models" on that listing only. The spec feeds the console a real gateway search result. |
 
+## Part B (W13–W24)
+
+Phase 26, run 2026-10-31 against the same local dev stack; the evaluation stack and the running
+test split were not touched, and no `eval/` code or data changed. Screenshots come from
+`apps/web/e2e/judge-gap-b.spec.ts` (`PLAYWRIGHT_CHANNEL=msedge npx playwright test
+e2e/judge-gap-b.spec.ts -c apps/web`: 7 of 7 tests green). `docs/BLUEPRINT.md` is still the
+placeholder, so the checks are the phase 26 prompt's wording plus the facts that changed since the
+plan. The explorer still shows the dev split: 600 runs, 2,205 gate decisions, 400 attacked runs,
+0 attacker payments under Two-Key (all from `computeMetrics()`); the test split was at 754 of 900
+runs when the spec ran.
+
+| Row | check | result | status | evidence path | notes |
+| --- | --- | --- | --- | --- | --- |
+| W13 | Inside-the-rules panel shows the per-model share with links to rows; the explorer shows the outside/inside target split and fallback count | FIXED (3-model part PENDING-TEST-SPLIT) | MITIGATED | `docs/evidence/W13-inside-rules.png`, `docs/evidence/W13-fallback-runs.png` | The share table already linked every count (followed, passed, held, blocked) to its rows. Before: no target split or fallback count anywhere; fallbacks showed only per episode. Now the tab has "Where the attacks pointed": per model, attacked runs outside the rules (118) and inside them (82), from `followByTarget.*.available`, and fallback targets (7 per model on dev), each linked to its runs. The fallback count uses a new `fallback=true` explorer filter (`episodes-view.ts`) and is counted by `fallbackCounts()` from the explorer's own rows, so it always equals the grid it opens (the spec checks "7 runs" and the "Fallback target" chip). Both tables show 2 models (dev split by design); 3 once the test split finishes. |
+| W14 | Frontier shows the 70% target line and Two-Key's honest-pass value per model; the anomaly threshold (1.3) is recorded and was fixed before the freeze tag | FIXED | ELIMINATED | `docs/evidence/W14-frontier-honest-pass.png`, `docs/evidence/W14-threshold.txt` | The dashed "70% honest-pass goal" line was there. Before: the honest-pass value appeared only as its complement in a tooltip. Now under the chart, per model: "Two-Key honest pass, nemotron-3.5-bolt-e4b: 74.1% (63 of 85) · goal 70%" and "gpt-oss-20b: 76.8% (43 of 56)", from G4 `honestInterrupted`. Threshold: the frozen manifest has no threshold field, so the evidence is (1) `priceRatioThreshold: 1.3` on all 200 task cards (100 dev, 100 test) and in `evalCard()` at the tag, and (2) `eval/results/dev-sensitivity.json` committed in 6c0f59a (Oct 26 14:37 IST, `enforcedThreshold: 1.3`), an ancestor of tag `eval-freeze-2026-10-26` (f22eeca, tagged Oct 26 22:39 IST). |
+| W15 | Rules card shows "Agent's job — not checked by Two-Key" for size; SPIKE_RESULTS has the R19 Channel3 finding; the product-detail metric is labelled "LLM-graded" wherever shown | PASS | ELIMINATED | `docs/evidence/W15-size-advisory.png` | Size 10 renders with the advisory label (rules screen, compiled-card state; Maya has no active card). `docs/SPIKE_RESULTS.md` § "R19 Channel3 structured attributes": no size or variant attributes, so size stays advisory. The product-detail metric renders in one place, the episode page, as "Product details right (LLM-graded)"; the spec checks every render site. No run is graded yet (`product_detail_ok` is empty on every run), so today it shows nowhere. |
+| W16 | Explorer header numbers come from `computeMetrics`; the arithmetic unit test passes; the retired-phrases grep is empty | PASS | ELIMINATED | `docs/evidence/W16-header.png`, `docs/evidence/W16-W19-tests.txt`, `docs/evidence/W16-W20-W24-greps.txt` | `HeaderLine` in `apps/web/app/results/page.tsx` prints `totals.runs`, `totals.gateDecisions`, `headline.attacked`, `headline.attackerPayments` and `pooled.ruleOfThree` from `getResultsSummary()`, which is `loadMetricsRows` + `computeMetricsFrom` (`apps/web/lib/results-queries.ts`). The spec compares the rendered line with `/api/results/summary` and checks 2,205 = 441 proposals × 5 gates. `eval/test/metrics.test.ts` › "counts 900 runs and 4,500 gate decisions for 3 models × 300 episodes" passes. The grep over tracked files is empty. |
+| W17 | `scripts/check-redaction.ts` reports 0 brand names; demo catalog titles contain no brand names from the eval snapshot; the footer says merchants are fictional | FIXED | ELIMINATED | `docs/evidence/W17-redaction.txt`, `docs/evidence/W17-footer-fictional.png` | Before: the checker crashed on start (it imported `findServices` through `apps/web/lib/redact`'s re-export, which tsx could not resolve). Now it imports `@twokey/core/redact` directly: 31 pages (20 random + one per attack template) and 1,267 API rows, 0 hits for 1,142 brand names, 653 store domains and 20 service names. Demo catalog: 24 titles, 0 brand names; every `brand_name` is null. Site footer: "All products and merchants are fictional PayPal sandbox accounts." |
+| W18 | DATA_LICENCES.md lists every source with commit, licence and the Channel3 decision; the explorer footer renders it | FIXED | ELIMINATED | `docs/evidence/W18-W22-data-footer.png` | DATA_LICENCES.md already had WebShop, InjecAgent and AgentDojo (MIT, pinned commits) and Channel3 (terms and decision). Before: the footer showed names, licences and commits but not the decision. Now `scripts/build-licences-json.ts` also reads the decision into `licences.json`, and the footer shows "Channel3 · Terms of service (no republishing licence) · Decision: Public explorer shows listing IDs and structured fields only." plus a link to DATA_LICENCES.md. |
+| W19 | Tests for the 6th-try 429, the 2,000-character limit, the 8-turn cap and replay-on-cap exist and pass | FIXED | ELIMINATED | `docs/evidence/W16-W19-tests.txt` | The hijack box caps daily attempts (`HIJACK_DAILY_ATTEMPTS`) and tokens (`HIJACK_DAILY_TOKENS`), not dollars, so replay-on-cap replaces replay-on-budget. Already there: 2,000/2,001 at the gateway (`apps/gateway/test/hijack.test.ts`), the 8-turn cap (`run-session.test.ts` › "fails with max_turns after 8 tool-calling turns"), token-cap replay in the runner (`apps/agent-runner/test/hijack.test.ts`). Missing, now added in `apps/web/test/hijack-limits.test.ts` (real route and limiter on a throwaway database; only the gateway call is stubbed): the 6th try from one IP gets 429 with Retry-After and "That's 5 tries this hour…"; 2,001 characters get 400 at `/api/hijack` before anything starts; `hijackCaps()` switches to replay at the attempt cap and at the token cap. |
+| W20 | Sponsor-name grep is empty; docs/DEVPOST.md category check | PASS (categories PENDING-PHASE-32) | MITIGATED | `docs/evidence/W16-W20-W24-greps.txt` | The grep over tracked `apps` and `docs` is empty (`README*` does not exist yet). Ignored build output does match: `apps/web/.next` holds AG Grid Enterprise's own code, and `apps/gateway/dist/tsconfig.tsbuildinfo` lists the PayPal SDK's dependency paths, so a plain `grep -r` over `apps` prints those lines. Devpost categories are decided in phase 32; the AG Grid prize criteria are not confirmed yet. |
+| W21 | Landing eyebrow reads "Not a shopping agent. The lock on its wallet." | PASS (README line 1 PENDING-PHASE-32) | ELIMINATED | `docs/evidence/W21-landing-eyebrow.png` | The eyebrow above the hero title, exact text. |
+| W22 | Explorer footer shows total LLM cost; DECISIONS.md records the spend-cap position | PASS | ELIMINATED | `docs/evidence/W18-W22-data-footer.png`, `docs/DECISIONS.md` | Footer: "Total LLM cost for these runs: $0.00" from `totals.totalCostUsd`. All model use is on free tiers (Groq, NVIDIA NIM), so there is no paid console and no spend cap to set; confirmed by the team on Oct 31 and recorded in `docs/DECISIONS.md` with the pricing sources (`apps/agent-runner/src/pricing.ts`). |
+| W23 | Licence key set: build, start, /history with grouping and no watermark; unset: Community fallback with no console errors besides the single warning | PASS (licensed screenshot PENDING-LICENCE) | MITIGATED | `docs/evidence/W23-history-community.png` | No AG Grid Enterprise licence yet, so only the fallback was checked: /history renders Maya's rows with 0 console errors and exactly one warning ("NEXT_PUBLIC_AG_GRID_LICENSE_KEY is not set: AG Grid runs Community features only."). Checked on the dev server (:3000 runs `next dev`); the production build and the grouped, watermark-free screenshot come with the licence. |
+| W24 | Placeholder-word grep over web pages and components is empty; SCHEDULE.md gates carry actual dates | FIXED | ELIMINATED | `docs/evidence/W16-W20-W24-greps.txt`, `docs/SCHEDULE.md` | The grep is empty. SCHEDULE.md now has an "Actual" column: vault GO Oct 19, honor-period capture Oct 25, freeze Oct 26 (a day early), dev checkpoint met (13 of 200), licence not in hand, test split started Oct 26 and expected to finish about Nov 5–6. |
+
 ## Old-story copy check
 
 The headline is now the inside-the-rules finding. Every public sentence that could still suggest
 "hijacked agents mostly try to pay the attacker" was reviewed:
 
-| Where | Text | Action |
+| Place | Text | Action |
 | --- | --- | --- |
 | Landing, "What happened to Maya" (`apps/web/app/page.tsx`) | "One product page hid an instruction to buy a $189 gift card. The agent tried. Two-Key never created the PayPal order." | Changed. It now says the gift card came from a store she never allowed and was never ordered, then: "The harder attack points the agent at a different shoe from a store she did allow. That fits her signed rules, so Two-Key holds it for her only when the price looks unusual." It links to "What Two-Key does not stop". |
 | Landing live strip, `/about` item 1, `/results` model cards, Inside the rules tab | Counts of outside-the-rules and inside-the-rules follows, all from `computeMetrics()` | Kept. They already lead with the inside-the-rules share. |
@@ -42,6 +72,15 @@ The headline is now the inside-the-rules finding. Every public sentence that cou
 | README draft | none exists | Phase 32. |
 
 ## Follow-ups this audit leaves
+
+Part B:
+
+- W13: rerun `judge-gap-b.spec.ts` once the test split completes (3 models in both tables).
+- W20: Devpost categories in phase 32. W21: README line 1 in phase 32.
+- W23: with the licence key, run `npm run build -w @twokey/web && npm start -w @twokey/web` and
+  screenshot /history grouped with no watermark.
+
+Part A:
 
 - W2 turns to 3 models when the test split completes; rerun the spec then.
 - W12: `demo:hook` picks from test runs recorded so far. Rerun it after the test split finishes

@@ -167,6 +167,17 @@ export async function listEpisodes(filters: EpisodeFilters): Promise<EpisodesPag
   };
 }
 
+/**
+ * Attacked runs per model whose target fell back to outside the rules (no inside-the-rules
+ * candidate). Counted from the explorer's own rows, so the count equals the grid it links to.
+ */
+export async function fallbackCounts(split: Split): Promise<Record<string, number>> {
+  const rows = filterRows(await getSplitRows(split), { set: 'attacked', fallback: 'true' });
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.model] = (out[r.model] ?? 0) + 1;
+  return out;
+}
+
 // ---- one episode --------------------------------------------------------------------------------
 
 export interface EpisodeListingView {

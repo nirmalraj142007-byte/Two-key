@@ -10,11 +10,11 @@
  * Reads DATABASE_URL from the environment, else .env.web / .env.gateway.
  */
 import { existsSync } from 'node:fs';
+import { findServices, findTerms } from '@twokey/core/redact';
 import { createDb, evalEpisodes, evalRuns, merchants } from '@twokey/db';
 import { eq, sql } from 'drizzle-orm';
 import terms from '../apps/web/data/redaction-terms.json';
 import { loadBrandNames } from '../apps/web/lib/brand-names';
-import { findServices, findTerms } from '../apps/web/lib/redact';
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`);

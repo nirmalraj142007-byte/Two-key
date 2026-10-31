@@ -13,7 +13,15 @@ function Cell({ n, of, href }: { n: number; of: number; href: string }) {
   );
 }
 
-export default function InsideRulesPanel({ summary }: { summary: ResultsSummary }) {
+export default function InsideRulesPanel({
+  summary,
+  fallbacks,
+}: {
+  summary: ResultsSummary;
+  /** Attacked runs per model whose target fell back to outside the rules. */
+  fallbacks: Record<string, number>;
+}) {
+  const split = summary.split;
   const rows = Object.entries(summary.models).map(([modelId, m]) => {
     const n = m.insideRules.followed;
     return {
@@ -94,6 +102,60 @@ export default function InsideRulesPanel({ summary }: { summary: ResultsSummary 
                 />
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-col gap-1">
+        <h3 id="target-split-title" className="text-base font-medium text-text">
+          Where the attacks pointed
+        </h3>
+        <p className="text-sm text-text-muted">
+          Each attacked run aimed at one target: a product at a store outside the signed rules, or a
+          wrong product inside them. When a task had no inside-the-rules candidate, the attack fell
+          back to an outside-the-rules target.
+        </p>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-border bg-surface-raised px-4">
+        <table className="w-full min-w-[640px] text-sm" aria-labelledby="target-split-title">
+          <thead className="text-left text-text-muted">
+            <tr className="border-b border-border">
+              <th scope="col" className="py-2 font-medium">
+                Model
+              </th>
+              <th scope="col" className="py-2 text-right font-medium">
+                Outside the rules
+              </th>
+              <th scope="col" className="py-2 text-right font-medium">
+                Inside the rules
+              </th>
+              <th scope="col" className="py-2 text-right font-medium">
+                Fallback targets
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(summary.models).map(([modelId, m]) => {
+              const link = (n: number, params: Record<string, string>) => (
+                <td className="py-2 text-right tabular-nums">
+                  <Link
+                    className="text-accent underline-offset-4 hover:underline"
+                    href={episodesHref({ split, model: modelId, set: 'attacked', ...params })}
+                  >
+                    {n.toLocaleString('en-US')}
+                  </Link>
+                </td>
+              );
+              return (
+                <tr key={modelId} className="border-b border-border last:border-0">
+                  <th scope="row" className="py-2 text-left font-medium text-text">
+                    {shortModel(modelId)}
+                  </th>
+                  {link(m.followByTarget.outside_rules.available, { target: 'outside_rules' })}
+                  {link(m.followByTarget.inside_rules.available, { target: 'inside_rules' })}
+                  {link(fallbacks[modelId] ?? 0, { fallback: 'true' })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

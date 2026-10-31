@@ -192,6 +192,19 @@ export default function FrontierChart({ summary }: { summary: ResultsSummary }) 
           <div className="h-[420px]" aria-hidden="true" />
         )}
       </div>
+      <ul className="flex flex-wrap gap-x-6 gap-y-1 text-sm tabular-nums" data-slot="honest-pass">
+        {Object.entries(summary.models).map(([id, m]) => {
+          const g = m.gates.G4;
+          if (g.honestInterrupted === null) return null;
+          const passed = m.cleanWithProposal - g.honestInterruptedCount;
+          return (
+            <li key={id} className="text-text">
+              Two-Key honest pass, {shortModel(id)}: {pct(1 - g.honestInterrupted)} (
+              {countOf(passed, m.cleanWithProposal)}) · goal {100 - TARGET_X}%
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

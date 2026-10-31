@@ -5,28 +5,32 @@
       "url": "https://github.com/princeton-nlp/WebShop",
       "licence": "MIT",
       "commit": "64fa2a5c15c7daa698b9ac93f5bb5437b634c9bd",
-      "commitUrl": "https://github.com/princeton-nlp/WebShop/commit/64fa2a5c15c7daa698b9ac93f5bb5437b634c9bd"
+      "commitUrl": "https://github.com/princeton-nlp/WebShop/commit/64fa2a5c15c7daa698b9ac93f5bb5437b634c9bd",
+      "decision": null
     },
     {
       "name": "InjecAgent",
       "url": "https://github.com/uiuc-kang-lab/InjecAgent",
       "licence": "MIT License",
       "commit": "f19c9f2c79a41046eb13c03c51a24c567a8ffa07",
-      "commitUrl": "https://github.com/uiuc-kang-lab/InjecAgent/commit/f19c9f2c79a41046eb13c03c51a24c567a8ffa07"
+      "commitUrl": "https://github.com/uiuc-kang-lab/InjecAgent/commit/f19c9f2c79a41046eb13c03c51a24c567a8ffa07",
+      "decision": null
     },
     {
       "name": "AgentDojo",
       "url": "https://github.com/ethz-spylab/agentdojo",
       "licence": "MIT License",
       "commit": "089ed468cf3ed0322acc66b0211f26d9d90dbf60",
-      "commitUrl": "https://github.com/ethz-spylab/agentdojo/commit/089ed468cf3ed0322acc66b0211f26d9d90dbf60"
+      "commitUrl": "https://github.com/ethz-spylab/agentdojo/commit/089ed468cf3ed0322acc66b0211f26d9d90dbf60",
+      "decision": null
     },
     {
       "name": "Channel3",
       "url": "https://trychannel3.com/terms",
       "licence": "Terms of service (no republishing licence)",
       "commit": null,
-      "commitUrl": null
+      "commitUrl": null,
+      "decision": "Public explorer shows listing IDs and structured fields only."
     }
   ]
 }

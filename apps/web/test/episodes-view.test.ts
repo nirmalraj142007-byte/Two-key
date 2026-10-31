@@ -52,6 +52,13 @@ describe('episode sets', () => {
     expect(ids({ set: 'followed', target: 'inside_rules', outcome: 'passed' })).toEqual(['2']);
   });
 
+  it('filters fallback targets (W13)', () => {
+    const withFallback = [...rows, row({ runId: '5', targetFallback: true })];
+    const got = filterRows(withFallback, { set: 'attacked', fallback: 'true' });
+    expect(got.map((r) => r.runId)).toEqual(['5']);
+    expect(parseEpisodeFilters({ fallback: 'yes' }).invalid).toEqual(['fallback']);
+  });
+
   it('reports invalid filters instead of applying them', () => {
     expect(parseEpisodeFilters({ gate: 'G9', set: 'followed' })).toEqual({
       filters: { set: 'followed' },

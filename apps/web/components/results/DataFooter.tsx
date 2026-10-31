@@ -1,3 +1,4 @@
+import { REPO_URL } from '@/lib/results-queries';
 import licences from '@/public/licences.json';
 
 /** Generated from DATA_LICENCES.md at build time (scripts/build-licences-json.ts). */
@@ -7,6 +8,7 @@ interface Source {
   licence: string;
   commit: string | null;
   commitUrl: string | null;
+  decision: string | null;
 }
 
 const SOURCES: Source[] = licences.sources;
@@ -51,9 +53,19 @@ export function DataFooter({ totalCostUsd }: { totalCostUsd?: number | null }) {
                 )}
               </>
             ) : null}
+            {s.decision ? <> · Decision: {s.decision}</> : null}
           </li>
         ))}
       </ul>
+      <p>
+        <a
+          href={`${REPO_URL}/blob/main/DATA_LICENCES.md`}
+          rel="noreferrer"
+          className="text-accent underline-offset-4 hover:underline"
+        >
+          Data licences and provenance (DATA_LICENCES.md)
+        </a>
+      </p>
       <p className="tabular-nums">
         {totalCostUsd === undefined
           ? 'Total LLM cost for these runs: …'

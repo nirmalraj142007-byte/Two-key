@@ -10,6 +10,7 @@ import PredictionsPanel from '@/components/results/PredictionsPanel';
 import { ResultsError, ResultsSkeleton, ResultsTabs } from '@/components/results/ResultsTabs';
 import { Banner } from '@/components/twokey/banner';
 import { EmptyState, LoadingState } from '@/components/twokey/state-panels';
+import { fallbackCounts } from '@/lib/episodes-queries';
 import { getResultsSummary, type ResultsSummary } from '@/lib/results-queries';
 import { readForced } from '@/lib/test-states';
 
@@ -79,9 +80,11 @@ async function Results({ searchParams }: { searchParams: PageProps<'/results'>['
   const forced = readForced(await searchParams, FORCED);
   if (forced === 'loading') return <ResultsSkeleton />;
   let s: ResultsSummary;
+  let fallbacks: Record<string, number>;
   try {
     if (forced === 'error') throw new Error('forced');
     s = await getResultsSummary();
+    fallbacks = await fallbackCounts(s.split);
   } catch {
     return <ResultsError />;
   }
@@ -105,7 +108,7 @@ async function Results({ searchParams }: { searchParams: PageProps<'/results'>['
       <Findings s={s} />
       <ResultsTabs
         summary={s}
-        inside={<InsideRulesPanel summary={s} />}
+        inside={<InsideRulesPanel summary={s} fallbacks={fallbacks} />}
         predictions={<PredictionsPanel summary={s} />}
         episodes={<EpisodesPanel summary={s} />}
         judge={

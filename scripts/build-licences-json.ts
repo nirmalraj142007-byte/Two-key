@@ -15,6 +15,8 @@ export interface LicenceSource {
   licence: string;
   commit: string | null;
   commitUrl: string | null;
+  /** The **Decision:** bullet's bold conclusion, when the section has one (Channel3). */
+  decision: string | null;
 }
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -35,6 +37,8 @@ export function parseLicences(md: string): LicenceSource[] {
       /\*\*([^*]*\b(?:MIT|Apache|BSD|GPL|CC[- ]BY)\b[^*]*)\*\*/.exec(body)?.[1]?.trim() ??
       (/\*\*Terms:\*\*/.test(body) ? 'Terms of service (no republishing licence)' : 'Unknown');
     const commit = /`([0-9a-f]{40})`/.exec(body)?.[1] ?? null;
+    const decided = /\*\*Decision:\*\*[^*]*\*\*([^*]+)\*\*/.exec(body)?.[1]?.trim();
+    const decision = decided ? `${decided[0]?.toUpperCase()}${decided.slice(1)}.` : null;
     const github = url && /^https:\/\/github\.com\/[^/]+\/[^/]+$/.test(url) ? url : null;
     return {
       name,
@@ -42,6 +46,7 @@ export function parseLicences(md: string): LicenceSource[] {
       licence,
       commit,
       commitUrl: github && commit ? `${github}/commit/${commit}` : null,
+      decision,
     };
   });
 }

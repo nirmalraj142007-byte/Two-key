@@ -50,6 +50,8 @@ function chipLabel(key: keyof EpisodeFilters, f: EpisodeFilters, staticCapCents:
       return f.target ? TARGET_LABEL[f.target] : '';
     case 'outcome':
       return f.outcome ? `${f.gate ?? 'G4'}: ${OUTCOME_LABEL[f.outcome]}` : '';
+    case 'fallback':
+      return f.fallback ? 'Fallback target' : '';
     case 'page':
       return '';
   }
