@@ -3,11 +3,11 @@ import { pgBossConnection } from '@twokey/db';
 import { PgBoss } from 'pg-boss';
 import { webEnv } from './env';
 
-/** Must match apps/agent-runner/src/worker.ts. */
-export const AGENT_RUN_QUEUE = 'agent.run';
+/** Must match apps/agent-runner/src/worker.ts (`.live`: the evaluation stack never consumes these). */
+export const AGENT_RUN_QUEUE = 'agent.run.live';
 export const SCRIPTED_RUN_QUEUE = 'agent.run.scripted';
-export const HIJACK_RUN_QUEUE = 'hijack.run';
-export const HIJACK_REPLAY_QUEUE = 'hijack.replay';
+export const HIJACK_RUN_QUEUE = 'hijack.run.live';
+export const HIJACK_REPLAY_QUEUE = 'hijack.replay.live';
 const QUEUES = [AGENT_RUN_QUEUE, SCRIPTED_RUN_QUEUE, HIJACK_RUN_QUEUE, HIJACK_REPLAY_QUEUE];
 
 export interface AgentRunJob {
@@ -51,7 +51,7 @@ export async function enqueueAgentRun(job: AgentRunJob): Promise<void> {
     job.model.startsWith('scripted:') ? SCRIPTED_RUN_QUEUE : AGENT_RUN_QUEUE,
     job,
   );
-  if (!id) throw new Error('agent.run was not queued');
+  if (!id) throw new Error('agent run was not queued');
 }
 
 export interface HijackRunJob extends Omit<AgentRunJob, 'mode'> {

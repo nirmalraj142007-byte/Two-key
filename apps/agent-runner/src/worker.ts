@@ -27,12 +27,18 @@ import { type ReplayDeps, replayAttempt } from './replay.js';
 import { mcpConnector, type RunDeps, runSession, type TranscriptEntry } from './run-session.js';
 import { createDbStore, type RunStore } from './store.js';
 
-export const AGENT_RUN_QUEUE = 'agent.run';
+/**
+ * Live queues. The evaluation stack's runner (npm run eval:stack) consumes the legacy `agent.run`,
+ * `hijack.run` and `hijack.replay` queues, so live, demo and hijack work uses `.live` names that
+ * no evaluation runner listens on (docs/DECISIONS.md, 2026-10-31). Nothing here consumes the
+ * legacy names.
+ */
+export const AGENT_RUN_QUEUE = 'agent.run.live';
 /** scripted:<name> runs get their own queue so only a worker that knows scripts picks them up. */
 export const SCRIPTED_RUN_QUEUE = 'agent.run.scripted';
 /** Hijack box runs and replays have their own queues (web enqueues; only this worker runs them). */
-export const HIJACK_RUN_QUEUE = 'hijack.run';
-export const HIJACK_REPLAY_QUEUE = 'hijack.replay';
+export const HIJACK_RUN_QUEUE = 'hijack.run.live';
+export const HIJACK_REPLAY_QUEUE = 'hijack.replay.live';
 /**
  * Hijack runs are capped by daily attempts and tokens (HIJACK_DAILY_*), not dollars: models are
  * priced at $0. The ledger still records each call under this unreachable cap.
