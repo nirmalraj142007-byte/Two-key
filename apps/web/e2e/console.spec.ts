@@ -1,12 +1,16 @@
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { createServer, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { parseEnv } from 'node:util';
 import { expect, type Route, test } from '@playwright/test';
 
 // Needs web and local Postgres (sign-in), like login.spec.ts. The gateway's /human/events stream
-// is stubbed with page.route: the first connection plays agent.step + proposal.created and ends,
-// the console reconnects, and the second connection plays payment.updated -> captured.
+// is stubbed: page.route sends it to a local SSE server that, like the real gateway, keeps each
+// stream open. The first connection plays agent.step + proposal.created, stays open long enough
+// for "Live" to be drawn, then ends; the console reconnects, and the second connection plays
+// payment.updated -> captured and stays open until the test finishes.
 
 const EMAIL = 'console-e2e@twokey.demo';
 const WEB_ORIGIN = 'http://localhost:3000';
@@ -126,91 +130,126 @@ test('scripted stream: steps stream in and the card turns Captured without a rel
   let sentAt = 0;
   const authHeaders: string[] = [];
   const lastEventIds: (string | undefined)[] = [];
+  const open = new Set<ServerResponse>();
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const server = createServer((req, res) => {
+    authHeaders.push(req.headers.authorization ?? '');
+    const lastEventId = req.headers['last-event-id'];
+    lastEventIds.push(typeof lastEventId === 'string' ? lastEventId : undefined);
+    const n = ++streams;
+    res.writeHead(200, {
+      ...CORS,
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+    });
+    open.add(res);
+    res.on('close', () => open.delete(res));
+    void (async () => {
+      if (n === 1) {
+        res.write(FIRST);
+        // Open, like the gateway's stream, until "Live" has been on screen; then the
+        // connection drops and the console must reconnect.
+        await sleep(1500);
+        res.end();
+      } else if (n === 2) {
+        // A moment before replaying, so "Reconnecting…" is on screen to assert.
+        await sleep(2000);
+        sentAt = await page.evaluate(() => performance.now());
+        res.write(SECOND);
+        // Stays open until the test ends, as the gateway's stream would.
+      }
+      // Later reconnects stay open with nothing more to play.
+    })();
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const streamUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/human/events`;
+  const closeServer = async () => {
+    for (const res of open) res.destroy();
+    await new Promise<void>((r) => server.close(() => r()));
+  };
+
   await page.route('**/human/events', async (route: Route) => {
-    const req = route.request();
-    if (req.method() === 'OPTIONS') {
+    if (route.request().method() === 'OPTIONS') {
       await route.fulfill({ status: 204, headers: CORS });
       return;
     }
-    authHeaders.push(req.headers().authorization ?? '');
-    lastEventIds.push(req.headers()['last-event-id']);
-    streams++;
-    const headers = { ...CORS, 'content-type': 'text/event-stream', 'cache-control': 'no-cache' };
-    if (streams === 1) {
-      await route.fulfill({ status: 200, headers, body: FIRST });
-    } else if (streams === 2) {
-      // Hold the reconnect open a moment so "Reconnecting…" is on screen to assert.
-      await new Promise((r) => setTimeout(r, 2000));
-      sentAt = await page.evaluate(() => performance.now());
-      await route.fulfill({ status: 200, headers, body: SECOND });
-    }
-    // Later reconnects stay pending: nothing more to play.
+    await route.continue({ url: streamUrl });
   });
 
-  await page.goto('/agent');
-  await page.evaluate(() => {
-    (window as unknown as { __noReload: boolean }).__noReload = true;
-    // Records when the card's badge first reads "Captured".
-    const w = window as unknown as { __capturedAt?: number; __wasLive?: boolean };
-    new MutationObserver(() => {
-      if (document.querySelector('[data-slot="live-indicator"][data-status="live"]')) {
-        w.__wasLive = true;
-      }
-      if (w.__capturedAt) return;
-      const badge = document.querySelector('[data-slot="proposal-card"] [data-slot="state-badge"]');
-      if (badge?.textContent?.includes('Captured')) w.__capturedAt = performance.now();
-    }).observe(document.body, { subtree: true, childList: true, characterData: true });
-  });
+  try {
+    await page.goto('/agent');
+    await page.evaluate(() => {
+      (window as unknown as { __noReload: boolean }).__noReload = true;
+      // Records when the card's badge first reads "Captured".
+      const w = window as unknown as { __capturedAt?: number; __wasLive?: boolean };
+      new MutationObserver(() => {
+        if (document.querySelector('[data-slot="live-indicator"][data-status="live"]')) {
+          w.__wasLive = true;
+        }
+        if (w.__capturedAt) return;
+        const badge = document.querySelector(
+          '[data-slot="proposal-card"] [data-slot="state-badge"]',
+        );
+        if (badge?.textContent?.includes('Captured')) w.__capturedAt = performance.now();
+      }).observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
 
-  // Steps from the first stream.
-  await expect(page.getByText('Searching your stores…')).toBeVisible();
-  await expect(page.locator('[data-slot="tool-chip"]').first()).toContainText('search_products');
-  const listing = page.locator('[data-slot="listing-text"]');
-  await expect(listing).toContainText('Text from a product listing');
-  // Listing text is shown as text, never as HTML.
-  await expect(listing).toContainText('<img src=x onerror=');
-  expect(await listing.locator('img').count()).toBe(0);
+    // Steps from the first stream.
+    await expect(page.getByText('Searching your stores…')).toBeVisible();
+    await expect(page.locator('[data-slot="tool-chip"]').first()).toContainText('search_products');
+    const listing = page.locator('[data-slot="listing-text"]');
+    await expect(listing).toContainText('Text from a product listing');
+    // Listing text is shown as text, never as HTML.
+    await expect(listing).toContainText('<img src=x onerror=');
+    expect(await listing.locator('img').count()).toBe(0);
 
-  const cardEl = page.locator(`[data-slot="proposal-card"][data-proposal-id="${PROPOSAL}"]`);
-  await expect(cardEl).toContainText('Authorizing…');
-  await expect(cardEl).toContainText('Buyer present:');
+    const cardEl = page.locator(`[data-slot="proposal-card"][data-proposal-id="${PROPOSAL}"]`);
+    await expect(cardEl).toContainText('Authorizing…');
+    await expect(cardEl).toContainText('Buyer present:');
 
-  // The first stream ended: the console says so, then reconnects with a fresh assertion.
-  await expect(page.getByText('Reconnecting…')).toBeVisible();
-  await expect(cardEl.locator('[data-slot="state-badge"]')).toHaveText('Captured', {
-    timeout: 15_000,
-  });
-  await expect(cardEl).toContainText('Bought Cloud Runner CR-1 from Stride Supply for $54.00.');
-  const { capturedAt, noReload, pwned, wasLive } = await page.evaluate(() => {
-    const w = window as unknown as {
-      __capturedAt?: number;
-      __noReload?: boolean;
-      __pwned?: number;
-      __wasLive?: boolean;
-    };
-    return {
-      capturedAt: w.__capturedAt ?? 0,
-      noReload: w.__noReload,
-      pwned: w.__pwned,
-      wasLive: w.__wasLive,
-    };
-  });
-  // The stubbed stream ends after each script, so the indicator is back to "Reconnecting…" now.
-  expect(wasLive).toBe(true);
-  expect(noReload).toBe(true);
-  expect(pwned).toBeUndefined();
-  const ms = capturedAt - sentAt;
-  console.log(`payment.updated -> "Captured" rendered in ${ms.toFixed(0)} ms`);
-  expect(ms).toBeGreaterThan(0);
-  expect(ms).toBeLessThan(2000);
+    // The first stream ended: the console says so, then reconnects with a fresh assertion.
+    await expect(page.getByText('Reconnecting…')).toBeVisible();
+    await expect(cardEl.locator('[data-slot="state-badge"]')).toHaveText('Captured', {
+      timeout: 15_000,
+    });
+    await expect(cardEl).toContainText('Bought Cloud Runner CR-1 from Stride Supply for $54.00.');
+    const { capturedAt, noReload, pwned, wasLive } = await page.evaluate(() => {
+      const w = window as unknown as {
+        __capturedAt?: number;
+        __noReload?: boolean;
+        __pwned?: number;
+        __wasLive?: boolean;
+      };
+      return {
+        capturedAt: w.__capturedAt ?? 0,
+        noReload: w.__noReload,
+        pwned: w.__pwned,
+        wasLive: w.__wasLive,
+      };
+    });
+    // "Live" was drawn, and the second stream is still open, so it still says so.
+    expect(wasLive).toBe(true);
+    await expect(page.locator('[data-slot="live-indicator"]')).toHaveAttribute(
+      'data-status',
+      'live',
+    );
+    expect(noReload).toBe(true);
+    expect(pwned).toBeUndefined();
+    const ms = capturedAt - sentAt;
+    console.log(`payment.updated -> "Captured" rendered in ${ms.toFixed(0)} ms`);
+    expect(ms).toBeGreaterThan(0);
+    expect(ms).toBeLessThan(2000);
 
-  // Two connections, two different single-use assertions.
-  expect(authHeaders.length).toBeGreaterThanOrEqual(2);
-  expect(authHeaders[0]).toMatch(/^Bearer ey/);
-  expect(authHeaders[1]).not.toBe(authHeaders[0]);
-  // The reconnect asks the gateway to replay everything after the last event shown.
-  expect(lastEventIds[0]).toBeUndefined();
-  expect(lastEventIds[1]).toBe(`${BOOT}:3`);
-  // The repeated event 2 was dropped: still one assistant step and one tool step.
-  await expect(page.locator('[data-slot="agent-step"]')).toHaveCount(2);
+    // Two connections, two different single-use assertions.
+    expect(authHeaders.length).toBeGreaterThanOrEqual(2);
+    expect(authHeaders[0]).toMatch(/^Bearer ey/);
+    expect(authHeaders[1]).not.toBe(authHeaders[0]);
+    // The reconnect asks the gateway to replay everything after the last event shown.
+    expect(lastEventIds[0]).toBeUndefined();
+    expect(lastEventIds[1]).toBe(`${BOOT}:3`);
+    // The repeated event 2 was dropped: still one assistant step and one tool step.
+    await expect(page.locator('[data-slot="agent-step"]')).toHaveCount(2);
+  } finally {
+    await closeServer();
+  }
 });

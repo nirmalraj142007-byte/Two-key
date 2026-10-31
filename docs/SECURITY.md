@@ -68,8 +68,15 @@ per request and Next stamps the nonce on every script. `'use cache'` data cachin
 unaffected. After the fix, `/login`, `/results`, `/results/episodes`, `/about`, `/hijack` and
 `/developers` loaded and hydrated in Edge with no CSP violations. On a production build served
 on :3000, the states spec passed all 15 page states (approvals and phone approval included).
-The console stream spec showed no CSP errors (details in the phase 28 commit). Trade-off: no
-static shells, so each page view is server-rendered.
+The console stream spec passed 5 of 5 runs, and the sandbox failure spec (blocked attack;
+held, then denied on the phone page, then voided) passed with `E2E_SANDBOX=1
+E2E_USER=e2e@twokey.demo`. Scripted models run in a production build only with
+`ALLOW_SCRIPTED=true`. Trade-off: no static shells, so each page view is server-rendered.
+
+`connect-src` is read from the web service's `GATEWAY_URL` on every request (proxy.ts runs
+at request time), never hard-coded: a production build started with an https `GATEWAY_URL`
+served `connect-src 'self' https://<that host>`. On Render it is the gateway's public https
+URL.
 
 Sign-in is limited to 5 attempts per minute per IP hash (`rate-limiter-flexible`, in memory;
 the web service runs as one instance). A successful sign-in clears that IP's count, so people
