@@ -92,6 +92,7 @@ export function AgentConsole({
   historyFailed,
   initialRun,
   initialSteps,
+  scriptedModel,
 }: {
   gatewayUrl: string;
   card: CardSummary | null;
@@ -101,6 +102,8 @@ export function AgentConsole({
   /** `?__state=` screenshots only (lib/test-states.ts). A forced run is never polled. */
   initialRun?: Run | undefined;
   initialSteps?: Record<string, StepEntry[]> | undefined;
+  /** `?model=scripted:<name>` (E2E and the offline fallback); the server checks it again. */
+  scriptedModel?: string | undefined;
 }) {
   const [draft, setDraft] = useState('');
   const [run, setRun] = useState<Run>(initialRun ?? { status: 'idle' });
@@ -175,7 +178,7 @@ export function AgentConsole({
   function send(message: string) {
     setRun({ status: 'starting', message });
     startTransition(async () => {
-      const res = await startRun(message);
+      const res = await startRun(message, scriptedModel);
       if (res.ok) {
         setRun({ status: 'running', message, sessionId: res.sessionId });
         setDraft('');

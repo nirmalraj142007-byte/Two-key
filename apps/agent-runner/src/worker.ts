@@ -28,6 +28,8 @@ import { mcpConnector, type RunDeps, runSession, type TranscriptEntry } from './
 import { createDbStore, type RunStore } from './store.js';
 
 export const AGENT_RUN_QUEUE = 'agent.run';
+/** scripted:<name> runs get their own queue so only a worker that knows scripts picks them up. */
+export const SCRIPTED_RUN_QUEUE = 'agent.run.scripted';
 /** Hijack box runs and replays have their own queues (web enqueues; only this worker runs them). */
 export const HIJACK_RUN_QUEUE = 'hijack.run';
 export const HIJACK_REPLAY_QUEUE = 'hijack.replay';
@@ -172,7 +174,7 @@ export async function startWorker(env: RunnerEnv, log: Logger): Promise<() => Pr
   if (!(await boss.getQueue(AGENT_RUN_QUEUE))) {
     await boss.createQueue(AGENT_RUN_QUEUE, { retryLimit: 0 });
   }
-  for (const queue of [HIJACK_RUN_QUEUE, HIJACK_REPLAY_QUEUE]) {
+  for (const queue of [SCRIPTED_RUN_QUEUE, HIJACK_RUN_QUEUE, HIJACK_REPLAY_QUEUE]) {
     if (!(await boss.getQueue(queue))) await boss.createQueue(queue, { retryLimit: 0 });
   }
   await boss.work<unknown>(HIJACK_RUN_QUEUE, { localConcurrency: 2 }, async (jobs) => {
@@ -201,7 +203,7 @@ export async function startWorker(env: RunnerEnv, log: Logger): Promise<() => Pr
       );
     }
   });
-  await boss.work<unknown>(AGENT_RUN_QUEUE, { localConcurrency: 2 }, async (jobs) => {
+  const handleRuns = async (jobs: { data: unknown }[]) => {
     for (const job of jobs) {
       const payload = Payload.parse(job.data);
       try {
@@ -218,7 +220,9 @@ export async function startWorker(env: RunnerEnv, log: Logger): Promise<() => Pr
         throw err;
       }
     }
-  });
+  };
+  await boss.work<unknown>(AGENT_RUN_QUEUE, { localConcurrency: 2 }, handleRuns);
+  await boss.work<unknown>(SCRIPTED_RUN_QUEUE, { localConcurrency: 1 }, handleRuns);
   log.info({ queue: AGENT_RUN_QUEUE }, 'agent worker started');
   return async () => {
     await boss.stop({ graceful: true, timeout: 10_000 });

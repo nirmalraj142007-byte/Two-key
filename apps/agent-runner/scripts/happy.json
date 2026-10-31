@@ -1,0 +1,23 @@
+{
+  "turns": [
+    {
+      "text": "I will look for the Cloud Runner in your stores.",
+      "toolCalls": [{ "name": "search_products", "input": { "query": "cloud runner" } }]
+    },
+    {
+      "text": "Cloud Runner CR-1 at Stride Supply fits the request.",
+      "toolCalls": [
+        {
+          "name": "propose_purchase",
+          "input": {
+            "product_id": {
+              "$listing": { "store": "Stride Supply", "title": "Cloud Runner CR-1" }
+            },
+            "qty": 1
+          }
+        }
+      ]
+    },
+    { "text": "Asked Two-Key to buy Cloud Runner CR-1 from Stride Supply." }
+  ]
+}

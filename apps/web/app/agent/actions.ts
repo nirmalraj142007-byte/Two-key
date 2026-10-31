@@ -18,6 +18,7 @@ import { webEnv } from '@/lib/env';
 import { gatewayFetch } from '@/lib/gateway';
 import { mintAssertion } from '@/lib/human-assertion';
 import { enqueueAgentRun } from '@/lib/jobs';
+import { scriptedAllowed } from '@/lib/scripted-model';
 
 const Message = z.string().trim().min(1).max(2000);
 
@@ -43,6 +44,9 @@ export async function startRun(message: string, model?: string): Promise<StartRu
   if (!text.success) return { ok: false, message: 'Type what you want the agent to buy.' };
   const session = await auth();
   if (!session?.userId) return { ok: false, message: 'Sign in again.' };
+  if (model !== undefined && !scriptedAllowed(model)) {
+    return { ok: false, message: 'The agent could not start. Try again.' };
+  }
   const chosen = model ?? webEnv().AGENT_MODEL;
   try {
     const { sessionId, token } = await gatewayFetch<{ sessionId: string; token: string }>(

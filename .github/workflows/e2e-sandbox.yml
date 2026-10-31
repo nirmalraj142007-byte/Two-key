@@ -1,0 +1,81 @@
+name: E2E sandbox
+
+# Real PayPal sandbox money: manual runs only (gh workflow run e2e-sandbox.yml).
+# Repository secrets (Settings > Secrets and variables > Actions): PAYPAL_CLIENT_ID,
+# PAYPAL_CLIENT_SECRET, MERCHANT_API_CREDENTIALS, E2E_VAULT_PAYMENT_TOKEN_ID,
+# E2E_VAULT_CUSTOMER_ID. Everything else (keys, passwords, database) is generated per run.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: twokey
+          POSTGRES_USER: twokey
+          POSTGRES_PASSWORD: twokey
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U twokey -d twokey"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://twokey:twokey@localhost:5432/twokey
+      E2E_SANDBOX: '1'
+      E2E_USER: e2e@twokey.demo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Write env files
+        run: npm run ci:sandbox-env
+        env:
+          PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+          PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+          MERCHANT_API_CREDENTIALS: ${{ secrets.MERCHANT_API_CREDENTIALS }}
+          E2E_VAULT_PAYMENT_TOKEN_ID: ${{ secrets.E2E_VAULT_PAYMENT_TOKEN_ID }}
+          E2E_VAULT_CUSTOMER_ID: ${{ secrets.E2E_VAULT_CUSTOMER_ID }}
+      - name: Database
+        run: |
+          npm run db:migrate
+          npm run db:seed
+          npm run db:seed-users -- --email "$E2E_USER"
+          # Attaches the saved wallet to e2e@twokey.demo and signs its rules card.
+          npm run e2e:purchase
+      - name: Start the stack
+        run: |
+          nohup npm run dev > stack.log 2>&1 &
+          for url in http://localhost:4000/healthz http://localhost:4100/healthz \
+            http://localhost:4200/healthz http://localhost:3000/login; do
+            for i in $(seq 1 90); do
+              curl -fs "$url" > /dev/null && break
+              [ "$i" = 90 ] && { echo "Not up: $url"; tail -n 40 stack.log; exit 1; }
+              sleep 2
+            done
+          done
+      - run: npx playwright install --with-deps chromium
+      - name: Happy and failure specs
+        run: npx playwright test e2e/happy.spec.ts e2e/failure.spec.ts -c apps/web --trace on
+      - name: Upload Playwright traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: apps/web/test-results
+          if-no-files-found: ignore
+      - name: Upload stack log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stack-log
+          path: stack.log

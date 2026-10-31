@@ -17,6 +17,7 @@
     "lint": "biome check .",
     "typecheck": "tsc -b && npm run typecheck -w @twokey/web",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage --coverage.reporter=text-summary --coverage.reporter=json-summary --coverage.reportsDirectory=coverage",
     "check:secrets": "tsx scripts/check-secret-isolation.ts",
     "check": "npm run lint && npm run typecheck && npm run test && npm run check:secrets",
     "format": "biome format --write .",
@@ -31,6 +32,7 @@
     "db:seed-users": "dotenv -e .env.gateway -- tsx scripts/seed-users.ts",
     "demo:hook": "dotenv -e .env.gateway -- tsx scripts/seed-demo-hook.ts",
     "e2e:purchase": "dotenv -e .env.gateway -- tsx scripts/e2e-purchase.ts",
+    "ci:sandbox-env": "tsx scripts/ci-sandbox-env.ts",
     "e2e:login": "playwright test -c apps/web/playwright.config.ts",
     "e2e:tenancy": "tsx scripts/live-tenancy.ts",
     "compiler:smoke": "dotenv -e .env.web -- tsx scripts/compiler-smoke.ts",
@@ -46,6 +48,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2",
     "@types/node": "^24",
+    "@vitest/coverage-v8": "^3.2.7",
     "concurrently": "^9",
     "dotenv-cli": "^8",
     "tsx": "^4",

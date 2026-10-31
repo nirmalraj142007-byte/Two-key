@@ -32,3 +32,14 @@ jobs:
       - run: npm ci
       - run: npm run db:migrate
       - run: npm run check
+      - run: npm run test:coverage
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "
+              const t = JSON.parse(require('fs').readFileSync('coverage/coverage-summary.json', 'utf8')).total;
+              const row = (k) => '| ' + k + ' | ' + t[k].pct + '% | ' + t[k].covered + ' / ' + t[k].total + ' |';
+              console.log(['## Coverage', '', '| | % | covered |', '|---|---|---|', ...['statements', 'branches', 'functions', 'lines'].map(row)].join('\n'));
+            " >> "$GITHUB_STEP_SUMMARY"
+          fi

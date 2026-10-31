@@ -40,7 +40,15 @@ export const PRICING: Record<string, ModelPrice> = {
   },
 };
 
+const SCRIPTED_PRICE: ModelPrice = {
+  inputPerMTok: 0,
+  outputPerMTok: 0,
+  source: 'Scripted adapter, no model call',
+  asOf: '2026-10-31',
+};
+
 export function priceFor(model: string): ModelPrice {
+  if (model.startsWith('scripted:')) return SCRIPTED_PRICE;
   const price = PRICING[model];
   if (!price) {
     throw new AppError(ErrorCode.CONFIG_INVALID, `No pricing entry for model ${model}`);

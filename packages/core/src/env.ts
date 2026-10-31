@@ -89,6 +89,8 @@ const schemas = {
     DAILY_BUDGET_USD_LIVE: z.coerce.number().nonnegative().default(2),
     /** Model for console runs; keep in step with agent-runner's AGENT_MODEL (NIM until Nov 7). */
     AGENT_MODEL: nonEmpty.default('openai/gpt-oss-20b'),
+    /** Lets scripted:<name> models run in production (the offline demo fallback). */
+    ALLOW_SCRIPTED: z.enum(['true', 'false']).optional(),
     NEXT_PUBLIC_AG_GRID_LICENSE_KEY: nonEmpty.optional(),
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: nonEmpty.optional(),
     IP_HASH_SALT: nonEmpty,
@@ -121,6 +123,8 @@ const schemas = {
      */
     AGENT_MODEL: nonEmpty.default('openai/gpt-oss-20b'),
     AGENT_PROVIDER: z.enum(['groq', 'nim']).default('nim'),
+    /** Lets scripted:<name> models run in production (the offline demo fallback). */
+    ALLOW_SCRIPTED: z.enum(['true', 'false']).optional(),
     /** OpenAI-compatible endpoint for NIM (eval sessions, and live ones while AGENT_PROVIDER=nim). */
     EVAL_LLM_BASE_URL: url.default('https://integrate.api.nvidia.com/v1'),
     EVAL_LLM_API_KEY: nonEmpty.optional(),

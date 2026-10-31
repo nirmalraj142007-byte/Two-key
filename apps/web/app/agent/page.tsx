@@ -8,6 +8,7 @@ import { FAILURE_TEXT, type ProposalView } from '@/lib/console-view';
 import { db } from '@/lib/db';
 import { webEnv } from '@/lib/env';
 import { ruleLines } from '@/lib/rules-view';
+import { scriptedAllowed } from '@/lib/scripted-model';
 import { requireUser } from '@/lib/session';
 import {
   DEMO_REQUEST,
@@ -104,6 +105,8 @@ async function Console({ searchParams }: { searchParams: PageProps<'/agent'>['se
       <AgentConsole gatewayUrl={webEnv().GATEWAY_URL} vaultConnected historyFailed={false} {...f} />
     );
   }
+  const asked = (await searchParams).model;
+  const scriptedModel = typeof asked === 'string' && scriptedAllowed(asked) ? asked : undefined;
   const [progress, card, proposals] = await Promise.all([
     getProgress(),
     activeCard(user.userId),
@@ -116,6 +119,7 @@ async function Console({ searchParams }: { searchParams: PageProps<'/agent'>['se
       vaultConnected={progress?.vaultConnected ?? true}
       initialProposals={proposals ?? []}
       historyFailed={proposals === null}
+      scriptedModel={scriptedModel}
     />
   );
 }

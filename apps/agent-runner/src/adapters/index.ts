@@ -1,6 +1,7 @@
 import { createAnthropicAdapter } from './anthropic.js';
 import { createOpenAICompatibleAdapter } from './openai-compatible.js';
 import { NIM_EVAL_TIMEOUT_MS } from './retry.js';
+import { createScriptedAdapter } from './scripted.js';
 import type { ModelAdapter } from './types.js';
 
 export type { ModelAdapter, Msg } from './types.js';
@@ -14,6 +15,9 @@ export interface LlmConfig {
   /** NVIDIA NIM: eval sessions, and live ones when AGENT_PROVIDER is nim. */
   EVAL_LLM_API_KEY?: string | undefined;
   EVAL_LLM_BASE_URL?: string | undefined;
+  NODE_ENV?: 'development' | 'test' | 'production' | undefined;
+  /** 'true' lets scripted:<name> models run when NODE_ENV is production. */
+  ALLOW_SCRIPTED?: string | undefined;
   /** OpenAI-compatible models only: sees each response's headers. */
   onHeaders?: ((headers: Headers) => void) | undefined;
 }
@@ -38,8 +42,12 @@ export function evalProvider(model: string): 'groq' | 'nim' {
   return EVAL_GROQ_MODELS.has(model) ? 'groq' : 'nim';
 }
 
-/** claude-* goes to Anthropic; every other model goes to an OpenAI-compatible endpoint. */
+/**
+ * scripted:<name> replays a JSON script; claude-* goes to Anthropic; every other model goes to an
+ * OpenAI-compatible endpoint.
+ */
 export function adapterFor(model: string, cfg: LlmConfig, o: AdapterOptions = {}): ModelAdapter {
+  if (model.startsWith('scripted:')) return createScriptedAdapter(model, cfg);
   if (model.startsWith('claude-')) return createAnthropicAdapter(model, cfg.ANTHROPIC_API_KEY);
   if (o.purpose === 'eval') {
     const reasoningEffort =

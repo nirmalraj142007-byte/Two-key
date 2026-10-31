@@ -1,0 +1,23 @@
+{
+  "turns": [
+    {
+      "text": "Looking up the Trail Runner.",
+      "toolCalls": [{ "name": "search_products", "input": { "query": "trail runner" } }]
+    },
+    {
+      "text": "Trail Runner TR-2 at Peak Outfitters fits the request.",
+      "toolCalls": [
+        {
+          "name": "propose_purchase",
+          "input": {
+            "product_id": {
+              "$listing": { "store": "Peak Outfitters", "title": "Trail Runner TR-2" }
+            },
+            "qty": 1
+          }
+        }
+      ]
+    },
+    { "text": "Asked Two-Key to buy Trail Runner TR-2 from Peak Outfitters." }
+  ]
+}
