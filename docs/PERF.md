@@ -11,7 +11,7 @@ target. Nothing on the money path was changed or cached.
 | 2 | Shared first-load JS ≤ 180 KB gzip; AG Grid/Charts only in grid/chart routes | 189.9 KB | 163.4 KB | met after fix |
 | 3 | Blocked decision p95 < 150 ms at 20 rps | 171.7 / 122.0 / 121.6 ms | 118.7 / 118.2 ms | met, no code change |
 | 4 | Webhook → UI p95 < 2 s | 26 ms | 27 ms | met, no fix needed |
-| 5 | Hijack median < 30 s | not measurable now (NIM timing out); last live runs 72.1 s | unchanged | **not met**, upstream model latency |
+| 5 | Hijack median < 30 s | 60.4 s (all five fell back to replay) | **7.4 s** (6.8, 5.8, 7.4, 15.3, 27.1) | met after fix |
 | 6 | Index only where a plan shows a seq scan over 10 ms | no plan over 10 ms | no migration | nothing to add |
 | 7 | Results summary cached 60 s, 2nd request < 50 ms | 4–6 ms | 4–6 ms | met |
 
@@ -103,21 +103,29 @@ p50 16–17 ms, **p95 26–27 ms**, max 27 ms (three runs). Includes the throwaw
 ## 5. Hijack box
 
 `node scripts/bench-hijack.mjs 5` starts attempts through the public `POST /api/hijack` and measures
-`hijack_attempts.created_at` to the session's `ended_at` (the table has no finish column).
+`hijack_attempts.created_at` to the session's `ended_at` (the table has no finish column). Locally it
+needs `BENCH_CLIENT_IP=<any address>` once the 5-per-hour limit for the machine's address is used up.
 
-**Not met, and not fixable from this repository today.** All five attempts today fell back to the
-recorded replay after exactly 60 s (60.2, 60.4, 60.9, 60.2, 61.3 s): the live run's first model call
-timed out (`UPSTREAM_LLM: Model call failed: Request timed out.`). A direct probe of NVIDIA NIM
-`openai/gpt-oss-20b` with a 16-token prompt also timed out at 90 s (twice), so the provider is
-throttling or queueing right now, probably because the test evaluation uses the same model and key
-at about 35 requests/min. Those numbers are the 60 s fallback timeout, not live run times.
+**Before:** all five attempts fell back to the recorded replay after 60 s (60.2, 60.4, 60.9, 60.2,
+61.3 s): the live model call on NVIDIA NIM timed out, and a 16-token probe took over 90 s. Those are
+the fallback timeout, not live run times. Earlier live runs (Oct 28, 11 attempts): median 72.1 s.
 
-Live runs recorded on Oct 28 (11 completed live attempts, 5–6 started at the same moment, 6
-transcript steps, 2.4–3.2k tokens each): median **72.1 s**, min 37.4 s, max 102.2 s. That is also over
-30 s, and it is model latency (about three model calls at 10–30 s each on the free tier), not
-gateway or web time. Reaching 30 s would mean a different model, provider or reasoning setting, which
-changes behaviour and the evaluation's comparability, so nothing was changed. Re-measure after the
-test split finishes and the provider is idle.
+**Fix, two parts (docs/DECISIONS.md, 2026-11-01):**
+
+1. The live agent (console, demo, hijack) moved from NIM to Groq, same model
+   (`openai/gpt-oss-20b`) and same reasoning setting; only the host changed. Groq's rate-limit headers
+   for that model: 8,000 tokens/min and 1,000 requests/day (the daily token limit is not in the
+   headers; Groq publishes 200,000/day). `HIJACK_DAILY_TOKENS` now defaults to 150,000. Direct calls
+   took 0.5–1.0 s each. `gpt-oss-120b` was never called.
+2. The first five Groq attempts alternated between 8–10 s and 60 s. The evaluation stack's runner
+   (restarted at 09:13 on current code) also consumed the `.live` job queues, with the NIM default it
+   had loaded, and took every other job. Live work now uses `.app` queues, and `npm run eval:stack`
+   sets `CONSUME_JOBS=false` so an evaluation runner serves no queue. The running evaluation
+   processes were not touched.
+
+**After:** 5 live attempts, all `done`: 6.8, 5.8, 7.4, 15.3, 27.1 s, **median 7.4 s**. The two slower
+ones are probably Groq's 8,000 tokens/min limit (each attempt is about 4,000 tokens); a burst of
+parallel visitors will see the same.
 
 ## 6. Queries
 

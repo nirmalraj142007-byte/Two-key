@@ -5,9 +5,10 @@
 Confirmed by the team on 2026-10-31.
 
 - **All model use is on free tiers.**
-  - Groq free tier: `openai/gpt-oss-120b` (test-split evaluation) and `qwen/qwen3.8-27b` (rule
+  - Groq free tier: `openai/gpt-oss-120b` (test-split evaluation), `openai/gpt-oss-20b` (live agent,
+    from Nov 1) and `qwen/qwen3.8-27b` (rule
     compiler until the test split is done).
-  - NVIDIA NIM free tier: `openai/gpt-oss-20b` (live and demo agent, the hijack box, evaluation and
+  - NVIDIA NIM free tier: `openai/gpt-oss-20b` (evaluation and
     the LLM grader) and `nvidia/nemotron-3.5-bolt-e4b` (evaluation, weak model).
 - **No paid LLM console is used, so there are no console spend caps to set.** The limits that
   apply are the providers' own free-tier rate limits, plus our own: the hijack box's daily caps on
@@ -73,3 +74,33 @@ valid. Local development services must be restarted to pick up the new pair. Whe
 the same key can't be seen from the repository: `.env.staging` holds no assertion key and the
 deployment notes say Render has its own keys; check the Render value if it was ever pasted from
 the local file.
+
+## 2026-11-01 — Live agent moved from NVIDIA NIM to Groq (same model)
+
+The live console, demo and hijack agent now runs `openai/gpt-oss-20b` on Groq
+(`AGENT_PROVIDER=groq`, the new default), with the same `reasoning_effort` as before. Reason: on Nov 1
+NIM's `gpt-oss-20b` timed out (a 16-token request took over 90 s) while the test evaluation was using
+it, so all five hijack attempts hit the 60 s model timeout and fell back to a recorded replay; the
+hijack-median target (under 30 s) could not be measured. Only the host changed. Hijack attempts are
+a separate, unvetted dataset from the frozen evaluation, so this does not affect it, and the evaluation's
+own routing (`evalProvider()`) is unchanged.
+
+Groq's free allowance is per model. Read from rate-limit headers on Nov 1: `gpt-oss-20b` allows
+8,000 tokens/min and 1,000 requests/day; the daily token limit (200,000 on Groq's published free
+tier) is not in the headers. `HIJACK_DAILY_TOKENS` now defaults to 150,000 (web and agent-runner), so
+hijack runs replay before the allowance is gone and console/demo keep some. `gpt-oss-120b`, which only
+the evaluation uses, is never called by live code. After Nov 7 the live default moves to `gpt-oss-120b`.
+
+### Same day: the evaluation runner was taking every other hijack job
+
+The first five hijack attempts after the Groq switch alternated: done in 8–10 s, then replayed after
+60 s, and so on. The 60 s ones timed out on NIM. Cause: the evaluation stack's agent runner (port
+4210) was restarted on Nov 1 09:13 with the current code, so it also consumed the `.live` queues,
+with the NIM default it had loaded. Every other hijack job went there. Direct Groq calls took under
+1 s throughout. No evaluation result was affected (the evaluation does not enqueue jobs).
+
+Fix, without touching the running evaluation processes: live work moved to `.app` queue names
+(`agent.run.app`, `agent.run.app.scripted`, `hijack.run.app`, `hijack.replay.app`), which no running
+process listens on, and the runner has a `CONSUME_JOBS` switch that `npm run eval:stack` now sets to
+`false`, so a restarted evaluation runner serves no queue. Jobs still waiting on the `.live` names
+are not carried over (none were pending).

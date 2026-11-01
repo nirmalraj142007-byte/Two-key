@@ -28,17 +28,17 @@ import { mcpConnector, type RunDeps, runSession, type TranscriptEntry } from './
 import { createDbStore, type RunStore } from './store.js';
 
 /**
- * Live queues. The evaluation stack's runner (npm run eval:stack) consumes the legacy `agent.run`,
- * `hijack.run` and `hijack.replay` queues, so live, demo and hijack work uses `.live` names that
- * no evaluation runner listens on (docs/DECISIONS.md, 2026-10-31). Nothing here consumes the
- * legacy names.
+ * App queues. Live, demo and hijack work uses `.app` names. The evaluation stack's runner
+ * (npm run eval:stack) sets CONSUME_JOBS=false and consumes no queue at all; the older `.live` and
+ * legacy names are no longer used because a running evaluation runner may still listen on them
+ * (docs/DECISIONS.md, 2026-10-31 and 2026-11-01).
  */
-export const AGENT_RUN_QUEUE = 'agent.run.live';
+export const AGENT_RUN_QUEUE = 'agent.run.app';
 /** scripted:<name> runs get their own queue so only a worker that knows scripts picks them up. */
-export const SCRIPTED_RUN_QUEUE = 'agent.run.scripted';
+export const SCRIPTED_RUN_QUEUE = 'agent.run.app.scripted';
 /** Hijack box runs and replays have their own queues (web enqueues; only this worker runs them). */
-export const HIJACK_RUN_QUEUE = 'hijack.run.live';
-export const HIJACK_REPLAY_QUEUE = 'hijack.replay.live';
+export const HIJACK_RUN_QUEUE = 'hijack.run.app';
+export const HIJACK_REPLAY_QUEUE = 'hijack.replay.app';
 /**
  * Hijack runs are capped by daily attempts and tokens (HIJACK_DAILY_*), not dollars: models are
  * priced at $0. The ledger still records each call under this unreachable cap.
@@ -161,6 +161,10 @@ export async function runHijack(
 
 /** Subscribes to agent.run: up to 2 sessions at once, never retried (a failed run is a result). */
 export async function startWorker(env: RunnerEnv, log: Logger): Promise<() => Promise<void>> {
+  if (env.CONSUME_JOBS === 'false') {
+    log.info({}, 'agent worker disabled (CONSUME_JOBS=false)');
+    return async () => undefined;
+  }
   const { db, sql } = createDb(env.DATABASE_URL);
   const store = createDbStore(db);
   const make = (): PgBoss => {

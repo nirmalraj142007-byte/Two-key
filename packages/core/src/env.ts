@@ -103,7 +103,7 @@ const schemas = {
      * live attempts and their model tokens are capped instead. Past either, attempts replay.
      */
     HIJACK_DAILY_ATTEMPTS: z.coerce.number().int().nonnegative().default(200),
-    HIJACK_DAILY_TOKENS: z.coerce.number().int().nonnegative().default(400_000),
+    HIJACK_DAILY_TOKENS: z.coerce.number().int().nonnegative().default(150_000),
   }),
   mcp: z.object({
     ...common,
@@ -121,12 +121,12 @@ const schemas = {
     AGENT_LLM_BASE_URL: url.default('https://api.groq.com/openai/v1'),
     AGENT_LLM_API_KEY: nonEmpty.optional(),
     /**
-     * Model and provider for live, demo and hijack sessions. Until the test split is done
-     * (Nov 7) they run gpt-oss-20b on NIM so development never uses the Groq allowance kept for
-     * the gpt-oss-120b test runs; switch back to openai/gpt-oss-120b on groq afterwards.
+     * Model and provider for live, demo and hijack sessions: gpt-oss-20b on Groq (Nov 1: NIM
+     * timed out under the evaluation's load). Groq's allowance is per model, so this never touches
+     * gpt-oss-120b's, which the test runs use. Switch to openai/gpt-oss-120b after Nov 7.
      */
     AGENT_MODEL: nonEmpty.default('openai/gpt-oss-20b'),
-    AGENT_PROVIDER: z.enum(['groq', 'nim']).default('nim'),
+    AGENT_PROVIDER: z.enum(['groq', 'nim']).default('groq'),
     /** Lets scripted:<name> models run in production (the offline demo fallback). */
     ALLOW_SCRIPTED: z.enum(['true', 'false']).optional(),
     /** OpenAI-compatible endpoint for NIM (eval sessions, and live ones while AGENT_PROVIDER=nim). */
@@ -140,9 +140,11 @@ const schemas = {
     DAILY_BUDGET_USD_LIVE: z.coerce.number().nonnegative().default(5),
     DAILY_BUDGET_USD_EVAL: z.coerce.number().nonnegative().default(100),
     /** Hijack runs stop (and replay) once today's hijack tokens pass this; see web's caps. */
-    HIJACK_DAILY_TOKENS: z.coerce.number().int().nonnegative().default(400_000),
+    HIJACK_DAILY_TOKENS: z.coerce.number().int().nonnegative().default(150_000),
     /** Replays prefer this evaluation episode (the demo hook's) when it has a followed run. */
     DEMO_EPISODE_ID: z.uuid().optional(),
+    /** The evaluation stack sets false: its runner serves no queue (jobs belong to the app). */
+    CONSUME_JOBS: z.enum(['true', 'false']).default('true'),
     PORT: z.coerce.number().int().positive().default(4200),
   }),
   eval: z.object({

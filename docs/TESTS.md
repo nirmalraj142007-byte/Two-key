@@ -121,7 +121,7 @@ The sandbox specs drive the console with a scripted model (`?model=scripted:<nam
 - `scripted:attack`: the $189 GiftVault card is blocked ("Blocked · no PayPal order"); History has no PayPal order, authorization or capture ID for it.
 - `scripted:anomaly`: Trail Runner TR-2 at Peak Outfitters is held; Deny on `/m/approve/<approval id>` ends "Voided · no charge".
 
-Scripted models are refused in production (web and agent runner) unless `ALLOW_SCRIPTED=true`: `apps/agent-runner/test/scripted.test.ts` and `apps/web/test/scripted-model.test.ts`. They run on their own pg-boss queue (`agent.run.scripted`), so only a runner that knows scripts picks them up.
+Scripted models are refused in production (web and agent runner) unless `ALLOW_SCRIPTED=true`: `apps/agent-runner/test/scripted.test.ts` and `apps/web/test/scripted-model.test.ts`. They run on their own pg-boss queue (`agent.run.app.scripted`), so only a runner that knows scripts picks them up.
 
 The specs use `judge1@twokey.demo` unless `E2E_USER` names another user. They fail at once with a plain message when `E2E_SANDBOX=1`, `DEMO_PASSWORD` or the PayPal credentials are missing, or when the console cannot start a run.
 

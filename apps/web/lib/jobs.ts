@@ -3,11 +3,11 @@ import { pgBossConnection } from '@twokey/db';
 import { PgBoss } from 'pg-boss';
 import { webEnv } from './env';
 
-/** Must match apps/agent-runner/src/worker.ts (`.live`: the evaluation stack never consumes these). */
-export const AGENT_RUN_QUEUE = 'agent.run.live';
-export const SCRIPTED_RUN_QUEUE = 'agent.run.scripted';
-export const HIJACK_RUN_QUEUE = 'hijack.run.live';
-export const HIJACK_REPLAY_QUEUE = 'hijack.replay.live';
+/** Must match apps/agent-runner/src/worker.ts (`.app`: the evaluation stack consumes no queue). */
+export const AGENT_RUN_QUEUE = 'agent.run.app';
+export const SCRIPTED_RUN_QUEUE = 'agent.run.app.scripted';
+export const HIJACK_RUN_QUEUE = 'hijack.run.app';
+export const HIJACK_REPLAY_QUEUE = 'hijack.replay.app';
 const QUEUES = [AGENT_RUN_QUEUE, SCRIPTED_RUN_QUEUE, HIJACK_RUN_QUEUE, HIJACK_REPLAY_QUEUE];
 
 export interface AgentRunJob {

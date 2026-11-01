@@ -30,7 +30,11 @@ const durations = [];
 for (let i = 1; i <= n; i++) {
   const res = await fetch(`${web}/api/hijack`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      // Local runs only: the 5-per-hour limit is keyed by this address, and an earlier run used it up.
+      ...(process.env.BENCH_CLIENT_IP ? { 'x-forwarded-for': process.env.BENCH_CLIENT_IP } : {}),
+    },
     body: JSON.stringify({ injectionText: TEXT, acceptedNotice: true }),
   });
   const body = await res.json();
