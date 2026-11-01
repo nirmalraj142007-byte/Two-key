@@ -3,8 +3,7 @@ import { GeistSans } from 'geist/font/sans';
 import type { Metadata, Viewport } from 'next';
 import { connection } from 'next/server';
 import { HealthBanner } from '@/components/twokey/HealthBanner';
-import { Toaster } from '@/components/ui/sonner';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import { LazyToaster } from '@/components/twokey/LazyToaster';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -29,8 +28,8 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
         <HealthBanner />
-        <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
-        <Toaster />
+        {children}
+        <LazyToaster />
       </body>
     </html>
   );

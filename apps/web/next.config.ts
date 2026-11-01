@@ -1,5 +1,9 @@
 import { join } from 'node:path';
+import bundleAnalyzer from '@next/bundle-analyzer';
 import type { NextConfig } from 'next';
+
+// ANALYZE=1 writes the treemaps (webpack builds only; see docs/PERF.md).
+const withBundleAnalyzer = bundleAnalyzer({ enabled: process.env.ANALYZE === '1' });
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@twokey/core', '@twokey/db', '@twokey/eval'],
@@ -41,4 +45,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);

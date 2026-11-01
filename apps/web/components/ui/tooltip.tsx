@@ -17,8 +17,17 @@ function TooltipProvider({
   );
 }
 
-function Tooltip({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
+// Each tooltip brings its own provider, so the root layout ships no tooltip code to pages that
+// have none.
+function Tooltip({
+  delayDuration = 300,
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Root> & { delayDuration?: number }) {
+  return (
+    <TooltipPrimitive.Provider delayDuration={delayDuration}>
+      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+    </TooltipPrimitive.Provider>
+  );
 }
 
 function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
