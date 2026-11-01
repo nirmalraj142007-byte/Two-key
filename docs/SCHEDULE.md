@@ -14,6 +14,7 @@ Updated Oct 31 with the actual dates so far.
 | Nov 4 | Feature freeze | Planned |
 | Nov 5–7 | Full test run | Started Oct 26 right after the freeze; running. Oct 31: 739 of 900 runs (both NIM models done; gpt-oss-120b on Groq's free tier at 139 of 300). Expected to finish about Nov 5–6 |
 | Nov 7 | Numbers frozen | Planned |
-| Nov 8 | Deploy freeze and video lock | Planned |
+| Nov 8 | Deploy freeze and video lock; Render services `plan: free` → `starter` (one commit, then release) | Planned |
 | Nov 11 | Submit | Planned |
 | Nov 12, 18:00 IST | Hard stop | — |
+| Dec 16 | Render services `plan: starter` → `free` (one commit, then release) | Planned |

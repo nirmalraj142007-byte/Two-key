@@ -15,9 +15,14 @@ interface RenderBlueprint {
   services?: {
     name?: string;
     branch?: string;
+    plan?: string;
+    preDeployCommand?: string;
     envVars?: { key?: string; value?: unknown }[];
   }[];
 }
+
+/** Free until Nov 8, Starter for judging, free again from Dec 16 (docs/DEPLOY.md). */
+const ALLOWED_PLANS = ['free', 'starter'];
 
 /** Local-only settings that must never be deployed. */
 const NEVER_DEPLOYED = ['EVAL_ENABLED', 'EVAL_ADMIN_TOKEN', 'SHOW_STYLEGUIDE'];
@@ -38,6 +43,13 @@ export function findViolations(blueprint: RenderBlueprint): string[] {
     }
     if (service.branch !== undefined && service.branch !== RELEASE_BRANCH) {
       violations.push(`${name} deploys from ${service.branch}; only ${RELEASE_BRANCH} may deploy`);
+    }
+    if (service.plan !== undefined && !ALLOWED_PLANS.includes(service.plan)) {
+      violations.push(`${name} is on plan ${service.plan}; use ${ALLOWED_PLANS.join(' or ')}`);
+    }
+    // Render runs a preDeployCommand only on paid instances; on free it would be skipped.
+    if (service.preDeployCommand !== undefined && (service.plan ?? 'free') === 'free') {
+      violations.push(`${name} has a preDeployCommand on the free plan, where Render skips it`);
     }
     for (const { key, value } of service.envVars ?? []) {
       if (key === 'NODE_ENV' && value !== undefined && value !== 'production') {

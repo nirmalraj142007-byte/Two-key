@@ -7,14 +7,22 @@ Two-Key has **one public environment: production.** It is the Render Blueprint i
 
 | Render service | Workspace | Health check (Render) | Notes |
 | --- | --- | --- | --- |
-| `gateway` | `@twokey/gateway` | `/healthz` | Runs migrations in its pre-deploy step. `/healthz/deep` is for humans and uptime monitors |
+| `gateway` | `@twokey/gateway` | `/healthz` | Runs migrations at the start of its start command. `/healthz/deep` is for humans and uptime monitors |
 | `web` | `@twokey/web` | `/api/healthz` | Next.js build at deploy time |
 | `twokey-mcp` | `@twokey/mcp` | `/healthz` | Streamable HTTP at `/mcp` |
 | `agent-runner` | `@twokey/agent-runner` | `/healthz` | Web service, not a worker |
 
-All four run on Render's **Starter** instance type: they never sleep, and the gateway runs
-`npm run db:migrate -w @twokey/db` as its `preDeployCommand`. If that fails, the deploy stops and
-the previous deploy stays live. Render hosts no database; there are no `-prod` duplicates and no
+**Instance plan** (`plan:` in `render.yaml`; `check:secrets` accepts `free` or `starter`):
+
+| Dates | Plan | Why |
+| --- | --- | --- |
+| until Nov 8 | `free` | Free services sleep after 15 minutes idle and take about a minute to wake |
+| Nov 8 → Dec 16 | `starter` | Judging: no sleep. Switch with one commit changing the four `plan:` lines, released as usual |
+| from Dec 16 | `free` | Downgrade after judging, the same way |
+
+On both plans the gateway's start command runs `npm run db:migrate -w @twokey/db` before it
+serves (Render runs a `preDeployCommand` only on paid instances, so none is used). If a
+migration fails, the new instance never becomes healthy and the previous deploy stays live. Render hosts no database; there are no `-prod` duplicates and no
 separate staging services. Before any change goes live it runs locally (`npm run dev`) and in CI.
 
 ## How a change reaches the live site
@@ -40,7 +48,7 @@ separate staging services. Before any change goes live it runs locally (`npm run
   defaults, new indexes. No drops, renames or type changes, and no new `NOT NULL` without a
   default. So the previous release's code always runs on the newer schema, which is what makes a
   code-only rollback safe.
-- Migrations run once per deploy in the gateway's pre-deploy step, before the new code serves.
+- Migrations run when the new gateway instance starts, before it serves.
   They are idempotent (drizzle records what ran), so rerunning a deploy is safe.
 - Never hand-edit the production schema to "undo" a migration. Fix forward with a new one.
 
@@ -69,13 +77,14 @@ given.
 1. **Create `release`.** With phase 30 on `origin/main` and CI green, run `scripts/release.sh` on
    that commit (above). This creates `origin/release`.
 2. **Blueprint.** Render → **Blueprints** → the Two-Key Blueprint → **Sync** (or let auto-sync
-   run). It applies `render.yaml`: Starter plan, branch `release`, the gateway's pre-deploy and
-   start commands, `NODE_ENV=production` and `DEMO_HOLD_MINUTES=15`. Then check by hand, for each
-   of `gateway`, `web`, `twokey-mcp`, `agent-runner`:
-   - **Settings → Instance Type: Starter.**
+   run). It applies `render.yaml`: the free plan, branch `release`, the gateway's start command,
+   `NODE_ENV=production` and `DEMO_HOLD_MINUTES=15`. Then check by hand, for each of `gateway`,
+   `web`, `twokey-mcp`, `agent-runner`:
+   - **Settings → Instance Type: Free** (Starter from Nov 8, via `render.yaml`).
    - **Settings → Build & Deploy → Branch: `release`; Auto-Deploy: On Commit.**
-   - gateway only: **Pre-Deploy Command** `npm run db:migrate -w @twokey/db`;
-     **Start Command** `npm run start -w @twokey/gateway`.
+   - gateway only: **Start Command**
+     `npm run db:migrate -w @twokey/db && npm run start -w @twokey/gateway`, and no Pre-Deploy
+     Command.
 3. **Environment variables** (each service → **Environment**). New or changed since phase 5:
 
    | Service | Key | Value (described) | Build-time? |
@@ -93,7 +102,7 @@ given.
    | web | `WEB_ORIGIN` | `https://<web>.onrender.com` | |
    | web | `MCP_PUBLIC_URL` | `https://<twokey-mcp>.onrender.com/mcp` | |
    | web | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | the same value as the gateway's `VAPID_PUBLIC_KEY` | **yes** |
-   | web | `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` | the AG Grid Enterprise licence key | **yes** |
+   | web | `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` | *leave unset* until the licence arrives (Community fallback) | **yes** |
    | web | `COMPILER_PROVIDER`, `COMPILER_BASE_URL` | *blank* (Groq defaults) | |
    | web | `COMPILER_API_KEY` | your Groq key | |
    | web | `COMPILER_MODEL` | *blank* (`qwen/qwen3.8-27b`) until Nov 7; then `openai/gpt-oss-120b` | |
@@ -127,7 +136,7 @@ given.
    - `curl -s https://<gateway>.onrender.com/healthz/deep` shows `"webhookSubscriptions":"ok"`.
      `wrong_url` means the registered URL differs from `PUBLIC_BASE_URL` + `/webhooks/paypal`;
      `not_found` means the id is wrong; `missing_events` means rerun the script.
-5. **Deploy in order:** gateway (**Manual Deploy → Deploy latest commit**; watch the pre-deploy
+5. **Deploy in order:** gateway (**Manual Deploy → Deploy latest commit**; watch the deploy
    log say `migrations applied`), then web (**Clear build cache & deploy**, for the build-time
    keys), twokey-mcp, agent-runner.
 6. **Smoke:** `npm run smoke -- --env prod`; every line must be `[x]`.
@@ -236,7 +245,7 @@ role may do; `packages/db/test/roles.test.ts` proves the denials.
 
    | Service | `DATABASE_URL` user | Also |
    | --- | --- | --- |
-   | gateway | `twokey_gateway` | `MIGRATE_DATABASE_URL` = the owner's URL: the pre-deploy step migrates with it, then the gateway serves as `twokey_gateway` |
+   | gateway | `twokey_gateway` | `MIGRATE_DATABASE_URL` = the owner's URL: the start command migrates with it, then the gateway serves as `twokey_gateway` |
    | web | `twokey_web` | — |
    | agent-runner | `twokey_runner` | — |
    | twokey-mcp | *none* (it talks only to the gateway; remove `DATABASE_URL` if set) | — |

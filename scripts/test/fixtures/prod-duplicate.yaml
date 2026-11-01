@@ -2,12 +2,22 @@ services:
   - type: web
     name: gateway
     branch: release
+    plan: free
+    preDeployCommand: npm run db:migrate -w @twokey/db
     envVars:
       - key: PAYPAL_CLIENT_SECRET
         sync: false
   - type: web
     name: gateway-prod
     branch: main
+    plan: pro
     envVars:
       - key: SHOW_STYLEGUIDE
         value: "1"
+  - type: web
+    name: web
+    branch: release
+    plan: starter
+    envVars:
+      - key: AUTH_SECRET
+        sync: false

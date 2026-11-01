@@ -2,9 +2,11 @@
 #
 # - Every service deploys from the `release` branch. `main` no longer deploys the live site;
 #   scripts/release.sh fast-forwards `release` to a checked main commit (docs/DEPLOY.md).
-# - Services run on Render's Starter plan (switched in the dashboard): no sleeping, and the
-#   gateway can run its migrations as a preDeployCommand. If it fails, the deploy stops and the
-#   previous one stays live. Migrations are forward-only and additive (docs/DEPLOY.md).
+# - Plan: free until Nov 8, then starter (a one-line-per-service commit), back to free on Dec 16.
+#   Free services sleep after 15 minutes idle; Starter ones don't. check:secrets accepts both.
+# - Free plans can't run a preDeployCommand, so the gateway migrates at the start of its
+#   startCommand (works on both plans). If a migration fails, the new instance never becomes
+#   healthy and Render keeps the previous deploy live. Migrations are forward-only and additive.
 # - No Render database: DATABASE_URL is the external Neon Postgres connection string (direct,
 #   non-pooled, sslmode=require), pasted by hand into each service that needs it.
 # - `npm ci --include=dev` installs the whole workspace, including tsx, even when
@@ -16,7 +18,7 @@ services:
   - type: web
     name: web
     runtime: node
-    plan: starter
+    plan: free
     branch: release
     region: oregon
     buildCommand: npm ci --include=dev && npm run build -w @twokey/web
@@ -66,12 +68,11 @@ services:
   - type: web
     name: gateway
     runtime: node
-    plan: starter
+    plan: free
     branch: release
     region: oregon
     buildCommand: npm ci --include=dev
-    preDeployCommand: npm run db:migrate -w @twokey/db
-    startCommand: npm run start -w @twokey/gateway
+    startCommand: npm run db:migrate -w @twokey/db && npm run start -w @twokey/gateway
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
@@ -112,7 +113,7 @@ services:
         sync: false
       - key: MERCHANT_API_CREDENTIALS
         sync: false
-      # Owner URL for migrations (preDeployCommand) once the least-privilege roles are applied.
+      # Owner URL for migrations (start of startCommand) once the least-privilege roles are applied.
       - key: MIGRATE_DATABASE_URL
         sync: false
       # Hold timeout for demo and hijack sessions (minutes).
@@ -125,7 +126,7 @@ services:
   - type: web
     name: twokey-mcp
     runtime: node
-    plan: starter
+    plan: free
     branch: release
     region: oregon
     buildCommand: npm ci --include=dev
@@ -147,7 +148,7 @@ services:
   - type: web
     name: agent-runner
     runtime: node
-    plan: starter
+    plan: free
     branch: release
     region: oregon
     buildCommand: npm ci --include=dev

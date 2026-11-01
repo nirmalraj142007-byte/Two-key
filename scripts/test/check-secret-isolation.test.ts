@@ -22,7 +22,7 @@ describe('check-secret-isolation', () => {
     expect(r.stderr).toContain('PAYPAL_CLIENT_SECRET may only be set on: gateway (found on web)');
   });
 
-  it('fails on a second environment, another branch or a local-only flag', () => {
+  it('fails on a second environment, another branch, plan or a local-only flag', () => {
     const r = run(fixture('prod-duplicate.yaml'));
     expect(r.status).toBe(1);
     expect(r.stderr).toContain(
@@ -30,6 +30,9 @@ describe('check-secret-isolation', () => {
     );
     expect(r.stderr).toContain('gateway-prod deploys from main; only release may deploy');
     expect(r.stderr).toContain('SHOW_STYLEGUIDE is local-only');
+    expect(r.stderr).toContain('gateway-prod is on plan pro; use free or starter');
+    expect(r.stderr).toContain('gateway has a preDeployCommand on the free plan');
+    expect(r.stderr).not.toContain('web is on plan');
   });
 
   it('passes the real render.yaml', () => {

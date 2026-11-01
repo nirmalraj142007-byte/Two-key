@@ -109,13 +109,16 @@ are not carried over (none were pending).
 
 Phase 30 planned separate `-prod` services and a Render database next to staging. Instead the four
 existing Render services (`web`, `gateway`, `twokey-mcp`, `agent-runner`) and the existing Neon
-database become production, on Starter instances, deploying from a new `release` branch; `main` no
+database become production, deploying from a new `release` branch; `main` no
 longer deploys the live site. Reason: one environment to configure, keep awake and demo before the
 Nov 8 deploy freeze, and no second copy of every secret. Pre-release checks move to the local dev
 stack: `scripts/release.sh` runs `npm run check` and `npm run smoke -- --env local` before
-fast-forwarding `release`. Starter instances allow a `preDeployCommand`, so the gateway now migrates
-there instead of in its start command. `check:secrets` rejects any service other than the four,
-any branch other than `release`, and `SHOW_STYLEGUIDE`.
+fast-forwarding `release`. `check:secrets` rejects any service other than the four, any branch
+other than `release`, any plan other than `free` or `starter`, and `SHOW_STYLEGUIDE`.
+
+Plans: `free` until Nov 8; `starter` from Nov 8 (deploy freeze) so nothing sleeps during judging;
+back to `free` on Dec 16. Each switch is one commit to the four `plan:` lines. The gateway keeps
+migrating at the start of its start command, since free plans can't run a `preDeployCommand`.
 
 `twokey-mcp` is not published to npm; it ships as the v1.0.0 GitHub Release asset (phase 26).
 Evaluation results reach production with `npm run eval:export` once the test split is done.

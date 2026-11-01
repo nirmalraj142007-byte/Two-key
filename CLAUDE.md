@@ -63,7 +63,7 @@ docs/             BLUEPRINT, SCHEDULE, SPIKE_RESULTS, DEPLOY, JUDGE_GAP_AUDIT, T
 | `agent-runner` | 4200 | Anthropic, agent-LLM (Groq) and eval-LLM (NIM) keys | Any PayPal or signing credential |
 | `eval` CLI | — | LLM keys (NIM `EVAL_LLM_API_KEY`; Anthropic, Groq optional), Channel3 key, `EVAL_ADMIN_TOKEN` | PayPal credentials |
 
-Deployment: Render Blueprint (`render.yaml`). One public environment (production): the four services on Render Starter instances and the Neon database, deploying from `release`; `main` does not deploy. `scripts/release.sh` fast-forwards `release` after `npm run check` and a local smoke run. The gateway runs migrations as its `preDeployCommand` (`npm run db:migrate -w @twokey/db`); they are forward-only and additive after Nov 4. See `docs/DEPLOY.md`.
+Deployment: Render Blueprint (`render.yaml`). One public environment (production): the four Render services and the Neon database, deploying from `release`; `main` does not deploy. Plan `free` until Nov 8, `starter` Nov 8 → Dec 16, then `free` again (`check:secrets` accepts either). `scripts/release.sh` fast-forwards `release` after `npm run check` and a local smoke run. Free plans have no `preDeployCommand`, so the gateway's `startCommand` migrates first (`npm run db:migrate -w @twokey/db && npm run start -w @twokey/gateway`); migrations are forward-only and additive after Nov 4. See `docs/DEPLOY.md`.
 
 ## Dev and evaluation stacks
 
