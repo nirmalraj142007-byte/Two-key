@@ -69,6 +69,15 @@ It prints a checklist and exits 1 on any failure. `--env prod` needs `SMOKE_WEB_
 `tk_agent_…` token from **Connect your agent** (`/onboarding/agent`) on the matching site; it is
 sent only to the MCP URL and never printed.
 
+Free services sleep when idle and the gateway took 37 s to wake (each check times out at 20 s),
+so open each service's `/healthz` once before a smoke run.
+
+### Production smoke log
+
+| Date (IST) | Commit | Result | Notes |
+| --- | --- | --- | --- |
+| 2026-11-01 22:35 | 443f5c1 | 8/9 | Every check passed except MCP `tools/list`, which needs `SMOKE_AGENT_TOKEN`. That check is **deferred to phase 31**, where the production demo accounts and their tokens are created; no user is seeded on production before then. First run timed out on the gateway's two checks while it woke from sleep; rerun once warm. |
+
 ## Dashboard checklist (phase 30, once, in this order)
 
 Never paste a secret value into a doc, issue, commit or chat. Values below are described, not
@@ -139,7 +148,8 @@ given.
 5. **Deploy in order:** gateway (**Manual Deploy → Deploy latest commit**; watch the deploy
    log say `migrations applied`), then web (**Clear build cache & deploy**, for the build-time
    keys), twokey-mcp, agent-runner.
-6. **Smoke:** `npm run smoke -- --env prod`; every line must be `[x]`.
+6. **Smoke:** `npm run smoke -- --env prod`; every line must be `[x]`. Phase 30 accepted 8/9:
+   MCP `tools/list` waits for the phase 31 demo tokens (see the production smoke log).
 7. **Rollback drill** (below), and add its row to the log.
 8. **After the test split finishes** (not before), copy the evaluation results:
    `EXPORT_TARGET_DATABASE_URL=<Neon URL> npm run eval:export -- --dry-run`, check the counts,
