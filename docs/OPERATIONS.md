@@ -43,8 +43,8 @@ grep <requestId> logs/*.log
 
 That shows `decision.made`, each `paypal.call` (with its `debugId`) and, when PayPal
 webhooks reach that gateway, `webhook.applied` (matched through `originRequestId`). Locally
-`PUBLIC_BASE_URL` is localhost and no webhook is registered, so webhook lines appear only on
-staging and production.
+`PUBLIC_BASE_URL` is localhost and no webhook is registered, so webhook lines appear only in
+production.
 
 **On Render.** Render keeps each service's stdout as its log stream.
 

@@ -63,7 +63,7 @@ docs/             BLUEPRINT, SCHEDULE, SPIKE_RESULTS, DEPLOY, JUDGE_GAP_AUDIT, T
 | `agent-runner` | 4200 | Anthropic, agent-LLM (Groq) and eval-LLM (NIM) keys | Any PayPal or signing credential |
 | `eval` CLI | — | LLM keys (NIM `EVAL_LLM_API_KEY`; Anthropic, Groq optional), Channel3 key, `EVAL_ADMIN_TOKEN` | PayPal credentials |
 
-Deployment: Render Blueprint (`render.yaml`). Staging deploys from `main`, production from `release`. Render free plans have no `preDeployCommand`, so migrations run at the start of the gateway's `startCommand` (`npm run db:migrate -w @twokey/db && npm run start -w @twokey/gateway`); they are forward-only and additive after Nov 4.
+Deployment: Render Blueprint (`render.yaml`). One public environment (production): the four services on Render Starter instances and the Neon database, deploying from `release`; `main` does not deploy. `scripts/release.sh` fast-forwards `release` after `npm run check` and a local smoke run. The gateway runs migrations as its `preDeployCommand` (`npm run db:migrate -w @twokey/db`); they are forward-only and additive after Nov 4. See `docs/DEPLOY.md`.
 
 ## Dev and evaluation stacks
 
@@ -93,7 +93,7 @@ npm run db:seed-users     # maya, judge1–3, hijack system user
 npm run spike:vault       # real sandbox vault spike (--reuse to make fresh test orders)
 npm run e2e:purchase      # real sandbox: one captured, one blocked, one held
 npm run eval -- <build|freeze|run|replay|grade|metrics|predictions|checkpoint>
-npm run smoke -- --env staging|prod
+npm run smoke -- --env prod|local
 ```
 
 ## Code conventions

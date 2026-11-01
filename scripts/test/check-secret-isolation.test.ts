@@ -13,7 +13,7 @@ describe('check-secret-isolation', () => {
   it('passes a clean blueprint', () => {
     const r = run(fixture('clean.yaml'));
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('secret isolation OK (4 services)');
+    expect(r.stdout).toContain('secret isolation OK (2 services)');
   });
 
   it('fails when web carries PAYPAL_CLIENT_SECRET', () => {
@@ -22,7 +22,19 @@ describe('check-secret-isolation', () => {
     expect(r.stderr).toContain('PAYPAL_CLIENT_SECRET may only be set on: gateway (found on web)');
   });
 
+  it('fails on a second environment, another branch or a local-only flag', () => {
+    const r = run(fixture('prod-duplicate.yaml'));
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(
+      'gateway-prod is not one of: web, gateway, twokey-mcp, agent-runner',
+    );
+    expect(r.stderr).toContain('gateway-prod deploys from main; only release may deploy');
+    expect(r.stderr).toContain('SHOW_STYLEGUIDE is local-only');
+  });
+
   it('passes the real render.yaml', () => {
-    expect(run(fileURLToPath(new URL('../../render.yaml', import.meta.url))).status).toBe(0);
+    const r = run(fileURLToPath(new URL('../../render.yaml', import.meta.url)));
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('secret isolation OK (4 services)');
   });
 });

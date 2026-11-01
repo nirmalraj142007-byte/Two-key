@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: gateway
+    branch: release
+    envVars:
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+  - type: web
+    name: gateway-prod
+    branch: main
+    envVars:
+      - key: SHOW_STYLEGUIDE
+        value: "1"

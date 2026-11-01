@@ -104,3 +104,18 @@ Fix, without touching the running evaluation processes: live work moved to `.app
 process listens on, and the runner has a `CONSUME_JOBS` switch that `npm run eval:stack` now sets to
 `false`, so a restarted evaluation runner serves no queue. Jobs still waiting on the `.live` names
 are not carried over (none were pending).
+
+## 2026-11-01 — One public environment instead of staging + production
+
+Phase 30 planned separate `-prod` services and a Render database next to staging. Instead the four
+existing Render services (`web`, `gateway`, `twokey-mcp`, `agent-runner`) and the existing Neon
+database become production, on Starter instances, deploying from a new `release` branch; `main` no
+longer deploys the live site. Reason: one environment to configure, keep awake and demo before the
+Nov 8 deploy freeze, and no second copy of every secret. Pre-release checks move to the local dev
+stack: `scripts/release.sh` runs `npm run check` and `npm run smoke -- --env local` before
+fast-forwarding `release`. Starter instances allow a `preDeployCommand`, so the gateway now migrates
+there instead of in its start command. `check:secrets` rejects any service other than the four,
+any branch other than `release`, and `SHOW_STYLEGUIDE`.
+
+`twokey-mcp` is not published to npm; it ships as the v1.0.0 GitHub Release asset (phase 26).
+Evaluation results reach production with `npm run eval:export` once the test split is done.

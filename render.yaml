@@ -1,29 +1,30 @@
-# Render Blueprint for Two-Key STAGING.
+# Render Blueprint for Two-Key: the one public environment (production).
 #
-# - Staging deploys from the `main` branch. Production (deploying from `release`) is added in
-#   phase 30; until then this file describes staging only.
-# - Every service runs on Render's free plan. Free services sleep after 15 minutes without
-#   traffic and take about a minute to wake (see docs/DEPLOY.md).
-# - No Render database: DATABASE_URL is an external Neon Postgres connection string (direct,
+# - Every service deploys from the `release` branch. `main` no longer deploys the live site;
+#   scripts/release.sh fast-forwards `release` to a checked main commit (docs/DEPLOY.md).
+# - Services run on Render's Starter plan (switched in the dashboard): no sleeping, and the
+#   gateway can run its migrations as a preDeployCommand. If it fails, the deploy stops and the
+#   previous one stays live. Migrations are forward-only and additive (docs/DEPLOY.md).
+# - No Render database: DATABASE_URL is the external Neon Postgres connection string (direct,
 #   non-pooled, sslmode=require), pasted by hand into each service that needs it.
-# - Free plans can't run a preDeployCommand, so the gateway applies migrations (forward-only,
-#   idempotent) at the start of its startCommand, before it begins serving.
 # - `npm ci --include=dev` installs the whole workspace, including tsx, even when
 #   NODE_ENV=production. Services run TypeScript source through their workspace start script.
-# - Env var values are never stored here (sync: false). Secret ownership is enforced by
-#   `npm run check:secrets` (SECRET_OWNERS in packages/core/src/env.ts).
+# - Secret values are never stored here (sync: false). Secret ownership is enforced by
+#   `npm run check:secrets` (SECRET_OWNERS in packages/core/src/env.ts). EVAL_ENABLED,
+#   EVAL_ADMIN_TOKEN and SHOW_STYLEGUIDE are local-only and must never appear here.
 services:
   - type: web
     name: web
     runtime: node
-    plan: free
+    plan: starter
+    branch: release
     region: oregon
     buildCommand: npm ci --include=dev && npm run build -w @twokey/web
     startCommand: npm run start -w @twokey/web
     healthCheckPath: /api/healthz
     envVars:
       - key: NODE_ENV
-        sync: false
+        value: production
       - key: LOG_LEVEL
         sync: false
       - key: DATABASE_URL
@@ -48,6 +49,8 @@ services:
         sync: false
       - key: COMPILER_MODEL
         sync: false
+      - key: AGENT_MODEL
+        sync: false
       - key: DAILY_BUDGET_USD_LIVE
         sync: false
       - key: NEXT_PUBLIC_AG_GRID_LICENSE_KEY
@@ -63,14 +66,16 @@ services:
   - type: web
     name: gateway
     runtime: node
-    plan: free
+    plan: starter
+    branch: release
     region: oregon
     buildCommand: npm ci --include=dev
-    startCommand: npm run db:migrate -w @twokey/db && npm run start -w @twokey/gateway
+    preDeployCommand: npm run db:migrate -w @twokey/db
+    startCommand: npm run start -w @twokey/gateway
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
-        sync: false
+        value: production
       - key: LOG_LEVEL
         sync: false
       - key: DATABASE_URL
@@ -107,6 +112,12 @@ services:
         sync: false
       - key: MERCHANT_API_CREDENTIALS
         sync: false
+      # Owner URL for migrations (preDeployCommand) once the least-privilege roles are applied.
+      - key: MIGRATE_DATABASE_URL
+        sync: false
+      # Hold timeout for demo and hijack sessions (minutes).
+      - key: DEMO_HOLD_MINUTES
+        value: "15"
       # Bearer token for GET /metrics (gateway only). EVAL_ENABLED and EVAL_ADMIN_TOKEN are
       # local-only and never listed here; the gateway refuses EVAL_ENABLED in production.
       - key: METRICS_TOKEN
@@ -114,14 +125,15 @@ services:
   - type: web
     name: twokey-mcp
     runtime: node
-    plan: free
+    plan: starter
+    branch: release
     region: oregon
     buildCommand: npm ci --include=dev
     startCommand: npm run start -w @twokey/mcp
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
-        sync: false
+        value: production
       - key: LOG_LEVEL
         sync: false
       - key: DATABASE_URL
@@ -135,14 +147,15 @@ services:
   - type: web
     name: agent-runner
     runtime: node
-    plan: free
+    plan: starter
+    branch: release
     region: oregon
     buildCommand: npm ci --include=dev
     startCommand: npm run start -w @twokey/agent-runner
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
-        sync: false
+        value: production
       - key: LOG_LEVEL
         sync: false
       - key: DATABASE_URL
