@@ -74,12 +74,7 @@ export interface Sources {
 /** Every drafted block carries this; --check fails while any is left. */
 export const PLACEHOLDER_MARK = '<!-- results:placeholder development-set -->';
 /** Values the human fills by hand; --check fails while any is left. */
-export const FILL_INS = [
-  '<LIVE_URL>',
-  '<DEMO_PASSWORD>',
-  '<SANDBOX_BUYER_EMAIL>',
-  '<SANDBOX_BUYER_PASSWORD>',
-] as const;
+export const FILL_INS = ['<LIVE_URL>', '<DEMO_PASSWORD>'] as const;
 
 /** Large first, as in EVAL_MODELS. */
 const MODEL_ORDER = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'nvidia/nemotron-3.5-bolt-e4b'];

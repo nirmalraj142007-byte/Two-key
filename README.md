@@ -21,7 +21,7 @@ Live demo: **<LIVE_URL>** (PayPal sandbox only; no real money moves).
 2. **Sign in as `judge1@twokey.demo` / `<DEMO_PASSWORD>`** and open the console. judge1 already has a saved sandbox wallet and signed rules. Ask for "Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week." Then open History and Approvals.
 3. **Open `/results`.** Every number from the evaluation, with the runs behind it.
 
-Want to connect a PayPal wallet yourself? Onboarding uses a PayPal **sandbox** buyer account: `<SANDBOX_BUYER_EMAIL>` / `<SANDBOX_BUYER_PASSWORD>`.
+Demo accounts already have a sandbox PayPal wallet connected.
 
 Connect your own MCP client (Claude Desktop, or anything that speaks MCP): `twokey-mcp` ships as the [v1.0.0 GitHub release](https://github.com/nirmalraj142007-byte/Two-key/releases/tag/v1.0.0) tarball, not on npm. Get an agent token from "Connect your agent" in the app, then follow [docs/claude-desktop.md](docs/claude-desktop.md):
 
