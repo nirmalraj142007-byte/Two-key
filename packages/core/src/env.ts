@@ -104,6 +104,10 @@ const schemas = {
      */
     HIJACK_DAILY_ATTEMPTS: z.coerce.number().int().nonnegative().default(200),
     HIJACK_DAILY_TOKENS: z.coerce.number().int().nonnegative().default(150_000),
+    /** 'replay' makes the agent console play public/golden-run.json under the replay banner. */
+    DEMO_FALLBACK: z.enum(['replay', 'off']).optional(),
+    /** 'true' sends every hijack box attempt to a recorded replay (no live model call). */
+    HIJACK_DISABLED: z.enum(['true', 'false']).optional(),
   }),
   mcp: z.object({
     ...common,

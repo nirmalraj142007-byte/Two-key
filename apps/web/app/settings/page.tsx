@@ -94,12 +94,17 @@ async function Settings({
                     {c.expiresAt ? `· expires ${fmt(c.expiresAt)}` : null}
                   </span>
                 </span>
-                <ActionButton
-                  action={revokeRules.bind(null, c.id)}
-                  label="Revoke"
-                  pendingLabel="Revoking…"
-                  forced={forcedButton(forced)}
-                />
+                {demo ? (
+                  // The gateway refuses it too: demo accounts keep the preset rules.
+                  <span className="text-xs text-text-muted">Preset for the demo</span>
+                ) : (
+                  <ActionButton
+                    action={revokeRules.bind(null, c.id)}
+                    label="Revoke"
+                    pendingLabel="Revoking…"
+                    forced={forcedButton(forced)}
+                  />
+                )}
               </li>
             ))}
           </ul>

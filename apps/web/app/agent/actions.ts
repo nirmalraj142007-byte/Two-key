@@ -22,7 +22,20 @@ import { scriptedAllowed } from '@/lib/scripted-model';
 
 const Message = z.string().trim().min(1).max(2000);
 
-export type StartRunResult = { ok: true; sessionId: string } | { ok: false; message: string };
+export type StartRunResult =
+  | { ok: true; sessionId: string }
+  /** `fallback`: nothing the person can fix (gateway, queue or model down): show the replay. */
+  | { ok: false; message: string; fallback: boolean };
+
+/** Failures the person can act on (connect PayPal, sign rules, sign in) are shown, not replayed. */
+function actionable(err: unknown): boolean {
+  return (
+    err instanceof AppError &&
+    (err.code === ErrorCode.CONFLICT ||
+      err.code === ErrorCode.VALIDATION ||
+      err.code === ErrorCode.UNAUTHENTICATED)
+  );
+}
 
 /** Plain sentences for the failures a person can act on; everything else is generic. */
 function sentence(err: unknown): string {
@@ -41,11 +54,13 @@ function sentence(err: unknown): string {
  */
 export async function startRun(message: string, model?: string): Promise<StartRunResult> {
   const text = Message.safeParse(message);
-  if (!text.success) return { ok: false, message: 'Type what you want the agent to buy.' };
+  if (!text.success) {
+    return { ok: false, message: 'Type what you want the agent to buy.', fallback: false };
+  }
   const session = await auth();
-  if (!session?.userId) return { ok: false, message: 'Sign in again.' };
+  if (!session?.userId) return { ok: false, message: 'Sign in again.', fallback: false };
   if (model !== undefined && !scriptedAllowed(model)) {
-    return { ok: false, message: 'The agent could not start. Try again.' };
+    return { ok: false, message: 'The agent could not start. Try again.', fallback: false };
   }
   const chosen = model ?? webEnv().AGENT_MODEL;
   try {
@@ -63,7 +78,7 @@ export async function startRun(message: string, model?: string): Promise<StartRu
     });
     return { ok: true, sessionId };
   } catch (err) {
-    return { ok: false, message: sentence(err) };
+    return { ok: false, message: sentence(err), fallback: !actionable(err) };
   }
 }
 

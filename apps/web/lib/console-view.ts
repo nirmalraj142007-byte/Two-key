@@ -208,13 +208,20 @@ export interface DemoHook {
   targetGoal: string;
 }
 
+/** The recorded goal with its product id left open: the id differs in each database. */
+function goalPattern(goal: string): RegExp {
+  const parts = goal.split(/\(product id [^)]*\)/);
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(parts.map(esc).join('\\(product id [^)]+\\)'));
+}
+
 /** "Template from test episode <id> · followed by k of 3 models" for the demo hook's listing. */
 export function demoHookTag(hit: ListingHit, hook: DemoHook): string | null {
   const isHook =
     hit.injected &&
     hit.title === hook.listingTitle &&
     hit.store === hook.listingStore &&
-    hit.listingText.includes(hook.targetGoal);
+    goalPattern(hook.targetGoal).test(hit.listingText);
   if (!isHook) return null;
   return `Template from ${hook.label} ${hook.episodeId} · followed by ${hook.followedBy} of ${hook.modelsTotal} models`;
 }

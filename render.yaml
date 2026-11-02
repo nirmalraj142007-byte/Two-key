@@ -65,6 +65,12 @@ services:
         sync: false
       - key: HIJACK_DAILY_TOKENS
         sync: false
+      # 'replay' plays the recorded golden run in the console (docs/DEMO.md).
+      - key: DEMO_FALLBACK
+        sync: false
+      # 'true' sends every hijack box attempt to a recorded replay.
+      - key: HIJACK_DISABLED
+        sync: false
   - type: web
     name: gateway
     runtime: node
@@ -188,4 +194,32 @@ services:
       - key: DEMO_EPISODE_ID
         sync: false
       - key: PORT
+        sync: false
+  # Daily demo reset (docs/DEMO.md): voids demo holds through the gateway's void path, clears the
+  # demo accounts' finished history, re-signs expiring demo cards and rebuilds the demo hook.
+  # 03:30 UTC = 09:00 IST. Cron jobs have no free plan; this one runs about a minute a day.
+  # It holds the gateway's own secrets, so check:secrets treats it as the gateway.
+  - type: cron
+    name: twokey-demo-reset
+    runtime: node
+    plan: starter
+    branch: release
+    region: oregon
+    schedule: "30 3 * * *"
+    buildCommand: npm ci --include=dev
+    startCommand: npm run demo:reset
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: PAYPAL_ENV
+        sync: false
+      - key: RULE_HMAC_KEY
+        sync: false
+      - key: RULE_HMAC_KEY_ID
+        sync: false
+      - key: MERCHANT_API_CREDENTIALS
         sync: false

@@ -507,6 +507,26 @@ describe.skipIf(!baseUrl)('/human/*', () => {
       expect(row?.hmac?.slice(0, 8)).toBe(res.body.fingerprint);
     });
 
+    it('judge_demo can neither sign a new card nor revoke its preset one (403)', async () => {
+      const judge = await newUser('judge_demo');
+      const preset = await signDraft({ id: judge.id, role: 'user' }); // as demo:setup does
+      const draft = await newDraft(judge.id);
+
+      const sign = await as(judge, ['rules:sign'], 'POST', `/human/rules/${draft}/sign`);
+      expect(sign.status).toBe(403);
+      expect(sign.body).toMatchObject({
+        error: { code: 'FORBIDDEN', message: 'Demo accounts use the preset rules' },
+      });
+      const revoke = await as(judge, ['rules:sign'], 'POST', `/human/rules/${preset}/revoke`);
+      expect(revoke.status).toBe(403);
+      expect(revoke.body).toMatchObject({ error: { code: 'FORBIDDEN' } });
+
+      const rows = await conn.db.select().from(ruleCards).where(eq(ruleCards.userId, judge.id));
+      const statusOf = (id: string) => rows.find((r) => r.id === id)?.status;
+      expect(statusOf(preset)).toBe('signed');
+      expect(statusOf(draft)).toBe('draft');
+    });
+
     it('keeps the draft version and revokes the previous signed card', async () => {
       const user = await newUser();
       const first = await as(

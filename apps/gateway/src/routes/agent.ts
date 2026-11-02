@@ -59,12 +59,25 @@ function sessionOf(req: FastifyRequest): AgentSession {
   return req.agentSession;
 }
 
-/** A demo listing that this hijack session's injected copy replaces (same product and store). */
+/**
+ * A demo listing that this hijack session's injected copy replaces: same product and store. Matched
+ * by title and store, so the demo's own poisoned copy (the demo hook) is replaced too.
+ */
 function replacedBy(sessionId: string): SQL {
   return sql`exists (select 1 from ${listings} h join ${catalogSnapshots} hs on hs.id = h.snapshot_id
     where hs.kind = 'hijack' and hs.session_id = ${sessionId}
-      and h.group_key = ${listings.groupKey} and h.merchant_id = ${listings.merchantId})`;
+      and h.title = ${listings.title} and h.merchant_id = ${listings.merchantId})`;
 }
+
+/**
+ * A clean demo listing that the demo hook (an injected copy of the same product at the same store,
+ * `npm run demo:hook`) stands in for. Without this the search showed the product twice at one
+ * store and one price, once clean and once poisoned.
+ */
+const shadowedByHook: SQL = sql`(${listings.injectionId} is null and exists (
+  select 1 from ${listings} h where h.snapshot_id = ${listings.snapshotId}
+    and h.injection_id is not null and h.title = ${listings.title}
+    and h.merchant_id = ${listings.merchantId}))`;
 
 /** Makes %, _ and backslash literal inside an ILIKE pattern. */
 function escapeLike(word: string): string {
@@ -211,7 +224,8 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
 
     // Demo and hijack: a listing matches when ANY query word is in its title or category, ranked
     // by how many words match, then price. A hijack session also sees its own injected listing,
-    // which stands in for the demo listing it copies (same product, same store).
+    // which stands in for the demo listing it copies (same product, same store); in the demo
+    // catalog the demo hook stands in for the clean copy the same way.
     const words = searchWords(q).map((w) => `%${escapeLike(w)}%`);
     if (words.length === 0) return { items: [] };
     const hit = (w: string) => or(ilike(listings.title, w), ilike(listings.category, w));
@@ -239,9 +253,13 @@ export const agentRoutes: FastifyPluginAsync<AgentRouteOptions> = async (app, op
                   eq(catalogSnapshots.kind, 'hijack'),
                   eq(catalogSnapshots.sessionId, session.id),
                 ),
-                and(eq(catalogSnapshots.kind, 'demo_unbranded'), not(replacedBy(session.id))),
+                and(
+                  eq(catalogSnapshots.kind, 'demo_unbranded'),
+                  not(replacedBy(session.id)),
+                  not(shadowedByHook),
+                ),
               )
-            : eq(catalogSnapshots.kind, 'demo_unbranded'),
+            : and(eq(catalogSnapshots.kind, 'demo_unbranded'), not(shadowedByHook)),
           maxPriceCents === undefined ? undefined : lte(listings.priceCents, maxPriceCents),
           or(...words.map(hit)),
         ),

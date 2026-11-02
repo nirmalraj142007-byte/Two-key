@@ -9,6 +9,9 @@ const RENDER_TO_SERVICE: Record<string, ServiceName> = {
   gateway: 'gateway',
   'twokey-mcp': 'mcp',
   'agent-runner': 'agent-runner',
+  // The daily demo reset cron job (scripts/reset-demo.ts) runs the gateway's own void and
+  // signing code with the gateway's secrets.
+  'twokey-demo-reset': 'gateway',
 };
 
 interface RenderBlueprint {

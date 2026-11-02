@@ -15,7 +15,10 @@ const CardId = z.uuid();
 
 /** Revokes one signed rule card. The gateway checks the card belongs to the asserted user. */
 export async function revokeRules(id: string, _prev: SettingsResult): Promise<SettingsResult> {
-  await requireUser();
+  const user = await requireUser();
+  if (user.role === 'judge_demo') {
+    return { status: 'error', message: 'Demo accounts keep the preset rules.' };
+  }
   const parsed = CardId.safeParse(id);
   if (!parsed.success) return { status: 'error', message: 'Those rules could not be found.' };
   try {

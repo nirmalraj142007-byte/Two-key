@@ -11,6 +11,7 @@ Two-Key has **one public environment: production.** It is the Render Blueprint i
 | `web` | `@twokey/web` | `/api/healthz` | Next.js build at deploy time |
 | `twokey-mcp` | `@twokey/mcp` | `/healthz` | Streamable HTTP at `/mcp` |
 | `agent-runner` | `@twokey/agent-runner` | `/healthz` | Web service, not a worker |
+| `twokey-demo-reset` | root (`npm run demo:reset`) | — | Cron job, 03:30 UTC (09:00 IST), Starter (cron jobs have no free plan). Gateway secrets only: `DATABASE_URL`, `PAYPAL_ENV`, `RULE_HMAC_KEY`, `RULE_HMAC_KEY_ID`, `MERCHANT_API_CREDENTIALS`. See docs/DEMO.md |
 
 **Instance plan** (`plan:` in `render.yaml`; `check:secrets` accepts `free` or `starter`):
 
@@ -279,6 +280,7 @@ seconds. `webhookSubscriptions` can be `not_configured` (no `PAYPAL_WEBHOOK_ID` 
 `PUBLIC_BASE_URL`), `not_found`, `wrong_url`, `missing_events` or `fail`.
 
 CI (`npm run check:secrets`) fails if `render.yaml` lists a secret on a service that may not hold
-it, names a service other than the four, deploys from a branch other than `release`, sets
+it, names a service other than the four plus the `twokey-demo-reset` cron job (checked as the
+gateway), deploys from a branch other than `release`, sets
 `NODE_ENV` to anything but `production`, or lists `EVAL_ENABLED`, `EVAL_ADMIN_TOKEN` or
 `SHOW_STYLEGUIDE`. Every service also refuses to start if a secret is set where it doesn't belong.

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { AppError, ErrorCode, fingerprint, RuleCardSchema, signCard } from '@twokey/core';
+import { AppError, ErrorCode } from '@twokey/core';
 import { agentSessions, type Db, ruleCards, vaultTokens } from '@twokey/db';
 import type { VaultApi } from '@twokey/paypal';
 import { and, desc, eq, gt, ne } from 'drizzle-orm';
@@ -13,6 +13,7 @@ import {
   type HumanAssertionVerifier,
 } from '../auth/human-assertion.js';
 import type { RuleKeys } from '../services/keys.js';
+import { signDraftCard } from '../services/rules-sign.js';
 
 export interface HumanRouteOptions {
   db: Db;
@@ -28,6 +29,7 @@ export interface HumanRouteOptions {
 
 export const CONNECT_PAYPAL_FIRST = 'Connect PayPal first';
 export const SIGN_RULES_FIRST = 'Sign your rules first';
+export const DEMO_RULES_FIXED = 'Demo accounts use the preset rules';
 
 /** Setup tokens wait here between creation and approval (PayPal lets them live for hours). */
 const SETUP_TOKEN_TTL_MS = 3 * 60 * 60 * 1000;
@@ -233,66 +235,22 @@ export const humanRoutes: FastifyPluginAsync<HumanRouteOptions> = async (app, op
   // ---- rules -------------------------------------------------------------------------------
 
   app.post('/human/rules/:id/sign', { preHandler: requireHuman('rules:sign') }, async (req) => {
-    const { userId } = humanOf(req);
+    const { userId, role } = humanOf(req);
+    // Demo accounts keep the preset card demo:setup signs; they can't sign a new one.
+    if (role === 'judge_demo') throw new AppError(ErrorCode.FORBIDDEN, DEMO_RULES_FIXED);
     const id = cardId(req);
-    const signedAt = now();
-
-    return db.transaction(async (tx) => {
-      const [draft] = await tx
-        .select()
-        .from(ruleCards)
-        .where(and(eq(ruleCards.id, id), eq(ruleCards.userId, userId)))
-        .for('update')
-        .limit(1);
-      if (!draft) throw notFound('Rule card');
-      if (draft.status !== 'draft') {
-        throw new AppError(ErrorCode.CONFLICT, 'Only draft rules can be signed');
-      }
-
-      // The compiler assigned the version when it created the draft; signing keeps it.
-      const { version } = draft;
-
-      // The asserted user is the only possible owner, whatever the draft says.
-      const draftRules =
-        typeof draft.rules === 'object' && draft.rules !== null && !Array.isArray(draft.rules)
-          ? draft.rules
-          : {};
-      const parsed = RuleCardSchema.safeParse({ ...draftRules, userId, version });
-      if (!parsed.success) {
-        const paths = [
-          ...new Set(parsed.error.issues.map((i) => i.path.join('.') || '(card)')),
-        ].join(', ');
-        throw new AppError(ErrorCode.RULE_CARD_INVALID, `Rule card is invalid: ${paths}`);
-      }
-      const card = parsed.data;
-      const expiresAt = new Date(card.expiresAt);
-      if (expiresAt.getTime() <= signedAt.getTime()) {
-        throw new AppError(ErrorCode.RULE_CARD_INVALID, 'Rule card is invalid: expiresAt');
-      }
-
-      const signed = signCard(card, { id: opts.signingKeyId, secret: signingSecret });
-      await tx
-        .update(ruleCards)
-        .set({ status: 'revoked' })
-        .where(and(eq(ruleCards.userId, userId), eq(ruleCards.status, 'signed')));
-      await tx
-        .update(ruleCards)
-        .set({
-          version,
-          status: 'signed',
-          rules: signed.card,
-          hmac: signed.sig,
-          keyId: signed.keyId,
-          signedAt,
-          expiresAt,
-        })
-        .where(and(eq(ruleCards.id, id), eq(ruleCards.userId, userId)));
-      return { id, version, fingerprint: fingerprint(signed) };
+    return signDraftCard(db, {
+      userId,
+      draftId: id,
+      signingKeyId: opts.signingKeyId,
+      signingSecret,
+      now: now(),
     });
   });
 
   app.post('/human/rules/:id/revoke', { preHandler: requireHuman('rules:sign') }, async (req) => {
-    const { userId } = humanOf(req);
+    const { userId, role } = humanOf(req);
+    if (role === 'judge_demo') throw new AppError(ErrorCode.FORBIDDEN, DEMO_RULES_FIXED);
     const id = cardId(req);
     const [row] = await db
       .select({ status: ruleCards.status })

@@ -7,6 +7,7 @@ import { AgentTranscript } from '@/components/twokey/AgentTranscript';
 import { Banner } from '@/components/twokey/banner';
 import { HistoryStrip } from '@/components/twokey/HistoryStrip';
 import { ProposalCard } from '@/components/twokey/ProposalCard';
+import { ReplayConsole } from '@/components/twokey/ReplayConsole';
 import { RuleLine } from '@/components/twokey/rule-line';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -111,6 +112,8 @@ export function AgentConsole({
   const [proposals, setProposals] = useState(initialProposals);
   /** The latest session seen on the stream: followed when no run was started from this tab. */
   const [seen, setSeen] = useState<string | null>(null);
+  /** A live run failed or could not start for a reason the person can't fix: play the recording. */
+  const [replaying, setReplaying] = useState(false);
   const [, startTransition] = useTransition();
 
   const catchUp = useCallback(() => {
@@ -163,6 +166,7 @@ export function AgentConsole({
               r.status === 'running' && r.sessionId === id ? { ...r, status: 'ended' } : r,
             );
           } else if (s.status === 'failed') {
+            setReplaying(true);
             setRun((r) =>
               r.status === 'running' && r.sessionId === id
                 ? { status: 'failed', message: r.message, sessionId: id, reason: s.reason }
@@ -184,6 +188,7 @@ export function AgentConsole({
         setDraft('');
       } else {
         setRun({ status: 'failed', message, sessionId: null, reason: res.message });
+        if (res.fallback) setReplaying(true);
       }
     });
   }
@@ -193,6 +198,8 @@ export function AgentConsole({
     const message = draft.trim() || DEMO_REQUEST;
     send(message);
   }
+
+  if (replaying) return <ReplayConsole />;
 
   const busy = run.status === 'starting' || run.status === 'running';
   const ready = card !== null && vaultConnected;

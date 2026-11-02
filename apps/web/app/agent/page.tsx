@@ -3,10 +3,12 @@ import { merchants, ruleCards } from '@twokey/db';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { ReplayConsole } from '@/components/twokey/ReplayConsole';
 import { LoadingState } from '@/components/twokey/state-panels';
 import { FAILURE_TEXT, type ProposalView } from '@/lib/console-view';
 import { db } from '@/lib/db';
 import { webEnv } from '@/lib/env';
+import { fallbackReason } from '@/lib/golden-run';
 import { ruleLines } from '@/lib/rules-view';
 import { scriptedAllowed } from '@/lib/scripted-model';
 import { requireUser } from '@/lib/session';
@@ -53,10 +55,28 @@ async function activeCard(userId: string): Promise<CardSummary | null> {
   };
 }
 
-const FORCED = ['empty', 'loading', 'error', 'partial', 'success'] as const;
+const FORCED = ['empty', 'loading', 'error', 'partial', 'success', 'replay'] as const;
+
+/** The gateway's public PayPal health (cached 60 s there). Unreachable counts as not degraded:
+ * a run that then fails to start switches to the replay on its own. */
+async function paypalDegraded(): Promise<boolean> {
+  try {
+    const res = await fetch(new URL('/healthz/paypal', webEnv().GATEWAY_URL), {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3000),
+    });
+    const body = (await res.json()) as { degraded?: unknown };
+    return body.degraded === true;
+  } catch {
+    return false;
+  }
+}
 
 /** `?__state=` screenshots only (lib/test-states.ts): the console mid-run, failed or done. */
-function forcedConsole(forced: (typeof FORCED)[number], real: CardSummary | null) {
+function forcedConsole(
+  forced: Exclude<(typeof FORCED)[number], 'replay'>,
+  real: CardSummary | null,
+) {
   const card = real ?? { id: FIXTURE_SESSION, version: 1, lines: fixtureCardLines() };
   const sessionId = FIXTURE_SESSION;
   const steps = { [sessionId]: fixtureSteps() };
@@ -99,12 +119,18 @@ function forcedConsole(forced: (typeof FORCED)[number], real: CardSummary | null
 async function Console({ searchParams }: { searchParams: PageProps<'/agent'>['searchParams'] }) {
   const user = await requireUser();
   const forced = readForced(await searchParams, FORCED);
+  if (forced === 'replay') return <ReplayConsole />;
   if (forced) {
     const f = forcedConsole(forced, await activeCard(user.userId));
     return (
       <AgentConsole gatewayUrl={webEnv().GATEWAY_URL} vaultConnected historyFailed={false} {...f} />
     );
   }
+  const fallback = fallbackReason({
+    demoFallback: webEnv().DEMO_FALLBACK,
+    paypalDegraded: await paypalDegraded(),
+  });
+  if (fallback) return <ReplayConsole />;
   const asked = (await searchParams).model;
   const scriptedModel = typeof asked === 'string' && scriptedAllowed(asked) ? asked : undefined;
   const [progress, card, proposals] = await Promise.all([

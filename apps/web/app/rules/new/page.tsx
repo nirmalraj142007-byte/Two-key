@@ -1,5 +1,6 @@
 import { fingerprint, toDraftCard } from '@twokey/core';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Suspense } from 'react';
 import { LoadingState } from '@/components/twokey/state-panels';
 import { loadRegistry } from '@/lib/registry';
@@ -20,6 +21,22 @@ async function Builder({
   searchParams: PageProps<'/rules/new'>['searchParams'];
 }) {
   const user = await requireUser();
+  if (user.role === 'judge_demo') {
+    // The gateway refuses a judge's signature (phase 31); the preset card is already active.
+    return (
+      <p className="text-base text-text">
+        Demo accounts use the preset rules for the demo request.{' '}
+        <Link href="/agent" className="font-medium text-accent">
+          Open the agent console
+        </Link>{' '}
+        or see them in{' '}
+        <Link href="/settings" className="font-medium text-accent">
+          Settings
+        </Link>
+        .
+      </p>
+    );
+  }
   const registry = await loadRegistry();
   const stores = registry.map(({ id, slug, displayName }) => ({ id, slug, displayName }));
   const forced = readForced(await searchParams, FORCED);

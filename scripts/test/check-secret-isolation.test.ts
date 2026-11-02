@@ -26,7 +26,7 @@ describe('check-secret-isolation', () => {
     const r = run(fixture('prod-duplicate.yaml'));
     expect(r.status).toBe(1);
     expect(r.stderr).toContain(
-      'gateway-prod is not one of: web, gateway, twokey-mcp, agent-runner',
+      'gateway-prod is not one of: web, gateway, twokey-mcp, agent-runner, twokey-demo-reset',
     );
     expect(r.stderr).toContain('gateway-prod deploys from main; only release may deploy');
     expect(r.stderr).toContain('SHOW_STYLEGUIDE is local-only');
@@ -38,6 +38,14 @@ describe('check-secret-isolation', () => {
   it('passes the real render.yaml', () => {
     const r = run(fileURLToPath(new URL('../../render.yaml', import.meta.url)));
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('secret isolation OK (4 services)');
+    expect(r.stdout).toContain('secret isolation OK (5 services)');
+  });
+
+  it('treats the demo reset cron job as the gateway', () => {
+    const r = run(fixture('demo-reset-cron.yaml'));
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('AUTH_SECRET may only be set on: web (found on twokey-demo-reset)');
+    expect(r.stderr).not.toContain('RULE_HMAC_KEY may only');
+    expect(r.stderr).not.toContain('MERCHANT_API_CREDENTIALS may only');
   });
 });

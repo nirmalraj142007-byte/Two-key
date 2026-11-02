@@ -32,7 +32,11 @@ export async function hijackCaps(): Promise<HijackCaps> {
   return {
     attemptsLeft,
     tokensLeft,
-    live: attemptsLeft > 0 && tokensLeft > 0 && env.AGENT_MODEL !== RESERVED_MODEL,
+    live:
+      env.HIJACK_DISABLED !== 'true' &&
+      attemptsLeft > 0 &&
+      tokensLeft > 0 &&
+      env.AGENT_MODEL !== RESERVED_MODEL,
   };
 }
 
@@ -129,8 +133,10 @@ export async function startHijackAttempt(
         model,
       });
     } else {
-      const reserved = webEnv().AGENT_MODEL === RESERVED_MODEL;
-      await enqueueHijackReplay({ attemptId, reason: reserved ? 'model' : 'caps' });
+      // HIJACK_DISABLED and the reserved model both read "the live agent is unavailable".
+      const unavailable =
+        webEnv().HIJACK_DISABLED === 'true' || webEnv().AGENT_MODEL === RESERVED_MODEL;
+      await enqueueHijackReplay({ attemptId, reason: unavailable ? 'model' : 'caps' });
     }
   } catch {
     await failAttempt(attemptId, model);
