@@ -19,11 +19,11 @@ const Endpoint = z
   .string()
   .max(2048)
   .refine(isAllowedPushEndpoint, 'must be a browser push service URL');
-const SubscribeBody = z.object({
+export const SubscribeBody = z.object({
   endpoint: Endpoint,
   keys: z.object({ p256dh: z.string().min(1).max(256), auth: z.string().min(1).max(64) }),
 });
-const UnsubscribeBody = z.object({ endpoint: z.string().max(2048) });
+export const UnsubscribeBody = z.object({ endpoint: z.string().max(2048) });
 
 function humanOf(req: FastifyRequest): Human {
   if (!req.human) throw new AppError(ErrorCode.UNAUTHENTICATED, 'Sign in again');

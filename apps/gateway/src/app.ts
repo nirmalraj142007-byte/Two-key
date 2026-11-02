@@ -26,6 +26,7 @@ import { createJobRunner } from './jobs/boss.js';
 import type { Jobs } from './jobs/queue.js';
 import { OPEN_STATES } from './jobs/sweep.js';
 import { openAuthorizations, recordPayPalCall } from './metrics.js';
+import { buildOpenApiDocument } from './openapi.js';
 import { dbPlugin } from './plugins/db.js';
 import { agentRoutes } from './routes/agent.js';
 import { createEventHub, eventRoutes } from './routes/events.js';
@@ -236,6 +237,22 @@ export function buildApp(env: AppEnv, deps: AppDeps = {}): FastifyInstance {
     const { status, body } = toHttp(new AppError(ErrorCode.NOT_FOUND, 'Not found'), req.id);
     return reply.status(status).send(body);
   });
+
+  // API docs outside production: the static OpenAPI document at /docs/json, Swagger UI at /docs.
+  // Static mode only describes routes; validation stays with each handler's zod parse.
+  if (env.NODE_ENV !== 'production') {
+    app.register(async (scope) => {
+      const [{ default: swagger }, { default: swaggerUi }] = await Promise.all([
+        import('@fastify/swagger'),
+        import('@fastify/swagger-ui'),
+      ]);
+      await scope.register(swagger, {
+        mode: 'static',
+        specification: { document: buildOpenApiDocument() as never },
+      });
+      await scope.register(swaggerUi, { routePrefix: '/docs', staticCSP: true });
+    });
+  }
 
   if (env.DATABASE_URL) app.register(dbPlugin, { url: env.DATABASE_URL });
   app.register(healthRoutes, {

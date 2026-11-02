@@ -431,7 +431,7 @@ export interface EventRouteOptions {
 }
 
 export const HEARTBEAT_MS = 15_000;
-const ListQuery = z.object({ limit: z.coerce.number().int().min(1).max(50).default(10) });
+export const ListQuery = z.object({ limit: z.coerce.number().int().min(1).max(50).default(10) });
 
 function humanOf(req: FastifyRequest): Human {
   if (!req.human) throw new AppError(ErrorCode.UNAUTHENTICATED, 'Sign in again');

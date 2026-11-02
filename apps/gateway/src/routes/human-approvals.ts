@@ -15,11 +15,11 @@ export interface HumanApprovalRouteOptions extends Omit<SettleDeps, 'log'> {
   verifier: HumanAssertionVerifier;
 }
 
-const ListQuery = z.object({
+export const ListQuery = z.object({
   status: z.enum(['pending', 'approved', 'denied', 'timed_out']).default('pending'),
 });
 const IdParams = z.object({ id: z.uuid() });
-const DecisionBody = z.object({
+export const DecisionBody = z.object({
   decision: z.enum(['approve', 'deny']),
   via: z.enum(['web', 'phone']),
 });

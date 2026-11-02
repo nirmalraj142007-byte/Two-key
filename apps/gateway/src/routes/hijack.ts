@@ -36,12 +36,12 @@ export interface HijackRouteOptions {
   now?: () => Date;
 }
 
-const Body = z.object({
+export const Body = z.object({
   injectionText: InjectionText,
   model: z.string().min(1).max(100),
 });
-const Params = z.object({ attemptId: z.uuid() });
-const Query = z.object({ t: z.string().min(1).max(300) });
+export const Params = z.object({ attemptId: z.uuid() });
+export const Query = z.object({ t: z.string().min(1).max(300) });
 
 /** Key for attempt tokens: HKDF from the rule key, so a token can never sign a rule card. */
 export function attemptKey(ruleKey: Buffer): Buffer {

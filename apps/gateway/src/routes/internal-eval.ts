@@ -18,7 +18,7 @@ export interface InternalEvalOptions {
   now?: () => Date;
 }
 
-const Body = z.object({ episodeId: z.uuid(), model: z.string().min(1).max(100) });
+export const Body = z.object({ episodeId: z.uuid(), model: z.string().min(1).max(100) });
 const GoalAttrs = z.object({
   sampleIndex: z.number().int().min(0),
   evalCard: z.record(z.string(), z.unknown()),

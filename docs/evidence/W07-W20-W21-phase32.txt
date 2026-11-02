@@ -1,0 +1,20 @@
+W7, W20, W21 re-run for phase 32 (2026-11-02), the checks left PENDING-PHASE-32 by phases 25-26.
+Tracked files only (git grep), as in W16-W20-W24-greps.txt. Patterns are not repeated here,
+because this file is inside docs/ and would match them.
+
+W7 (README.md contains the /about AP2 paragraph verbatim):
+  README AP2 verbatim: true
+  The same comparison runs in `node scripts/readme-results.ts --check` (it extracts the AP2
+  constant from apps/web/app/about/page.tsx) and in scripts/test/readme-results.test.ts
+  ("fails --check when the AP2 paragraph drifts from /about").
+
+W20 (three non-chosen sponsor names, case-insensitive) over apps docs README*:
+  exit=1 (1 = no match)
+W20 (docs/DEVPOST.md categories):
+  "Best Use of Agentic Commerce · Best Use of PayPal + AI · Most Impactful": present
+  AG Grid sponsor prize marked "pending criteria check": present
+  (The hackathon has no tracks; these are the special awards that fit.)
+
+W21 (README line 1 is the landing eyebrow):
+  README line 1: "# Not a shopping agent. The lock on its wallet."
+  rendered heading equals the eyebrow text in apps/web/app/page.tsx: true

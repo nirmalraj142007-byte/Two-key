@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" role="img" aria-labelledby="t d">
+  <title id="t">Two-Key architecture</title>
+  <desc id="d">The human uses the web app, which sends signed 60-second assertions to the gateway. The gateway is the only service that calls PayPal (Orders v2, Payments v2, Vault v3) and receives verified webhooks; it also proxies Channel3 product search. In the dashed untrusted zone, the agent runner calls LLM APIs and the twokey-mcp server, as can any MCP client; twokey-mcp reaches the gateway with an agent token and can only propose purchases or read. The rule compiler in web drafts rules with an LLM, unsigned until the human confirms.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#3b3f46"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: #1b1e23; }
+      .h { font-size: 16px; font-weight: 600; }
+      .s { font-size: 12.5px; fill: #3b3f46; }
+      .l { font-size: 11.5px; fill: #3b3f46; }
+      .z { font-size: 13px; font-weight: 600; }
+      .e { stroke: #3b3f46; stroke-width: 1.6; fill: none; marker-end: url(#a); }
+      .trusted { fill: #eef3ff; stroke: #2f5bd3; stroke-width: 1.6; }
+      .key { fill: #e4ecff; stroke: #1e44b0; stroke-width: 2.4; }
+      .ext { fill: #f4f5f7; stroke: #6b7280; stroke-width: 1.6; }
+      .untrusted { fill: #fff6ee; stroke: #c25a12; stroke-width: 1.6; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="960" height="600" rx="14" fill="#ffffff"/>
+
+  <!-- Human -->
+  <rect class="ext" x="40" y="28" width="200" height="64" rx="10"/>
+  <text class="h" x="140" y="56" text-anchor="middle">You</text>
+  <text class="s" x="140" y="76" text-anchor="middle">browser or phone</text>
+
+  <!-- web -->
+  <rect class="trusted" x="40" y="168" width="200" height="132" rx="10"/>
+  <text class="h" x="140" y="196" text-anchor="middle">web</text>
+  <text class="s" x="140" y="218" text-anchor="middle">Next.js · sign-in</text>
+  <text class="s" x="140" y="238" text-anchor="middle">mints human assertions</text>
+  <text class="s" x="140" y="258" text-anchor="middle">rule compiler · results</text>
+  <text class="s" x="140" y="278" text-anchor="middle">no PayPal secret</text>
+
+  <!-- gateway -->
+  <rect class="key" x="360" y="150" width="240" height="168" rx="10"/>
+  <text class="h" x="480" y="180" text-anchor="middle">gateway</text>
+  <text class="s" x="480" y="202" text-anchor="middle">Fastify · the only PayPal caller</text>
+  <text class="s" x="480" y="224" text-anchor="middle">checks your signed rules first</text>
+  <text class="s" x="480" y="246" text-anchor="middle">sets price and payee itself</text>
+  <text class="s" x="480" y="268" text-anchor="middle">holds · webhooks · jobs</text>
+  <text class="s" x="480" y="290" text-anchor="middle">no LLM key</text>
+
+  <!-- PayPal -->
+  <rect class="ext" x="720" y="134" width="200" height="96" rx="10"/>
+  <text class="h" x="820" y="162" text-anchor="middle">PayPal sandbox</text>
+  <text class="s" x="820" y="184" text-anchor="middle">Orders v2 · Payments v2</text>
+  <text class="s" x="820" y="204" text-anchor="middle">Vault v3 · Transaction Search</text>
+
+  <!-- Channel3 -->
+  <rect class="ext" x="720" y="258" width="200" height="60" rx="10"/>
+  <text class="h" x="820" y="284" text-anchor="middle">Channel3</text>
+  <text class="s" x="820" y="304" text-anchor="middle">product data</text>
+
+  <!-- Untrusted zone -->
+  <rect x="20" y="392" width="920" height="188" rx="14" fill="none" stroke="#c25a12" stroke-width="1.8" stroke-dasharray="8 6"/>
+  <text class="z" x="480" y="568" text-anchor="middle" style="fill:#a24a0c">Untrusted zone: reads listing text, can be hijacked, holds no money credential</text>
+
+  <rect class="untrusted" x="40" y="448" width="190" height="96" rx="10"/>
+  <text class="h" x="135" y="476" text-anchor="middle">LLM APIs</text>
+  <text class="s" x="135" y="498" text-anchor="middle">Groq · NVIDIA NIM</text>
+  <text class="s" x="135" y="518" text-anchor="middle">gpt-oss · nemotron · qwen</text>
+
+  <rect class="untrusted" x="280" y="448" width="180" height="96" rx="10"/>
+  <text class="h" x="370" y="476" text-anchor="middle">agent-runner</text>
+  <text class="s" x="370" y="498" text-anchor="middle">built-in shopping agent</text>
+  <text class="s" x="370" y="518" text-anchor="middle">LLM keys only</text>
+
+  <rect class="untrusted" x="510" y="448" width="180" height="96" rx="10"/>
+  <text class="h" x="600" y="476" text-anchor="middle">twokey-mcp</text>
+  <text class="s" x="600" y="498" text-anchor="middle">4 tools, 1 agent token</text>
+  <text class="s" x="600" y="518" text-anchor="middle">no PayPal credential</text>
+
+  <rect class="untrusted" x="740" y="448" width="180" height="96" rx="10"/>
+  <text class="h" x="830" y="476" text-anchor="middle">Your MCP client</text>
+  <text class="s" x="830" y="498" text-anchor="middle">any agent that</text>
+  <text class="s" x="830" y="518" text-anchor="middle">speaks MCP</text>
+
+  <!-- Edges -->
+  <path class="e" d="M140 92V164"/>
+  <text class="l" x="150" y="122">sign in · sign rules</text>
+  <text class="l" x="150" y="138">approve or deny holds</text>
+
+  <path class="e" d="M240 216H356"/>
+  <text class="l" x="298" y="196" text-anchor="middle">human assertion</text>
+  <text class="l" x="298" y="209" text-anchor="middle">Ed25519, 60 s</text>
+
+  <path class="e" d="M600 170H716"/>
+  <text class="l" x="658" y="162" text-anchor="middle">authorize · capture</text>
+  <path class="e" d="M720 206H604"/>
+  <text class="l" x="658" y="224" text-anchor="middle">verified webhooks</text>
+
+  <path class="e" d="M600 288H716"/>
+  <text class="l" x="658" y="280" text-anchor="middle">search</text>
+
+  <path class="e" d="M600 444V322"/>
+  <text class="l" x="610" y="352">agent token</text>
+  <text class="l" x="610" y="367">propose_purchase(product_id, qty)</text>
+  <text class="l" x="610" y="382">+ 3 read-only tools</text>
+
+  <path class="e" d="M460 496H506"/>
+  <text class="l" x="485" y="488" text-anchor="middle">MCP</text>
+  <path class="e" d="M740 496H694"/>
+  <text class="l" x="717" y="488" text-anchor="middle">MCP</text>
+  <path class="e" d="M280 496H234"/>
+  <text class="l" x="257" y="488" text-anchor="middle">calls</text>
+
+  <path class="e" d="M100 300V444"/>
+  <text class="l" x="108" y="336">rule compiler draft,</text>
+  <text class="l" x="108" y="351">unsigned until you confirm</text>
+</svg>

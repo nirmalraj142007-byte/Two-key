@@ -1,0 +1,1387 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Two-Key gateway",
+    "version": "1.0.0",
+    "description": "The only service that calls PayPal. Every error body is { \"error\": { \"code\", \"message\", \"requestId\" } }."
+  },
+  "tags": [
+    {
+      "name": "agent",
+      "description": "Called by twokey-mcp with an agent token. Propose and read only."
+    },
+    {
+      "name": "human",
+      "description": "Called by web for a signed-in person, with a 60-second Ed25519 assertion carrying the exact scope. Agent tokens (tk_agent_…) are always rejected."
+    },
+    {
+      "name": "webhooks",
+      "description": "Called by PayPal."
+    },
+    {
+      "name": "public",
+      "description": "No account needed."
+    },
+    {
+      "name": "internal-eval",
+      "description": "The evaluation pipeline only; never mounted in production."
+    }
+  ],
+  "paths": {
+    "/agent/proposals": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Propose a purchase",
+        "description": "Propose a purchase. Only product_id and qty are read; price and payee come from the catalog and merchant registry. A blocked proposal is HTTP 200 with decision \"blocked\" and makes no PayPal call.",
+        "security": [
+          {
+            "agentToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Repeats with the same key return the first result.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "product_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "qty": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  }
+                },
+                "required": [
+                  "product_id",
+                  "qty"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/catalog/search": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Search the catalog",
+        "description": "Search the catalog. Listing text is returned as untrusted_listing_text: data, never instructions.",
+        "security": [
+          {
+            "agentToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "max_price_cents",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 6,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/purchases/{proposalId}": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Status of one of this session's proposals",
+        "description": "Status of one of this session's proposals.",
+        "security": [
+          {
+            "agentToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/rules": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "The signed rules this session runs under (read-only)",
+        "description": "The signed rules this session runs under (read-only).",
+        "security": [
+          {
+            "agentToken": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/me": {
+      "get": {
+        "tags": [
+          "human"
+        ],
+        "summary": "The asserted user",
+        "description": "The asserted user.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/vault/setup-token": {
+      "post": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Start saving a PayPal wallet (Vault v3 setup token); returns the approval link",
+        "description": "Start saving a PayPal wallet (Vault v3 setup token); returns the approval link.\n\nAssertion scope: `vault:manage`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "returnUrl": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "returnUrl"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/vault/payment-token": {
+      "post": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Finish saving the wallet",
+        "description": "Finish saving the wallet. The setup token must be the one created for this user's session.\n\nAssertion scope: `vault:manage`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "setupTokenId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "setupTokenId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/vault": {
+      "delete": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Delete the saved wallet",
+        "description": "Delete the saved wallet.\n\nAssertion scope: `vault:manage`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/rules/{id}/sign": {
+      "post": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Sign a confirmed rules card",
+        "description": "Sign a confirmed rules card.\n\nAssertion scope: `rules:sign`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/rules/{id}/revoke": {
+      "post": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Revoke a rules card",
+        "description": "Revoke a rules card.\n\nAssertion scope: `rules:sign`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/sessions": {
+      "post": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Create an agent session and its agent token",
+        "description": "Create an agent session and its agent token.\n\nAssertion scope: `sessions:create`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "live",
+                      "demo"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "mode",
+                  "model"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/approvals": {
+      "get": {
+        "tags": [
+          "human"
+        ],
+        "summary": "List the user's holds",
+        "description": "List the user's holds.\n\nAssertion scope: `approvals:decide`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "denied",
+                "timed_out"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/approvals/{id}": {
+      "get": {
+        "tags": [
+          "human"
+        ],
+        "summary": "One hold",
+        "description": "One hold.\n\nAssertion scope: `approvals:decide`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Approve (capture) or deny (void) a hold",
+        "description": "Approve (capture) or deny (void) a hold.\n\nAssertion scope: `approvals:decide`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "approve",
+                      "deny"
+                    ]
+                  },
+                  "via": {
+                    "type": "string",
+                    "enum": [
+                      "web",
+                      "phone"
+                    ]
+                  }
+                },
+                "required": [
+                  "decision",
+                  "via"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/stats": {
+      "get": {
+        "tags": [
+          "human"
+        ],
+        "summary": "How many of the user's PayPal authorizations are still open",
+        "description": "How many of the user's PayPal authorizations are still open.\n\nAssertion scope: `approvals:decide`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/proposals": {
+      "get": {
+        "tags": [
+          "human"
+        ],
+        "summary": "The user's recent proposals",
+        "description": "The user's recent proposals.\n\nAssertion scope: `events:read`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/events": {
+      "get": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Server-sent events for the user's sessions and payments",
+        "description": "Server-sent events for the user's sessions and payments.\n\nAssertion scope: `events:read`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/event-stream": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/merchants/balances": {
+      "get": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Sandbox merchant balances and Two-Key payments received",
+        "description": "Sandbox merchant balances and Two-Key payments received.\n\nAssertion scope: `events:read`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/push-subscriptions": {
+      "post": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Register a browser push subscription for hold alerts",
+        "description": "Register a browser push subscription for hold alerts.\n\nAssertion scope: `push:manage`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  "keys": {
+                    "type": "object",
+                    "properties": {
+                      "p256dh": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "auth": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      }
+                    },
+                    "required": [
+                      "p256dh",
+                      "auth"
+                    ]
+                  }
+                },
+                "required": [
+                  "endpoint",
+                  "keys"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Remove a browser push subscription",
+        "description": "Remove a browser push subscription.\n\nAssertion scope: `push:manage`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "maxLength": 2048
+                  }
+                },
+                "required": [
+                  "endpoint"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/human/hijack-sessions": {
+      "post": {
+        "tags": [
+          "human"
+        ],
+        "summary": "Start a hijack-box attempt with the given injection text",
+        "description": "Start a hijack-box attempt with the given injection text.\n\nAssertion scope: `hijack:create`.",
+        "security": [
+          {
+            "humanAssertion": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "injectionText": {
+                    "type": "string",
+                    "maxLength": 8000
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "injectionText",
+                  "model"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhooks/paypal": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "PayPal webhook receiver",
+        "description": "PayPal webhook receiver. Applied only after POST /v1/notifications/verify-webhook-signature succeeds; 503 when verification is unreachable so PayPal retries.",
+        "security": [
+          {
+            "paypalSignature": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/hijack/{attemptId}/events": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Server-sent events for one hijack-box attempt; t is the attempt token",
+        "description": "Server-sent events for one hijack-box attempt; t is the attempt token.",
+        "security": [
+          {
+            "attemptToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "attemptId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/event-stream": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Liveness",
+        "description": "Liveness.",
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz/deep": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Database, PayPal and webhook-subscription checks",
+        "description": "Database, PayPal and webhook-subscription checks.",
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz/paypal": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Whether PayPal webhooks are lagging",
+        "description": "Whether PayPal webhooks are lagging.",
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Prometheus metrics",
+        "description": "Prometheus metrics.",
+        "security": [
+          {
+            "metricsToken": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/eval/sessions": {
+      "post": {
+        "tags": [
+          "internal-eval"
+        ],
+        "summary": "Create an evaluation session (mode eval: records proposals and gate decisions, never calls PayPal)",
+        "description": "Create an evaluation session (mode eval: records proposals and gate decisions, never calls PayPal). Mounted only with EVAL_ENABLED=true, never in production.",
+        "security": [
+          {
+            "evalToken": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "episodeId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "episodeId",
+                  "model"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "agentToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Agent token (tk_agent_…) issued for one session."
+      },
+      "humanAssertion": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Ed25519 JWT minted by web, valid 60 s, used once, with the exact scope."
+      },
+      "paypalSignature": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "paypal-transmission-sig",
+        "description": "PayPal transmission headers, verified with PayPal before anything applies."
+      },
+      "attemptToken": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "t",
+        "description": "Short-lived token for one hijack attempt."
+      },
+      "metricsToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "METRICS_TOKEN."
+      },
+      "evalToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-eval-token"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "requestId"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -40,17 +40,17 @@ export interface AgentRouteOptions extends Omit<PurchaseDeps, 'db' | 'log'> {
 }
 
 /** Unknown keys (amount, payee, merchant, …) are stripped; only these two reach the gateway. */
-const ProposalBody = z.object({
+export const ProposalBody = z.object({
   product_id: z.string().min(1).max(100),
   qty: z.number().int().min(1).max(20),
 });
-const IdempotencyKey = z.string().min(1).max(200).optional();
-const SearchQuery = z.object({
+export const IdempotencyKey = z.string().min(1).max(200).optional();
+export const SearchQuery = z.object({
   q: z.string().min(1).max(200),
   max_price_cents: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().min(1).max(10).default(6),
 });
-const ProposalParams = z.object({ proposalId: z.uuid() });
+export const ProposalParams = z.object({ proposalId: z.uuid() });
 /** Eval search size; episodes inject at positions 0–2, so the injected listing is always shown. */
 export const EVAL_RESULTS_MAX = 6;
 

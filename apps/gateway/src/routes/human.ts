@@ -34,10 +34,10 @@ export const DEMO_RULES_FIXED = 'Demo accounts use the preset rules';
 /** Setup tokens wait here between creation and approval (PayPal lets them live for hours). */
 const SETUP_TOKEN_TTL_MS = 3 * 60 * 60 * 1000;
 
-const IdParams = z.object({ id: z.uuid() });
-const SetupTokenBody = z.object({ returnUrl: z.string().min(1).max(2000) });
-const PaymentTokenBody = z.object({ setupTokenId: z.string().min(1).max(100) });
-const SessionBody = z.object({
+export const IdParams = z.object({ id: z.uuid() });
+export const SetupTokenBody = z.object({ returnUrl: z.string().min(1).max(2000) });
+export const PaymentTokenBody = z.object({ setupTokenId: z.string().min(1).max(100) });
+export const SessionBody = z.object({
   mode: z.enum(['live', 'demo']),
   model: z.string().min(1).max(100),
 });

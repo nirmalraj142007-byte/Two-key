@@ -15,6 +15,8 @@ export default defineConfig({
   use: {
     baseURL,
     trace: 'off',
+    // PW_VIDEO=on records a video per test (scripts/demo-gif.ts turns one into docs/demo.gif).
+    video: process.env.PW_VIDEO === 'on' ? 'on' : 'off',
   },
   webServer: {
     command: 'npm run dev -w @twokey/web',
