@@ -2,6 +2,7 @@ import { createLogger } from '@twokey/core';
 import { pgBossConnection } from '@twokey/db';
 import { PgBoss } from 'pg-boss';
 import { webEnv } from './env';
+import { wakeServices, wakeTargets } from './wake';
 
 /** Must match apps/agent-runner/src/worker.ts (`.app`: the evaluation stack consumes no queue). */
 export const AGENT_RUN_QUEUE = 'agent.run.app';
@@ -52,6 +53,12 @@ export async function enqueueAgentRun(job: AgentRunJob): Promise<void> {
     job,
   );
   if (!id) throw new Error('agent run was not queued');
+  wakeRunner();
+}
+
+/** Free hosting: wake agent-runner and twokey-mcp so the job just queued gets picked up. */
+function wakeRunner(): void {
+  wakeServices(wakeTargets(webEnv()));
 }
 
 export interface HijackRunJob extends Omit<AgentRunJob, 'mode'> {
@@ -62,6 +69,7 @@ export interface HijackRunJob extends Omit<AgentRunJob, 'mode'> {
 export async function enqueueHijackRun(job: HijackRunJob): Promise<void> {
   const id = await (await boss()).send(HIJACK_RUN_QUEUE, job);
   if (!id) throw new Error('hijack.run was not queued');
+  wakeRunner();
 }
 
 /** A recorded run shown in place of a live one (caps reached, or the live model too slow). */
@@ -71,4 +79,5 @@ export async function enqueueHijackReplay(job: {
 }): Promise<void> {
   const id = await (await boss()).send(HIJACK_REPLAY_QUEUE, job);
   if (!id) throw new Error('hijack.replay was not queued');
+  wakeRunner();
 }

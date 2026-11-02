@@ -67,8 +67,10 @@ machine that has them; without either an existing hook listing is kept.
 
 ## What the daily reset does
 
-`npm run demo:reset` runs on Render as the cron job **twokey-demo-reset** at 03:30 UTC (09:00
-IST) with the gateway's own secrets, and can be run by hand (`-- --env local|prod`). For maya and
+`npm run demo:reset` runs daily at 03:30 UTC (09:00 IST) in GitHub Actions
+(`.github/workflows/demo-reset.yml`, plan B; secrets in docs/DEPLOY.md) with the gateway's own
+secrets, and can be run by hand (`-- --env local|prod`, or **Run workflow** in Actions). Under
+plan A it is the Render cron job **twokey-demo-reset** instead. For maya and
 judge1–3 only, chosen by email:
 
 1. **Voids every held authorization** through the gateway's void path (`voidHeld`: the row is
@@ -130,10 +132,13 @@ is kept with its time since the beat began. Our IDs become `REPLAY-<kind>-<n>` a
 a `REPLAY-` prefix, so nothing in it can be taken for a live record. Re-record after any change to
 the console's event shapes, then commit the file.
 
-## External uptime monitor
+## Health checks (no uptime pinger)
 
-Monitor these every 5 minutes (keyword check where given). The free plans sleep until Nov 8, so
-expect a slow first answer before then.
+Plan B keeps every service on Render's free plan, so **do not set up a pinger**: polling would
+keep four services awake and use up the workspace's 750 free instance hours a month. Check these
+by hand (or `npm run smoke -- --env prod`) before a demo; the first answer after 15 idle minutes
+can take up to a minute while the service wakes. Under plan A (Starter, no sleep) a 5-minute
+monitor on the same URLs is fine.
 
 | URL | Healthy when |
 | --- | --- |

@@ -11,15 +11,81 @@ Two-Key has **one public environment: production.** It is the Render Blueprint i
 | `web` | `@twokey/web` | `/api/healthz` | Next.js build at deploy time |
 | `twokey-mcp` | `@twokey/mcp` | `/healthz` | Streamable HTTP at `/mcp` |
 | `agent-runner` | `@twokey/agent-runner` | `/healthz` | Web service, not a worker |
-| `twokey-demo-reset` | root (`npm run demo:reset`) | — | Cron job, 03:30 UTC (09:00 IST), Starter (cron jobs have no free plan). Gateway secrets only: `DATABASE_URL`, `PAYPAL_ENV`, `RULE_HMAC_KEY`, `RULE_HMAC_KEY_ID`, `MERCHANT_API_CREDENTIALS`. See docs/DEMO.md |
 
-**Instance plan** (`plan:` in `render.yaml`; `check:secrets` accepts `free` or `starter`):
+**Instance plan** (`plan:` in `render.yaml`; `check:secrets` accepts `free` or `starter`).
 
-| Dates | Plan | Why |
-| --- | --- | --- |
-| until Nov 8 | `free` | Free services sleep after 15 minutes idle and take about a minute to wake |
-| Nov 8 → Dec 16 | `starter` | Judging: no sleep. Switch with one commit changing the four `plan:` lines, released as usual |
-| from Dec 16 | `free` | Downgrade after judging, the same way |
+**Plan B is in force: every service stays `free`** (no card on the Render account). Free
+services sleep after 15 minutes idle and take up to about a minute to wake on the next request.
+What keeps that workable for judges:
+
+- When web queues a console or hijack-box run, it also sends a non-blocking `GET /healthz` to
+  agent-runner (`AGENT_RUNNER_URL`) and twokey-mcp (origin of `MCP_PUBLIC_URL`), so they wake
+  while the job waits in the queue (`apps/web/lib/jobs.ts`).
+- agent-runner retries its connection to twokey-mcp for up to 60 s (`connectWithRetry`).
+- The console says "Waking up the free server — this can take up to a minute" when a run has
+  shown no step after 5 s; the hijack box does the same and waits up to 75 s for a run that has
+  not started before it falls back to a recorded one.
+- The daily demo reset runs in GitHub Actions (`.github/workflows/demo-reset.yml`), because
+  Render cron jobs have no free plan.
+- **No uptime pinger.** Free instance hours are 750 a month per workspace; keeping four services
+  awake would use them up. Check health by hand or with the smoke test.
+
+### Switching to plan A (Starter + Render cron) in one commit
+
+When a card is on the account, make one commit to `main`, then release it as usual:
+
+1. In `render.yaml`, change the four `plan: free` lines to `plan: starter` (no sleep), and append
+   the cron job below to `services:`. `check:secrets` already accepts it and checks it as the
+   gateway.
+2. Delete `.github/workflows/demo-reset.yml` (otherwise the reset runs twice a day; harmless but
+   wasteful) and update the plan B notes in this file, `render.yaml` and docs/DEMO.md.
+
+```yaml
+  - type: cron
+    name: twokey-demo-reset
+    runtime: node
+    plan: starter
+    branch: release
+    region: oregon
+    schedule: "30 3 * * *"
+    buildCommand: npm ci --include=dev
+    startCommand: npm run demo:reset
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: PAYPAL_ENV
+        sync: false
+      - key: RULE_HMAC_KEY
+        sync: false
+      - key: RULE_HMAC_KEY_ID
+        sync: false
+      - key: MERCHANT_API_CREDENTIALS
+        sync: false
+```
+
+After the Blueprint sync, set the cron job's five secrets in Render (the gateway's values) and
+remove the four `PROD_*` GitHub secrets.
+
+### Daily demo reset (plan B, GitHub Actions)
+
+`.github/workflows/demo-reset.yml` runs `npm run demo:reset` at 03:30 UTC (09:00 IST) and on
+demand (**Actions → Demo reset → Run workflow**). It checks out `release`, so it runs the code
+production runs. Add these repository secrets (Settings → Secrets and variables → Actions),
+copied from the Render gateway service:
+
+| GitHub secret | Gateway variable |
+| --- | --- |
+| `PROD_DATABASE_URL` | `DATABASE_URL` (Neon, direct, `sslmode=require`) |
+| `PROD_RULE_HMAC_KEY` | `RULE_HMAC_KEY` |
+| `PROD_RULE_HMAC_KEY_ID` | `RULE_HMAC_KEY_ID` |
+| `PROD_MERCHANT_API_CREDENTIALS` | `MERCHANT_API_CREDENTIALS` |
+
+`PAYPAL_ENV` is set to `sandbox` in the workflow. In GitHub Actions `demo:reset` reads these from
+the environment (no `--env`) and refuses a local database.
 
 On both plans the gateway's start command runs `npm run db:migrate -w @twokey/db` before it
 serves (Render runs a `preDeployCommand` only on paid instances, so none is used). If a
@@ -90,7 +156,7 @@ given.
    run). It applies `render.yaml`: the free plan, branch `release`, the gateway's start command,
    `NODE_ENV=production` and `DEMO_HOLD_MINUTES=15`. Then check by hand, for each of `gateway`,
    `web`, `twokey-mcp`, `agent-runner`:
-   - **Settings → Instance Type: Free** (Starter from Nov 8, via `render.yaml`).
+   - **Settings → Instance Type: Free** (plan B; Starter only after the plan A switch above).
    - **Settings → Build & Deploy → Branch: `release`; Auto-Deploy: On Commit.**
    - gateway only: **Start Command**
      `npm run db:migrate -w @twokey/db && npm run start -w @twokey/gateway`, and no Pre-Deploy
@@ -111,6 +177,7 @@ given.
    | gateway | `MIGRATE_DATABASE_URL` | *blank* unless the database roles are applied (below) | |
    | web | `WEB_ORIGIN` | `https://<web>.onrender.com` | |
    | web | `MCP_PUBLIC_URL` | `https://<twokey-mcp>.onrender.com/mcp` | |
+   | web | `AGENT_RUNNER_URL` | `https://<agent-runner>.onrender.com` (service root; web pings `/healthz` to wake it when it queues a run) | |
    | web | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | the same value as the gateway's `VAPID_PUBLIC_KEY` | **yes** |
    | web | `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` | *leave unset* until the licence arrives (Community fallback) | **yes** |
    | web | `COMPILER_PROVIDER`, `COMPILER_BASE_URL` | *blank* (Groq defaults) | |
@@ -280,7 +347,7 @@ seconds. `webhookSubscriptions` can be `not_configured` (no `PAYPAL_WEBHOOK_ID` 
 `PUBLIC_BASE_URL`), `not_found`, `wrong_url`, `missing_events` or `fail`.
 
 CI (`npm run check:secrets`) fails if `render.yaml` lists a secret on a service that may not hold
-it, names a service other than the four plus the `twokey-demo-reset` cron job (checked as the
-gateway), deploys from a branch other than `release`, sets
+it, names a service other than the four plus the plan A `twokey-demo-reset` cron job (checked as
+the gateway), deploys from a branch other than `release`, sets
 `NODE_ENV` to anything but `production`, or lists `EVAL_ENABLED`, `EVAL_ADMIN_TOKEN` or
 `SHOW_STYLEGUIDE`. Every service also refuses to start if a secret is set where it doesn't belong.

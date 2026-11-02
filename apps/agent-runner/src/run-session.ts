@@ -65,19 +65,59 @@ const EXCERPT_MAX = 500;
 const REASONING_MAX = 4000;
 const TOOL_RESULT_MAX = 8000;
 
-export function mcpConnector(mcpUrl: string): RunDeps['connect'] {
+export function mcpConnector(mcpUrl: string, retry?: RetryOptions): RunDeps['connect'] {
   const url = new URL(mcpUrl);
   // DEPLOY.md gives the service root; the Streamable HTTP endpoint lives at /mcp.
   if (url.pathname === '/') url.pathname = '/mcp';
-  return async (token) => {
-    const client = new Client({ name: 'twokey-agent-runner', version: '0.1.0' });
-    await client.connect(
-      new StreamableHTTPClientTransport(url, {
-        requestInit: { headers: { authorization: `Bearer ${token}` } },
-      }),
-    );
-    return client;
-  };
+  return (token) =>
+    connectWithRetry(async () => {
+      const client = new Client({ name: 'twokey-agent-runner', version: '0.1.0' });
+      await client.connect(
+        new StreamableHTTPClientTransport(url, {
+          requestInit: { headers: { authorization: `Bearer ${token}` } },
+        }),
+      );
+      return client;
+    }, retry);
+}
+
+/** How long a cold twokey-mcp may take to answer (Render's free plan wakes in about a minute). */
+export const MCP_CONNECT_DEADLINE_MS = 60_000;
+
+export interface RetryOptions {
+  deadlineMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+}
+
+/** An answer from a running MCP server that a retry won't change (bad token, wrong path). */
+function isFinal(err: unknown): boolean {
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'number' && [400, 401, 403, 404, 405].includes(code);
+}
+
+/**
+ * Retries `connect` while twokey-mcp is waking: network errors, 429 and 5xx (Render answers 502
+ * or 503 while a free instance starts). Waits 1, 2, 4, 8, then 10 s between tries and gives up,
+ * with the last error, once the next try would start after `deadlineMs`.
+ */
+export async function connectWithRetry<T>(
+  connect: () => Promise<T>,
+  opts: RetryOptions = {},
+): Promise<T> {
+  const deadline = opts.deadlineMs ?? MCP_CONNECT_DEADLINE_MS;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const now = opts.now ?? Date.now;
+  const start = now();
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await connect();
+    } catch (err) {
+      const wait = Math.min(1000 * 2 ** attempt, 10_000);
+      if (isFinal(err) || now() - start + wait > deadline) throw err;
+      await sleep(wait);
+    }
+  }
 }
 
 function scopeOf(mode: Mode): BudgetScope {

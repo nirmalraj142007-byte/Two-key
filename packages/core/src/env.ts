@@ -78,6 +78,11 @@ const schemas = {
     WEB_ORIGIN: url.default('http://localhost:3000'),
     /** Streamable HTTP endpoint shown to users who connect their own agent. */
     MCP_PUBLIC_URL: url.default('http://localhost:4100/mcp'),
+    /**
+     * agent-runner's service root. On Render's free plan web pings its /healthz (and twokey-mcp's)
+     * when it queues a run, so a sleeping runner wakes; unset locally, where nothing sleeps.
+     */
+    AGENT_RUNNER_URL: url.optional(),
     /** Only needed when COMPILER_PROVIDER=anthropic. */
     ANTHROPIC_API_KEY: nonEmpty.optional(),
     /** Rule compiler: any OpenAI-compatible endpoint (default Groq), or Anthropic. */

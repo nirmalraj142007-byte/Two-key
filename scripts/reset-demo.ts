@@ -1,6 +1,7 @@
 /**
- * npm run demo:reset [-- --env local|prod]  — puts the demo tenant back to a clean state. On
- * Render it is the twokey-demo-reset cron job (09:00 IST) and needs no --env.
+ * npm run demo:reset [-- --env local|prod]  — puts the demo tenant back to a clean state. Daily
+ * at 09:00 IST it runs in GitHub Actions (.github/workflows/demo-reset.yml; plan A: the Render
+ * twokey-demo-reset cron job) with the secrets in the environment and no --env.
  *
  * For maya and judge1–3 only (by email, never by role):
  * 1. Voids every held authorization through the gateway's own void path (voidHeld: row lock,

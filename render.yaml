@@ -2,8 +2,11 @@
 #
 # - Every service deploys from the `release` branch. `main` no longer deploys the live site;
 #   scripts/release.sh fast-forwards `release` to a checked main commit (docs/DEPLOY.md).
-# - Plan: free until Nov 8, then starter (a one-line-per-service commit), back to free on Dec 16.
-#   Free services sleep after 15 minutes idle; Starter ones don't. check:secrets accepts both.
+# - Plan: free (plan B: no card on the Render account). Free services sleep after 15 minutes
+#   idle and wake on the next request in about a minute; web wakes agent-runner and twokey-mcp
+#   when it queues a run. The daily demo reset runs in GitHub Actions
+#   (.github/workflows/demo-reset.yml), since Render cron jobs need a paid plan. Plan A (starter
+#   plus the twokey-demo-reset cron job) is one commit: docs/DEPLOY.md. check:secrets accepts both.
 # - Free plans can't run a preDeployCommand, so the gateway migrates at the start of its
 #   startCommand (works on both plans). If a migration fails, the new instance never becomes
 #   healthy and Render keeps the previous deploy live. Migrations are forward-only and additive.
@@ -40,6 +43,8 @@ services:
       - key: WEB_ORIGIN
         sync: false
       - key: MCP_PUBLIC_URL
+        sync: false
+      - key: AGENT_RUNNER_URL
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
@@ -194,32 +199,4 @@ services:
       - key: DEMO_EPISODE_ID
         sync: false
       - key: PORT
-        sync: false
-  # Daily demo reset (docs/DEMO.md): voids demo holds through the gateway's void path, clears the
-  # demo accounts' finished history, re-signs expiring demo cards and rebuilds the demo hook.
-  # 03:30 UTC = 09:00 IST. Cron jobs have no free plan; this one runs about a minute a day.
-  # It holds the gateway's own secrets, so check:secrets treats it as the gateway.
-  - type: cron
-    name: twokey-demo-reset
-    runtime: node
-    plan: starter
-    branch: release
-    region: oregon
-    schedule: "30 3 * * *"
-    buildCommand: npm ci --include=dev
-    startCommand: npm run demo:reset
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: LOG_LEVEL
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: PAYPAL_ENV
-        sync: false
-      - key: RULE_HMAC_KEY
-        sync: false
-      - key: RULE_HMAC_KEY_ID
-        sync: false
-      - key: MERCHANT_API_CREDENTIALS
         sync: false

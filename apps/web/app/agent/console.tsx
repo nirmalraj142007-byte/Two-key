@@ -20,6 +20,7 @@ import {
 import { type LiveStatus, useTwoKeyEvents } from '@/lib/events-client';
 import type { RuleLineView } from '@/lib/rules-view';
 import { cn } from '@/lib/utils';
+import { WAKING_AFTER_MS, WAKING_TEXT } from '@/lib/waking';
 import { recentProposals, runStatus, startRun } from './actions';
 
 export interface CardSummary {
@@ -60,12 +61,29 @@ function LiveIndicator({ status }: { status: LiveStatus }) {
   );
 }
 
-function RunNote({ run, onRetry }: { run: Run; onRetry: () => void }) {
+export function RunNote({
+  run,
+  waking = false,
+  onRetry,
+}: {
+  run: Run;
+  /** No step yet after WAKING_AFTER_MS: say why the wait is long. */
+  waking?: boolean;
+  onRetry: () => void;
+}) {
   if (run.status === 'starting' || run.status === 'running') {
     return (
-      <p className="flex items-center gap-2 text-sm text-text-muted" role="status">
+      <p
+        className="flex items-center gap-2 text-sm text-text-muted"
+        role="status"
+        data-waking={waking || undefined}
+      >
         <LoaderCircleIcon aria-hidden="true" className="size-4 animate-spin" />
-        {run.status === 'starting' ? 'Starting the agent…' : 'The agent is shopping…'}
+        {waking
+          ? WAKING_TEXT
+          : run.status === 'starting'
+            ? 'Starting the agent…'
+            : 'The agent is shopping…'}
       </p>
     );
   }
@@ -114,6 +132,10 @@ export function AgentConsole({
   const [seen, setSeen] = useState<string | null>(null);
   /** A live run failed or could not start for a reason the person can't fix: play the recording. */
   const [replaying, setReplaying] = useState(false);
+  /** When this tab sent its current run (null for none, or a forced screenshot run). */
+  const [sentAt, setSentAt] = useState<number | null>(null);
+  /** The current run has waited WAKING_AFTER_MS without a step. */
+  const [waking, setWaking] = useState(false);
   const [, startTransition] = useTransition();
 
   const catchUp = useCallback(() => {
@@ -179,7 +201,19 @@ export function AgentConsole({
     return () => clearInterval(t);
   }, [run, initialRun]);
 
+  // Free hosting: a run that shows no step within WAKING_AFTER_MS is likely waking the server.
+  const pending = run.status === 'starting' || run.status === 'running';
+  const runHasSteps =
+    'sessionId' in run && run.sessionId ? (steps[run.sessionId]?.length ?? 0) > 0 : false;
+  useEffect(() => {
+    setWaking(false);
+    if (sentAt === null || !pending || runHasSteps) return;
+    const t = setTimeout(() => setWaking(true), Math.max(0, sentAt + WAKING_AFTER_MS - Date.now()));
+    return () => clearTimeout(t);
+  }, [sentAt, pending, runHasSteps]);
+
   function send(message: string) {
+    setSentAt(Date.now());
     setRun({ status: 'starting', message });
     startTransition(async () => {
       const res = await startRun(message, scriptedModel);
@@ -248,7 +282,11 @@ export function AgentConsole({
             <p className="self-end rounded-lg bg-surface px-3 py-2 text-sm text-text">
               {run.message}
             </p>
-            <RunNote run={run} onRetry={() => send(run.message)} />
+            <RunNote
+              run={run}
+              waking={waking && busy && !runHasSteps}
+              onRetry={() => send(run.message)}
+            />
           </div>
         ) : null}
         <form onSubmit={onSubmit} className="flex flex-col gap-2">

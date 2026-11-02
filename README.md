@@ -17,6 +17,8 @@ Two-Key is one MCP server that replaces PayPal's money-moving tools: a hijacked 
 
 Live demo: **<LIVE_URL>** (PayPal sandbox only; no real money moves).
 
+First load may take up to a minute (free hosting).
+
 1. **Open `/hijack`.** Paste any instruction you like into a product listing and watch a real agent read it. The gate's decision shows next to the agent's: captured, held or blocked, and whether a PayPal order was created.
 2. **Sign in as `judge1@twokey.demo` / `<DEMO_PASSWORD>`** and open the console. judge1 already has a saved sandbox wallet and signed rules. Ask for "Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week." Then open History and Approvals.
 3. **Open `/results`.** Every number from the evaluation, with the runs behind it.

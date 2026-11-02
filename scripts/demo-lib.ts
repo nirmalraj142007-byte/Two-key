@@ -22,7 +22,8 @@ import { type Db, listings, merchants, ruleCards, users, vaultTokens } from '@tw
 import { signDraftCard } from '@twokey/gateway';
 import { and, desc, eq, gt, inArray, max, ne } from 'drizzle-orm';
 
-export type DemoEnv = 'local' | 'prod' | 'render';
+/** `hosted`: a Render cron job or the GitHub Actions demo-reset workflow; secrets come from the environment. */
+export type DemoEnv = 'local' | 'prod' | 'hosted';
 
 export const DEMO_REQUEST =
   'Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week.';
@@ -54,8 +55,9 @@ export function loadDemoEnv(argv: string[], script: string): DemoEnv {
   const asked = flag(argv, '--env');
   let env: DemoEnv;
   if (asked === 'local' || asked === 'prod') env = asked;
-  else if (asked === undefined && process.env.RENDER) env = 'render';
-  else {
+  else if (asked === undefined && (process.env.RENDER || process.env.GITHUB_ACTIONS === 'true')) {
+    env = 'hosted';
+  } else {
     console.error(`usage: npm run ${script} -- --env local|prod`);
     process.exit(1);
   }

@@ -1,0 +1,47 @@
+# Daily demo reset against production (docs/DEMO.md): voids demo holds through the gateway's own
+# void path, clears the demo accounts' finished history, re-signs expiring demo cards and rebuilds
+# the demo hook. Plan B: Render cron jobs need a paid plan, so it runs here instead
+# (docs/DEPLOY.md has the one-commit switch back to the Render cron job).
+#
+# Repository secrets (Settings → Secrets and variables → Actions), copied from the Render
+# gateway service: PROD_DATABASE_URL, PROD_RULE_HMAC_KEY, PROD_RULE_HMAC_KEY_ID,
+# PROD_MERCHANT_API_CREDENTIALS. They are the gateway's own secrets; nothing else gets them.
+name: Demo reset
+
+on:
+  schedule:
+    - cron: "30 3 * * *" # 03:30 UTC = 09:00 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-reset
+  cancel-in-progress: false
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # The code production runs: the release branch.
+      - uses: actions/checkout@v4
+        with:
+          ref: release
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --include=dev
+      # No --env: in GitHub Actions demo:reset reads its secrets from the environment and refuses
+      # a local database.
+      - run: npm run demo:reset
+        env:
+          NODE_ENV: production
+          LOG_LEVEL: warn
+          PAYPAL_ENV: sandbox
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          RULE_HMAC_KEY: ${{ secrets.PROD_RULE_HMAC_KEY }}
+          RULE_HMAC_KEY_ID: ${{ secrets.PROD_RULE_HMAC_KEY_ID }}
+          MERCHANT_API_CREDENTIALS: ${{ secrets.PROD_MERCHANT_API_CREDENTIALS }}

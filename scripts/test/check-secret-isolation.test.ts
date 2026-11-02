@@ -35,10 +35,10 @@ describe('check-secret-isolation', () => {
     expect(r.stderr).not.toContain('web is on plan');
   });
 
-  it('passes the real render.yaml', () => {
+  it('passes the real render.yaml (plan B: four free services, no cron job)', () => {
     const r = run(fileURLToPath(new URL('../../render.yaml', import.meta.url)));
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('secret isolation OK (5 services)');
+    expect(r.stdout).toContain('secret isolation OK (4 services)');
   });
 
   it('treats the demo reset cron job as the gateway', () => {
