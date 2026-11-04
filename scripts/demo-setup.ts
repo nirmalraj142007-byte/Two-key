@@ -1,5 +1,9 @@
 /**
- * npm run demo:setup -- --env local|prod  — the demo tenant, idempotently (docs/DEMO.md).
+ * npm run demo:setup -- --env local|prod [--accounts maya,judge1]
+ * The demo tenant, idempotently (docs/DEMO.md).
+ *
+ * --accounts limits steps 1–3 to the listed demo accounts; the others are reported as skipped and
+ * left unchanged. Steps 0, 4 and 5 (catalog, demo hook, hijack user) always run.
  *
  * 0. Runs the idempotent catalog seed (merchants, demo catalog), as db:seed does.
  * 1. Upserts maya@twokey.demo (user) and judge1–3@twokey.demo (judge_demo) with DEMO_PASSWORD,
@@ -26,9 +30,11 @@ import {
   DEMO_REQUEST,
   day,
   ensureHijackVault,
+  flag,
   HIJACK_EMAIL,
   hasActiveVault,
   loadDemoEnv,
+  parseDemoAccounts,
   RESIGN_WITHIN_MS,
   requireVars,
   ruleKey,
@@ -37,7 +43,22 @@ import {
 } from './demo-lib.js';
 
 const SCRIPT = 'demo:setup';
-const envName = loadDemoEnv(process.argv.slice(2), SCRIPT);
+const argv = process.argv.slice(2);
+const accountsFlag = flag(argv, '--accounts');
+let selected: Set<string>;
+try {
+  selected = new Set(
+    accountsFlag === undefined
+      ? DEMO_ACCOUNTS.map((a) => a.email)
+      : parseDemoAccounts(accountsFlag),
+  );
+} catch (err) {
+  console.error(`${SCRIPT}: ${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+}
+const accounts = DEMO_ACCOUNTS.filter((a) => selected.has(a.email));
+const skipped = DEMO_ACCOUNTS.filter((a) => !selected.has(a.email));
+const envName = loadDemoEnv(argv, SCRIPT);
 const env = requireVars(SCRIPT, [
   'DATABASE_URL',
   'DEMO_PASSWORD',
@@ -62,6 +83,10 @@ const pad = (s: string) => s.padEnd(22);
 
 try {
   console.log(`demo:setup --env ${envName} (database ${new URL(env.DATABASE_URL).hostname})`);
+  if (skipped.length > 0) {
+    console.log(`accounts ${accounts.map((a) => a.email).join(', ')}`);
+    for (const a of skipped) console.log(`skipped ${pad(a.email)} not in --accounts, unchanged`);
+  }
 
   // 0. merchants and the demo catalog (idempotent upserts; db:seed does the same)
   const seeded = await runSeed(env.DATABASE_URL);
@@ -71,7 +96,7 @@ try {
   const passwordHash = await hash(env.DEMO_PASSWORD);
   const ids = new Map<string, string>();
   for (const a of [
-    ...DEMO_ACCOUNTS,
+    ...accounts,
     { email: HIJACK_EMAIL, displayName: 'Hijack system', role: 'hijack_system' as const },
   ]) {
     const hashed = a.role === 'hijack_system' ? null : passwordHash;
@@ -93,7 +118,7 @@ try {
 
   // 2. wallets
   const missing: string[] = [];
-  for (const a of DEMO_ACCOUNTS) {
+  for (const a of accounts) {
     const ok = await hasActiveVault(db, idOf(a.email));
     console.log(`vault   ${pad(a.email)} ${ok ? 'active' : 'MISSING'}`);
     if (!ok) missing.push(a.email);
@@ -113,7 +138,7 @@ try {
     process.exitCode = 2;
   } else {
     // 3. demo cards
-    for (const a of DEMO_ACCOUNTS) {
+    for (const a of accounts) {
       const userId = idOf(a.email);
       const active = await activeCard(db, userId, now);
       let demo = false;
@@ -164,7 +189,11 @@ try {
     if (!(await cardVerifies(db, hijackId, key, now)))
       throw new Error('hijack card does not verify');
     if (!vault.startsWith('active')) process.exitCode = 2;
-    console.log(process.exitCode ? 'demo:setup incomplete (see above)' : 'demo:setup done');
+    if (process.exitCode) console.log('demo:setup incomplete (see above)');
+    else if (skipped.length > 0) {
+      console.log(`skipped ${skipped.map((a) => a.email).join(', ')} (not in --accounts)`);
+      console.log(`demo:setup done for ${accounts.map((a) => a.email).join(', ')}`);
+    } else console.log('demo:setup done');
   }
 } catch (err) {
   console.error(err instanceof Error ? err.message : err);

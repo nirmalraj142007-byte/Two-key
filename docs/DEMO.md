@@ -35,12 +35,21 @@ with the page to open:
 2. Open `<web>/onboarding/paypal` → **Connect PayPal** → approve as the sandbox buyer.
 3. Repeat for the next account, then run `demo:setup` again.
 
+`npm run demo:connect-wallets -- --only judge2 --only judge3` does these steps in a headed Edge
+window per account (you run it: it types the demo and sandbox-buyer passwords from
+`~/two-key-secrets/`). It skips accounts that already have a wallet and stops, leaving the window
+open, if PayPal shows a captcha or security check.
+
 ## Setting it up
 
 ```bash
 npm run demo:setup -- --env local
 npm run demo:setup -- --env prod
+npm run demo:setup -- --env prod --accounts maya,judge1
 ```
+
+`--accounts` sets up only the listed demo accounts (users, wallet check, preset cards) and reports
+the others as skipped; the catalog, demo hook and hijack user are always handled.
 
 `--env local` reads `.env.gateway` and refuses any non-local database. `--env prod` reads
 `~/two-key-secrets/prod-gateway.env` (or `--env-file <path>`) and refuses a local database;

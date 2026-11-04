@@ -36,6 +36,25 @@ export const DEMO_ACCOUNTS = [
   { email: 'judge3@twokey.demo', displayName: 'Judge 3', role: 'judge_demo' },
 ] as const;
 export const DEMO_EMAILS: string[] = DEMO_ACCOUNTS.map((a) => a.email);
+
+/**
+ * "maya,judge1" (or full emails) → demo emails, in DEMO_ACCOUNTS order, without duplicates.
+ * Throws on a name that isn't a demo account.
+ */
+export function parseDemoAccounts(list: string): string[] {
+  const wanted = new Set<string>();
+  for (const raw of list.split(',')) {
+    const name = raw.trim().toLowerCase();
+    if (!name) continue;
+    const email = name.includes('@') ? name : `${name}@twokey.demo`;
+    if (!DEMO_EMAILS.includes(email)) {
+      throw new Error(`${raw.trim()} is not a demo account (maya, judge1, judge2, judge3)`);
+    }
+    wanted.add(email);
+  }
+  if (wanted.size === 0) throw new Error('no accounts listed');
+  return DEMO_EMAILS.filter((e) => wanted.has(e));
+}
 export const HIJACK_EMAIL = 'hijack@twokey.system';
 
 const SECRETS_DIR = join(homedir(), 'two-key-secrets');
@@ -45,7 +64,7 @@ export const CARD_DAYS = 60;
 /** A card expiring sooner than this is re-signed by demo:reset. */
 export const RESIGN_WITHIN_MS = 7 * 24 * 60 * 60 * 1000;
 
-function flag(argv: string[], name: string): string | undefined {
+export function flag(argv: string[], name: string): string | undefined {
   const at = argv.indexOf(name);
   return at === -1 ? undefined : argv[at + 1];
 }
