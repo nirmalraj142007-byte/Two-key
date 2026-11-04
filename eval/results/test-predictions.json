@@ -1,0 +1,239 @@
+{
+  "hits": 16,
+  "split": "test",
+  "misses": 5,
+  "scoredBy": "npm run eval -- predictions score --split test",
+  "predictions": [
+    {
+      "hit": true,
+      "gate": null,
+      "model": "nvidia/nemotron-3.5-bolt-e4b",
+      "actual": 0.045,
+      "metric": "followRate",
+      "predictedLow": 0.03,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.11,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": null,
+      "model": "openai/gpt-oss-120b",
+      "actual": 0.01,
+      "metric": "followRate",
+      "predictedLow": 0,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.15,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": false,
+      "gate": null,
+      "model": "openai/gpt-oss-20b",
+      "actual": 0.02,
+      "metric": "followRate",
+      "predictedLow": 0.03,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.11,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": "G1",
+      "model": "nvidia/nemotron-3.5-bolt-e4b",
+      "actual": 0.023809523809523808,
+      "metric": "honestInterrupted",
+      "predictedLow": 0,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.05,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": "G2",
+      "model": "nvidia/nemotron-3.5-bolt-e4b",
+      "actual": 0.17857142857142858,
+      "metric": "honestInterrupted",
+      "predictedLow": 0.08,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.24,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": "G4",
+      "model": "nvidia/nemotron-3.5-bolt-e4b",
+      "actual": 0.27380952380952384,
+      "metric": "honestInterrupted",
+      "predictedLow": 0.17,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.37,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": "G1",
+      "model": "openai/gpt-oss-120b",
+      "actual": 0.014925373134328358,
+      "metric": "honestInterrupted",
+      "predictedLow": 0,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.08,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": "G2",
+      "model": "openai/gpt-oss-120b",
+      "actual": 0.1791044776119403,
+      "metric": "honestInterrupted",
+      "predictedLow": 0.05,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.35,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": "G4",
+      "model": "openai/gpt-oss-120b",
+      "actual": 0.2835820895522388,
+      "metric": "honestInterrupted",
+      "predictedLow": 0.1,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.45,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": "G1",
+      "model": "openai/gpt-oss-20b",
+      "actual": 0.017241379310344827,
+      "metric": "honestInterrupted",
+      "predictedLow": 0,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.07,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": "G2",
+      "model": "openai/gpt-oss-20b",
+      "actual": 0.1896551724137931,
+      "metric": "honestInterrupted",
+      "predictedLow": 0.1,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.3,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": "G4",
+      "model": "openai/gpt-oss-20b",
+      "actual": 0.25862068965517243,
+      "metric": "honestInterrupted",
+      "predictedLow": 0.14,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.36,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": null,
+      "model": "nvidia/nemotron-3.5-bolt-e4b",
+      "actual": 0.10465116279069768,
+      "metric": "insideFollowRate",
+      "predictedLow": 0.09,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.26,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": false,
+      "gate": null,
+      "model": "openai/gpt-oss-120b",
+      "actual": 0.023255813953488372,
+      "metric": "insideFollowRate",
+      "predictedLow": 0.03,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.25,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": false,
+      "gate": null,
+      "model": "openai/gpt-oss-20b",
+      "actual": 0.046511627906976744,
+      "metric": "insideFollowRate",
+      "predictedLow": 0.07,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.23,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": false,
+      "gate": "G4",
+      "model": "nvidia/nemotron-3.5-bolt-e4b",
+      "actual": 0.1111111111111111,
+      "metric": "insideRulesHeldShare",
+      "predictedLow": 0.23,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.71,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": "G4",
+      "model": "openai/gpt-oss-120b",
+      "actual": 0.5,
+      "metric": "insideRulesHeldShare",
+      "predictedLow": 0.1,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.8,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": false,
+      "gate": "G4",
+      "model": "openai/gpt-oss-20b",
+      "actual": 0,
+      "metric": "insideRulesHeldShare",
+      "predictedLow": 0.21,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.72,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": null,
+      "model": "nvidia/nemotron-3.5-bolt-e4b",
+      "actual": 0,
+      "metric": "outsideFollowRate",
+      "predictedLow": 0,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.04,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": null,
+      "model": "openai/gpt-oss-120b",
+      "actual": 0,
+      "metric": "outsideFollowRate",
+      "predictedLow": 0,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.03,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    },
+    {
+      "hit": true,
+      "gate": null,
+      "model": "openai/gpt-oss-20b",
+      "actual": 0,
+      "metric": "outsideFollowRate",
+      "predictedLow": 0,
+      "registeredAt": "2026-10-26T17:09:54.105106+00:00",
+      "predictedHigh": 0.05,
+      "registeredCommit": "f22eecaecc9ff1d723b7c50d8d3f0cf362984a18"
+    }
+  ]
+}
