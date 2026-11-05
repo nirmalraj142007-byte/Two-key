@@ -16,6 +16,7 @@ import {
   mergeProposals,
   type ProposalView,
   type StepEntry,
+  scriptedRunLabel,
 } from '@/lib/console-view';
 import { type LiveStatus, useTwoKeyEvents } from '@/lib/events-client';
 import type { RuleLineView } from '@/lib/rules-view';
@@ -239,9 +240,16 @@ export function AgentConsole({
   const ready = card !== null && vaultConnected;
   const currentSteps = sessionId ? (steps[sessionId] ?? []) : [];
   const currentCards = sessionId ? proposals.filter((p) => p.sessionId === sessionId) : [];
+  const scriptedLabel = scriptedRunLabel(scriptedModel);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,18rem)]">
+      {/* Shown above everything, before and during the run, so no recording can miss it. */}
+      {scriptedLabel ? (
+        <div data-slot="scripted-run-label" className="lg:col-span-3">
+          <Banner tone="warning" text={scriptedLabel} />
+        </div>
+      ) : null}
       {/* Chat */}
       <section aria-labelledby="chat-title" className="flex flex-col gap-4">
         <h2 id="chat-title" className="sr-only">

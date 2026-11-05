@@ -30,7 +30,7 @@ Tick each box in this file as it is done; commit the ticks.
 
 - [ ] ≤ 2:55; follows the runbook; every number said or shown is in its generated block.
 - [ ] No "held about half"; the $0.00 is never presented as blocks seen in the evaluation.
-- [ ] Scripted runs carry the lower third "scripted agent"; any replay keeps its banner.
+- [ ] Every scripted run keeps the console's "Scripted demo run" label in frame; any replay keeps its banner.
 - [ ] Captions: `docs/video/captions.srt` uploaded with the video (retime to the final cut by
       editing `captions.template.srt` and rerunning `node scripts/readme-results.ts`).
 - [ ] End card: `docs/video/end-card.png` (`npm run video:end-card`).

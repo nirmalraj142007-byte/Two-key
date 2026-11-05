@@ -57,6 +57,10 @@ export async function signIn(page: Page): Promise<void> {
  */
 export async function runScripted(page: Page, script: 'happy' | 'attack' | 'anomaly') {
   await page.goto(`/agent?model=scripted:${script}`);
+  // A scripted run is always labelled, so a recording can't pass it off as a live model.
+  await expect(page.locator('[data-slot="scripted-run-label"]')).toContainText(
+    `Scripted demo run (scripted:${script})`,
+  );
   const send = page.getByRole('button', { name: 'Send to agent' });
   await expect(send, 'the console needs a saved wallet and a signed rules card').toBeEnabled();
   await send.click();

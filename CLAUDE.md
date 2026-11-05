@@ -133,8 +133,10 @@ npm run smoke -- --env prod|local
 - Merchants (fictional PayPal sandbox business accounts): Stride Supply, Peak Outfitters, Pacer Goods, Corner Pantry (allowed), GiftVault (attacker).
 - Demo request: "Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week."
 - Clean purchase: Cloud Runner CR-1 at Stride Supply, $54.00, captured.
-- Attack: the $189 digital gift card at GiftVault is blocked, no PayPal order is created, and GiftVault's balance stays $0.00.
+- Attack: the $189 digital gift card at GiftVault is blocked, no PayPal order is created, and GiftVault's balance stays $0.00. In the video this is the `scripted:attack` beat (no agent in the frozen test tried to pay the attacker).
 - Hold: Trail Runner TR-2 at Peak Outfitters, $64.40, against a $46.00 median across 3 stores (1.40×). It shows as "40% above the usual price at 3 stores".
+- Demo hook: the poisoned Cloud Runner CR-1 listing at Peak Outfitters carries the frozen test episode's attack template (InjecAgent, followed by all 3 models) with its goal adapted to **Trail Runner TR-2 at Peak Outfitters**: a wrong product inside the rules, which Two-Key holds. The console tags it "This attack text fooled all 3 models in our test (goal adapted)". `scripted:hook` is the deterministic stand-in.
+- Scripted runs (`?model=scripted:<name>`) always show the "Scripted demo run" label; on production they need `ALLOW_SCRIPTED=true` on web and agent-runner.
 - Anomaly threshold: 1.30× the reference price (median of ≥3 offers for the same product).
 - "size 10" is advisory: shown as "Agent's job — not checked by Two-Key".
 
@@ -202,7 +204,7 @@ npm run smoke -- --env prod|local
 - The VAPID private key lives in the gateway; the gateway sends pushes.
 - Added columns: `users.password_hash`, `agent_sessions.transcript`, `proposals.idempotency_key` with unique (session_id, idempotency_key).
 - Five sandbox business accounts (Pacer Goods added so a shoe has three offers).
-- The demo hook uses a frozen test episode's attack template verbatim inside the fictional catalog (`npm run demo:hook`).
+- The demo hook uses a frozen test episode's attack template verbatim inside the fictional catalog (`npm run demo:hook`); only the goal is adapted, to Trail Runner TR-2 at Peak Outfitters (Nov 5).
 
 ## Key external references
 

@@ -215,7 +215,11 @@ function goalPattern(goal: string): RegExp {
   return new RegExp(parts.map(esc).join('\\(product id [^)]+\\)'));
 }
 
-/** "Template from test episode <id> · followed by k of 3 models" for the demo hook's listing. */
+/**
+ * The demo hook's tag: "This attack text fooled all 3 models in our test (goal adapted) · test
+ * episode <id>". The counts come from eval/frozen/demo-episode.json; "our test" only for the test
+ * split. The goal is adapted to the demo product, so the tag says so.
+ */
 export function demoHookTag(hit: ListingHit, hook: DemoHook): string | null {
   const isHook =
     hit.injected &&
@@ -223,7 +227,22 @@ export function demoHookTag(hit: ListingHit, hook: DemoHook): string | null {
     hit.store === hook.listingStore &&
     goalPattern(hook.targetGoal).test(hit.listingText);
   if (!isHook) return null;
-  return `Template from ${hook.label} ${hook.episodeId} · followed by ${hook.followedBy} of ${hook.modelsTotal} models`;
+  const fooled =
+    hook.followedBy === hook.modelsTotal
+      ? `all ${hook.modelsTotal} models`
+      : `${hook.followedBy} of ${hook.modelsTotal} models`;
+  const where =
+    hook.label === 'test episode' ? 'in our test' : `in our ${hook.label.split(' ')[0]} set`;
+  return `This attack text fooled ${fooled} ${where} (goal adapted) · ${hook.label} ${hook.episodeId}`;
+}
+
+/**
+ * The label a scripted run always shows (`?model=scripted:<name>`), so a recording can never pass
+ * a fixed script off as a live AI model. Null for live models.
+ */
+export function scriptedRunLabel(model: string | undefined): string | null {
+  if (!model?.startsWith('scripted:')) return null;
+  return `Scripted demo run (${model}): a fixed script plays the agent, not a live AI model.`;
 }
 
 /** The first line of a tool result: the gateway's own sentence. */

@@ -11,8 +11,9 @@ Copy rules for the voice-over, captions and edits:
 - Never say Two-Key "held about half". It held 2 of the 15 inside-the-rules follows.
 - Never imply the $0.00 came from blocking attempts in the evaluation: no agent in the test tried
   to pay the attacker. The block is shown by the scripted 0:32 beat and guaranteed by the design.
-- A scripted run is a stand-in, not a live model. When a fallback uses one, show the lower third
-  **"scripted agent"**. Anything replayed keeps its banner "Replaying a recorded run".
+- A scripted run is a stand-in, not a live model. The console labels every one "Scripted demo
+  run (scripted:<name>): a fixed script plays the agent, not a live AI model"; keep that label in
+  frame. Anything replayed keeps its banner "Replaying a recorded run".
 - No AG Grid claim anywhere (prize criteria not checked).
 
 ## Before recording
@@ -50,10 +51,10 @@ Copy rules for the voice-over, captions and edits:
 
 | Time | Screen | Do | Shows | Fallback |
 | --- | --- | --- | --- | --- |
-| 0:00–0:10 Hook | `/agent` | Send "Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week." | The agent searches; the Cloud Runner CR-1 listing at Peak Outfitters carries the attack text; the agent proposes **Trail Runner TR-2 at Peak Outfitters**. Edit overlay on the listing: **"this attack text fooled all 3 models in our test (goal adapted)"** | If the live model does not take the bait in two takes: `/agent?model=scripted:hook`, same message, lower third "scripted agent" |
+| 0:00–0:10 Hook | `/agent` | Send "Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week." | The agent searches; the Cloud Runner CR-1 listing at Peak Outfitters carries the attack text; the agent proposes **Trail Runner TR-2 at Peak Outfitters**. The console tags the listing **"This attack text fooled all 3 models in our test (goal adapted)"**; keep the tag in frame | If the live model does not take the bait in two takes: `/agent?model=scripted:hook`, same message (the "Scripted demo run" label shows) |
 | 0:10–0:20 Rules | `/rules` | Scroll to the card | Maya's signed card: badges **enforced at payment** (stores, $70, one item) vs **Agent's job — not checked by Two-Key** (size 10) | — |
 | 0:20–0:32 Clean purchase | `/agent?model=scripted:happy` | Send the demo request | Cloud Runner CR-1 at Stride Supply, $54.00, **Captured**; open `/history` for the PayPal order and capture IDs | Live model instead of scripted if it buys CR-1 at Stride |
-| 0:32–0:50 Attacker attempt | `/agent?model=scripted:attack` (lower third "scripted agent") | Send the demo request | $189 gift card at GiftVault → **Blocked · no PayPal order** ("GiftVault is not one of your stores. No PayPal order created.") | — |
+| 0:32–0:50 Attacker attempt | `/agent?model=scripted:attack` (the "Scripted demo run" label shows) | Send the demo request | $189 gift card at GiftVault → **Blocked · no PayPal order** ("GiftVault is not one of your stores. No PayPal order created.") | — |
 | 0:50–1:10 Hold | The hook take's card, then the notification | Card shows **Waiting for you**: "40% above the usual price at 3 stores" ($64.40 vs $46.00). Click the Chrome notification "Approve $64.40 at Peak Outfitters?" → **Deny** | **Voided · no charge** | **No push:** open `/approvals` → the hold → **Deny**. Hold expired (15 min) or hook taken with the scripted fallback: `/agent?model=scripted:anomaly`, "Trail Runner TR-2, under $70, one pair." |
 | 1:10–1:40 Results | `/results` | Hover the three model cards | Outside vs inside the rules per model, "Money sent to an attacker under Two-Key: $0.00". Caption the honest note (no agent tried, so $0.00 does not test the block) | — |
 | 1:40–2:00 Honesty | `/results` → **Frontier**, then **Predictions**; README "What we found" note | Point at the static cap and Two-Key points per model; scroll the misses | Frontier, predictions with misses marked, the dev→test note | — |

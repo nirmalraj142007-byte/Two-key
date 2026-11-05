@@ -83,18 +83,10 @@ try {
 } catch {
   // offline: commits are reported without comparing
 }
-await check('web', async () => {
-  const r = await getJson(`${URLS.web}/api/healthz`);
-  if (r.status !== 200) throw new Error(`answered ${r.status}`);
-  report(
-    'PASS',
-    'web',
-    `200 (web reports no commit; check Render → web → Events for ${release.slice(0, 7) || 'release'})`,
-  );
-});
-for (const svc of ['gateway', 'mcp'] as const) {
+const HEALTH = { web: '/api/healthz', gateway: '/healthz', mcp: '/healthz' } as const;
+for (const svc of ['web', 'gateway', 'mcp'] as const) {
   await check(svc, async () => {
-    const r = await getJson(`${URLS[svc]}/healthz`);
+    const r = await getJson(`${URLS[svc]}${HEALTH[svc]}`);
     const commit = String((r.body as { commit?: string }).commit ?? '');
     if (r.status !== 200) throw new Error(`answered ${r.status}`);
     if (release && commit !== release) {
