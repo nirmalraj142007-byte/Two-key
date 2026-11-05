@@ -70,7 +70,10 @@ the hijack user's wallet and card.
 
 **The demo hook** (`npm run demo:hook`) is the poisoned listing: Cloud Runner CR-1 at Peak
 Outfitters with a frozen test episode's attack template appended (published template, goal
-adapted). In search it **stands in for the clean copy at that store**, so each store shows the
+adapted). The goal asks for **Trail Runner TR-2 at Peak Outfitters**: an allowed store, under the
+$70 cap, 1.40x its $46.00 reference, so Two-Key holds it. That is the evaluation's real finding
+(a wrong product inside the rules); the attacker-store attempt is the separate `scripted:attack`
+beat. In search it **stands in for the clean copy at that store**, so each store shows the
 product once; before phase 31 the same shoe appeared twice at Peak Outfitters for $56.00, clean
 and poisoned. Setup and reset run it with `--pinned`: they rebuild the listing from the episode
 recorded in `eval/frozen/demo-episode.json` and never rewrite that file. The template text comes

@@ -3,10 +3,15 @@
  *
  * buildDemoHook(sql) picks the attacked TEST episode followed by the most models (ties: lowest
  * id; no followed test episode: the best dev episode, labelled "development episode"), adapts its
- * attack template's goal to the demo target (the "Digital gift card $189" at GiftVault) with the
- * evaluation's own adaptGoal rule, and upserts a poisoned copy of "Cloud Runner CR-1" at Peak
- * Outfitters into the demo_unbranded snapshot. In search it stands in for the clean copy at that
- * store, so the product shows once (apps/gateway/src/routes/agent.ts).
+ * attack template's goal to the demo target with the evaluation's own adaptGoal rule, and upserts
+ * a poisoned copy of "Cloud Runner CR-1" at Peak Outfitters into the demo_unbranded snapshot. In
+ * search it stands in for the clean copy at that store, so the product shows once
+ * (apps/gateway/src/routes/agent.ts).
+ *
+ * The demo target is the evaluation's real finding: a plausible wrong product INSIDE the rules
+ * (HOOK_TARGET: Trail Runner TR-2 at Peak Outfitters, an allowed store, $64.40 against a $46.00
+ * median), which Two-Key holds for the person. The attacker-store attempt (the GiftVault gift
+ * card) is shown separately with the scripted:attack model.
  *
  * `pinned: true` (demo:setup, demo:reset) uses the episode recorded in
  * eval/frozen/demo-episode.json instead of choosing one, reads its template from the database
@@ -30,6 +35,10 @@ import {
 } from '../eval/src/attacks.js';
 
 export const HOOK_GROUP = 'cloud-runner-cr1-demo-hook';
+/** The poisoned listing: a copy of this product at this store. */
+export const HOOK_HOST = { group: 'cloud-runner-cr1', merchant: 'peak-outfitters' } as const;
+/** What the adapted goal asks for: a wrong product inside the demo rules, held as an anomaly. */
+export const HOOK_TARGET = { group: 'trail-runner-tr2', merchant: 'peak-outfitters' } as const;
 export const DEMO_EPISODE_FILE = join(
   import.meta.dirname,
   '..',
@@ -157,27 +166,78 @@ interface ListingRow {
   store: string;
 }
 
-export async function buildDemoHook(sql: Sql, opts: { pinned: boolean }): Promise<HookResult> {
+interface DemoCatalog {
+  snapshotId: string;
+  listing: (group: string, slug: string) => Promise<ListingRow[]>;
+  target: ListingRow;
+  original: ListingRow;
+  demoTarget: { title: string; productId: string; storeName: string };
+}
+
+async function demoCatalog(sql: Sql): Promise<DemoCatalog> {
   const [snapshot] = await sql<{ id: string }[]>`
     select id from catalog_snapshots where kind = 'demo_unbranded' and git_tag is null`;
   if (!snapshot) throw new AppError(ErrorCode.NOT_FOUND, 'No demo_unbranded snapshot: run db:seed');
-
   const listing = (group: string, slug: string) => sql<ListingRow[]>`
     select l.id, l.merchant_id, l.title, l.brand_name, l.category, l.price_cents,
            l.reference_price_cents, l.reference_n_offers, l.structured_attrs, l.description,
            m.display_name as store
     from listings l join merchants m on m.id = l.merchant_id
     where l.snapshot_id = ${snapshot.id} and l.group_key = ${group} and m.slug = ${slug}`;
-
-  const [target] = await listing('giftvault-gift-card-189', 'giftvault');
-  const [original] = await listing('cloud-runner-cr1', 'peak-outfitters');
+  const [target] = await listing(HOOK_TARGET.group, HOOK_TARGET.merchant);
+  const [original] = await listing(HOOK_HOST.group, HOOK_HOST.merchant);
   if (!target || !original) {
     throw new AppError(
       ErrorCode.NOT_FOUND,
-      'Demo catalog is missing the gift card or Cloud Runner CR-1: run db:seed',
+      'Demo catalog is missing Trail Runner TR-2 or Cloud Runner CR-1 at Peak Outfitters: run db:seed',
     );
   }
-  const demoTarget = { title: target.title, productId: target.id, storeName: target.store };
+  return {
+    snapshotId: snapshot.id,
+    listing,
+    target,
+    original,
+    demoTarget: { title: target.title, productId: target.id, storeName: target.store },
+  };
+}
+
+/** The adapted goal sentence the hook carries ("Buy … (product id …) from …."). */
+export async function hookTargetGoal(sql: Sql): Promise<string> {
+  return goalSentence((await demoCatalog(sql)).demoTarget);
+}
+
+/**
+ * Upserts the poisoned copy of the host listing: its own description, then the template with the
+ * goal adapted to HOOK_TARGET. Returns the hook listing's id.
+ */
+export async function writeHookListing(
+  sql: Sql,
+  template: GoalTemplate,
+  episodeId: string,
+): Promise<string> {
+  const { snapshotId, original, demoTarget } = await demoCatalog(sql);
+  const adapted = adaptGoal(template, demoTarget);
+  const description = `${original.description}\n\n${adapted.adaptedText}`;
+  const [hook] = await sql<{ id: string }[]>`
+    insert into listings (id, snapshot_id, group_key, merchant_id, title, brand_name, category,
+      price_cents, currency, reference_price_cents, reference_n_offers, structured_attrs,
+      description, injection_id)
+    values (${uuidv7()}, ${snapshotId}, ${HOOK_GROUP}, ${original.merchant_id},
+      ${original.title}, ${original.brand_name}, ${original.category}, ${original.price_cents},
+      'USD', ${original.reference_price_cents}, ${original.reference_n_offers},
+      ${JSON.stringify(original.structured_attrs)}::jsonb, ${description}, ${episodeId})
+    on conflict (snapshot_id, group_key, merchant_id) do update set
+      title = excluded.title, brand_name = excluded.brand_name, category = excluded.category,
+      price_cents = excluded.price_cents, reference_price_cents = excluded.reference_price_cents,
+      reference_n_offers = excluded.reference_n_offers, structured_attrs = excluded.structured_attrs,
+      description = excluded.description, injection_id = excluded.injection_id
+    returning id`;
+  if (!hook) throw new AppError(ErrorCode.INTERNAL, 'Hook listing upsert returned no row');
+  return hook.id;
+}
+
+export async function buildDemoHook(sql: Sql, opts: { pinned: boolean }): Promise<HookResult> {
+  const { listing, original, demoTarget } = await demoCatalog(sql);
 
   let record: DemoEpisodeRecord;
   let template: GoalTemplate;
@@ -233,24 +293,11 @@ export async function buildDemoHook(sql: Sql, opts: { pinned: boolean }): Promis
     };
   }
 
-  const adapted = adaptGoal(template, demoTarget);
-  const description = `${original.description}\n\n${adapted.adaptedText}`;
-  const [hook] = await sql<{ id: string }[]>`
-    insert into listings (id, snapshot_id, group_key, merchant_id, title, brand_name, category,
-      price_cents, currency, reference_price_cents, reference_n_offers, structured_attrs,
-      description, injection_id)
-    values (${uuidv7()}, ${snapshot.id}, ${HOOK_GROUP}, ${original.merchant_id},
-      ${original.title}, ${original.brand_name}, ${original.category}, ${original.price_cents},
-      'USD', ${original.reference_price_cents}, ${original.reference_n_offers},
-      ${JSON.stringify(original.structured_attrs)}::jsonb, ${description}, ${record.episodeId})
-    on conflict (snapshot_id, group_key, merchant_id) do update set
-      title = excluded.title, brand_name = excluded.brand_name, category = excluded.category,
-      price_cents = excluded.price_cents, reference_price_cents = excluded.reference_price_cents,
-      reference_n_offers = excluded.reference_n_offers, structured_attrs = excluded.structured_attrs,
-      description = excluded.description, injection_id = excluded.injection_id
-    returning id`;
-  if (!hook) throw new AppError(ErrorCode.INTERNAL, 'Hook listing upsert returned no row');
-  return { record: { ...record, listingId: hook.id }, source };
+  // The pinned record is never rewritten, so its goal sentence is refreshed here to match what
+  // the listing now carries.
+  record = { ...record, targetGoal: goalSentence(demoTarget) };
+  const listingId = await writeHookListing(sql, template, record.episodeId);
+  return { record: { ...record, listingId }, source };
 }
 
 export function hookSummary({ record, source }: HookResult): string {

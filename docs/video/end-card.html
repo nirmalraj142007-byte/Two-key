@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Two-Key end card</title>
+    <style>
+      :root {
+        --ink: #14171f;
+        --muted: #5b6270;
+        --line: #d9dde4;
+        --paper: #f7f8fa;
+        --accent: #1f3fbf;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      }
+      main {
+        height: 100%;
+        padding: 150px 180px 90px;
+        display: flex;
+        flex-direction: column;
+      }
+      .mark {
+        display: flex;
+        gap: 18px;
+        align-items: center;
+        margin-bottom: 56px;
+      }
+      .keys {
+        display: flex;
+        gap: 10px;
+      }
+      .key {
+        width: 30px;
+        height: 76px;
+        border-radius: 15px;
+        background: var(--ink);
+      }
+      .key + .key {
+        background: var(--accent);
+      }
+      h1 {
+        font-size: 128px;
+        font-weight: 700;
+        letter-spacing: -3px;
+        line-height: 1;
+      }
+      .pitch {
+        font-size: 58px;
+        font-weight: 600;
+        line-height: 1.2;
+        max-width: 1400px;
+        margin-bottom: 28px;
+      }
+      .position {
+        font-size: 38px;
+        color: var(--muted);
+        margin-bottom: auto;
+      }
+      .links {
+        display: flex;
+        gap: 96px;
+        padding-top: 40px;
+        border-top: 2px solid var(--line);
+        font-size: 34px;
+      }
+      .links span {
+        display: block;
+        font-size: 22px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+      .small {
+        margin-top: 44px;
+        font-size: 24px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark">
+        <div class="keys" aria-hidden="true"><div class="key"></div><div class="key"></div></div>
+        <h1>Two-Key</h1>
+      </div>
+      <p class="pitch">The agent can authorize the payment, but it can’t capture it.</p>
+      <p class="position">Not a shopping agent. The lock on its wallet.</p>
+      <div class="links">
+        <p><span>Try it</span>web-ycyg.onrender.com</p>
+        <p><span>Code</span>github.com/nirmalraj142007-byte/Two-key</p>
+      </div>
+      <p class="small">PayPal AI Hackathon · All products and merchants are fictional sandbox accounts.</p>
+    </main>
+  </body>
+</html>

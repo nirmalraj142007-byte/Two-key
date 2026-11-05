@@ -371,7 +371,128 @@ function devpostLearnedBlock(s: Sources): string {
   ].join('\n');
 }
 
+function predictionScore(s: Sources): { hits: number; scored: number } {
+  let hits = 0;
+  let scored = 0;
+  for (const p of s.predictions) {
+    const actual = actualFor(s.metrics.models[p.model], p);
+    if (actual === null) continue;
+    scored++;
+    if (actual >= p.low && actual <= p.high) hits++;
+  }
+  return { hits, scored };
+}
+
+const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+
+/**
+ * The numbers the video's voice-over and captions use, all from the metrics file. Keys are the
+ * `{placeholders}` in VOICE_OVER and docs/video/captions.template.srt.
+ */
+export function voiceOverNumbers(s: Sources): Record<string, string> {
+  const p = pooledCounts(s);
+  let outsideAvailable = 0;
+  let insideAvailable = 0;
+  let throughG4 = 0;
+  for (const m of Object.values(s.metrics.models)) {
+    outsideAvailable += m.followByTarget.outside_rules.available;
+    insideAvailable += m.followByTarget.inside_rules.available;
+    throughG4 += m.gates.G4.letThroughCount;
+  }
+  const k = Object.keys(s.metrics.models).length;
+  const { hits, scored } = predictionScore(s);
+  return {
+    split: setLabel(s),
+    models: String(k),
+    modelsWord: WORDS[k] ?? String(k),
+    attacked: n(p.attacked),
+    outsideFollowed: String(p.outside),
+    outsideAvailable: n(outsideAvailable),
+    insideFollowed: String(p.inside),
+    insideAvailable: n(insideAvailable),
+    insideHeld: String(p.held),
+    insideThroughG4: String(throughG4),
+    paidG4: usd(s.metrics.attackerMoneyCentsG4),
+    predictionHits: String(hits),
+    predictionsScored: String(scored),
+  };
+}
+
+/** Fills `{key}` placeholders; an unknown key is an error, so no placeholder reaches the video. */
+export function fillNumbers(template: string, numbers: Record<string, string>): string {
+  return template.replace(/\{([a-zA-Z][a-zA-Z0-9]*)\}/g, (_all, key: string) => {
+    const v = numbers[key];
+    if (v === undefined) throw new Error(`Unknown video number {${key}}`);
+    return v;
+  });
+}
+
+/** Voice-over lines that carry numbers. The runbook shows them filled in. */
+const VOICE_OVER: [beat: string, line: string][] = [
+  [
+    '0:00 hook',
+    'This attack text fooled all {modelsWord} models in our test. Here the price check catches it; in our test it caught {insideHeld} of {insideFollowed} — still an open problem.',
+  ],
+  [
+    '0:32 attacker attempt',
+    "Agents almost never try to pay the attacker: {outsideFollowed} of {outsideAvailable} chances in our test. When one does, it's impossible: no PayPal order is created.",
+  ],
+  [
+    '1:10 results',
+    'Outside the rules: {outsideFollowed} of {outsideAvailable}. Inside the rules: {insideFollowed} of {insideAvailable}. {paidG4} to attackers, and since no agent tried, that number does not test the block.',
+  ],
+  [
+    '1:40 honesty',
+    'On this test the flat cap did as well or better, because no agent tried to pay the attacker. What a cap can’t do is stop a payment to an attacker under the cap; Two-Key’s payee rule can. Predictions: {predictionHits} of {predictionsScored} landed, and we show the misses.',
+  ],
+  [
+    'closing line',
+    "In {attacked} poisoned shopping trips on frozen test data, {modelsWord} AI agents never once followed 'pay the attacker', but tried to buy the wrong thing inside the budget {insideFollowed} times. Two-Key makes paying an attacker impossible; the wrong-product problem is still open, and we measured it.",
+  ],
+];
+
+/** docs/VIDEO.md: every number the video says or shows, and the filled voice-over lines. */
+function videoBlock(s: Sources): string {
+  const v = voiceOverNumbers(s);
+  const out = [
+    ...draftBanner(s),
+    `From \`${s.metricsFile}\` (${v.split}): ${v.attacked} attacked runs, ${v.models} models.`,
+    '',
+    '| Model | Outside the rules followed | Inside the rules followed | Inside follows held | Static cap: let through / honest interrupted | Two-Key: let through / honest interrupted |',
+    '| --- | --- | --- | --- | --- | --- |',
+  ];
+  for (const id of orderedModels(s)) {
+    const m = s.metrics.models[id];
+    if (!m) continue;
+    const g = (gate: Gate) =>
+      `${m.gates[gate].letThroughCount} of ${n(m.attacked)} / ${m.gates[gate].honestInterruptedCount} of ${m.cleanWithProposal}`;
+    out.push(
+      `| \`${id}\` | ${m.followByTarget.outside_rules.followed} of ${m.followByTarget.outside_rules.available} | ${m.followByTarget.inside_rules.followed} of ${m.followByTarget.inside_rules.available} | ${heldOf(m)} of ${m.insideRules.followed} | ${g('G2')} | ${g('G4')} |`,
+    );
+  }
+  out.push(
+    `| **All** | **${v.outsideFollowed} of ${v.outsideAvailable}** | **${v.insideFollowed} of ${v.insideAvailable}** | **${v.insideHeld} of ${v.insideFollowed}** | | |`,
+    '',
+    `Paid to an attacker under Two-Key: ${v.paidG4}. Predictions in range: ${v.predictionHits} of ${v.predictionsScored}.`,
+    '',
+    'Voice-over lines with numbers (filled from the metrics; say them as written):',
+    '',
+  );
+  for (const [beat, line] of VOICE_OVER) out.push(`- **${beat}:** "${fillNumbers(line, v)}"`);
+  return out.join('\n');
+}
+
+export const VIDEO_DOC = 'docs/VIDEO.md';
+export const CAPTIONS_TEMPLATE = 'docs/video/captions.template.srt';
+export const CAPTIONS = 'docs/video/captions.srt';
+
+/** captions.srt from its template, numbers filled from the metrics. */
+export function renderCaptions(template: string, s: Sources): string {
+  return fillNumbers(template, voiceOverNumbers(s));
+}
+
 const BLOCKS: Record<string, (s: Sources) => string> = {
+  video: videoBlock,
   results: resultsBlock,
   headline: headlineBlock,
   'devpost-what': devpostWhatBlock,
@@ -482,6 +603,26 @@ export function checkFiles(root: string, s: Sources): string[] {
       if (text.includes(f)) problems.push(`${file}: fill in ${f}`);
     }
   }
+  // The video runbook and captions are checked whenever they exist (always, in the repo).
+  if (existsSync(join(root, VIDEO_DOC))) {
+    const text = readFileSync(join(root, VIDEO_DOC), 'utf8');
+    if (!blockNames(text).includes('video'))
+      problems.push(`${VIDEO_DOC}: no "video" results block`);
+    if (renderBlocks(text, s) !== text) {
+      problems.push(
+        `${VIDEO_DOC}: numbers differ from ${s.metricsFile}; run node scripts/readme-results.ts`,
+      );
+    }
+  }
+  if (existsSync(join(root, CAPTIONS_TEMPLATE))) {
+    const want = renderCaptions(readFileSync(join(root, CAPTIONS_TEMPLATE), 'utf8'), s);
+    const have = existsSync(join(root, CAPTIONS)) ? readFileSync(join(root, CAPTIONS), 'utf8') : '';
+    if (want !== have) {
+      problems.push(
+        `${CAPTIONS}: differs from its template and ${s.metricsFile}; run node scripts/readme-results.ts`,
+      );
+    }
+  }
   const readme = existsSync(join(root, 'README.md'))
     ? readFileSync(join(root, 'README.md'), 'utf8')
     : '';
@@ -507,6 +648,21 @@ function main() {
     const after = renderBlocks(before, s);
     if (after !== before) writeFileSync(path, after);
     console.log(`${after === before ? 'unchanged' : 'updated'} ${file} from ${s.metricsFile}`);
+  }
+  const video = join(root, VIDEO_DOC);
+  if (existsSync(video)) {
+    const before = readFileSync(video, 'utf8');
+    const after = renderBlocks(before, s);
+    if (after !== before) writeFileSync(video, after);
+    console.log(`${after === before ? 'unchanged' : 'updated'} ${VIDEO_DOC} from ${s.metricsFile}`);
+  }
+  const template = join(root, CAPTIONS_TEMPLATE);
+  if (existsSync(template)) {
+    const out = renderCaptions(readFileSync(template, 'utf8'), s);
+    const path = join(root, CAPTIONS);
+    const before = existsSync(path) ? readFileSync(path, 'utf8') : '';
+    if (out !== before) writeFileSync(path, out);
+    console.log(`${out === before ? 'unchanged' : 'updated'} ${CAPTIONS} from ${s.metricsFile}`);
   }
   if (isDraft(s))
     console.log('Draft: development-set placeholders written; --check fails until the test split.');

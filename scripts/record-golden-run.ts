@@ -14,6 +14,10 @@
  *
  * Local only: refuses a non-local database or gateway, and the evaluation stack's ports.
  * Run `npm run demo:setup -- --env local` first (maya needs a wallet and the demo card).
+ *
+ * `-- --check` is the video rehearsal (npm run preflight -- --beats): it also runs the hook beat
+ * (scripted:hook follows the demo hook to Trail Runner TR-2, which is held and denied), checks
+ * every beat ends as the video needs (captured, blocked, voided), and writes nothing.
  */
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -31,15 +35,24 @@ const EMAIL = 'maya@twokey.demo';
 const SCRIPTED_QUEUE = 'agent.run.app.scripted'; // apps/agent-runner/src/worker.ts
 const DEMO_REQUEST =
   'Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week.';
-const BEATS = [
-  { name: 'happy', model: 'scripted:happy', message: DEMO_REQUEST },
-  { name: 'attack', model: 'scripted:attack', message: DEMO_REQUEST },
+type Beat = { name: string; model: string; message: string; expect: string };
+/** Recorded into golden-run.json (the console's replay knows these three by name). */
+const BEATS: Beat[] = [
+  { name: 'happy', model: 'scripted:happy', message: DEMO_REQUEST, expect: 'captured' },
+  { name: 'attack', model: 'scripted:attack', message: DEMO_REQUEST, expect: 'blocked' },
   {
     name: 'anomaly',
     model: 'scripted:anomaly',
     message: 'Trail Runner TR-2, under $70, one pair.',
+    expect: 'voided',
   },
-] as const;
+];
+/** The video's order: the hook leads, then the clean purchase, the attacker attempt and the hold. */
+const REHEARSAL: Beat[] = [
+  { name: 'hook', model: 'scripted:hook', message: DEMO_REQUEST, expect: 'voided' },
+  ...BEATS,
+];
+const CHECK = process.argv.includes('--check');
 const BEAT_TIMEOUT_MS = 120_000;
 const DENY_AFTER_MS = 4_000;
 const FINAL = new Set(['captured', 'voided', 'expired', 'denied', 'failed', 'blocked', 'recorded']);
@@ -155,7 +168,7 @@ await boss.start();
 if (!(await boss.getQueue(SCRIPTED_QUEUE)))
   await boss.createQueue(SCRIPTED_QUEUE, { retryLimit: 0 });
 
-async function recordBeat(beat: (typeof BEATS)[number]) {
+async function recordBeat(beat: Beat) {
   const events: Recorded[] = [];
   const start = Date.now();
   const { sessionId, token } = await gateway<{ sessionId: string; token: string }>(
@@ -261,15 +274,40 @@ try {
   await openStream(ctrl.signal);
   await new Promise((r) => setTimeout(r, 500));
   const recorded = [];
-  for (const beat of BEATS) {
-    process.stdout.write(`recording ${beat.name}… `);
+  const failed: string[] = [];
+  for (const beat of CHECK ? REHEARSAL : BEATS) {
+    process.stdout.write(`${CHECK ? 'rehearsing' : 'recording'} ${beat.name} (${beat.model})… `);
     const r = await recordBeat(beat);
     recorded.push(r);
     const last = [...r.events].reverse().find((e) => typeof e.data.state === 'string');
+    const end = String(last?.data.state ?? '?');
+    const held = r.events.some((e) => e.data.state === 'held');
+    const ok = end === beat.expect && (beat.expect !== 'voided' || held);
+    if (!ok)
+      failed.push(
+        `${beat.name}: ended ${end}${held ? ' (was held)' : ''}, expected ${beat.expect}`,
+      );
     console.log(
-      `${r.events.length} events, ends ${String(last?.data.state ?? '?')} after ${r.events.at(-1)?.t ?? 0} ms`,
+      `${r.events.length} events, ends ${end}${held ? ' after a hold' : ''} after ${r.events.at(-1)?.t ?? 0} ms ${ok ? 'OK' : 'FAIL'}`,
     );
   }
+  if (CHECK) {
+    if (failed.length > 0) throw new Error(`rehearsal failed: ${failed.join('; ')}`);
+    console.log('rehearsal OK: every beat ended as the video needs (nothing written)');
+  } else {
+    if (failed.length > 0) throw new Error(`not written: ${failed.join('; ')}`);
+    writeGolden(recorded);
+  }
+} catch (err) {
+  console.error(err instanceof Error ? err.message : err);
+  process.exitCode = 1;
+} finally {
+  ctrl.abort();
+  await boss.stop({ graceful: false });
+  await sql.end();
+}
+
+function writeGolden(recorded: Awaited<ReturnType<typeof recordBeat>>[]) {
   const file = {
     note: 'Recorded with scripted models against the local dev stack (npm run demo:record-golden). Replayed only under the banner "Replaying a recorded run".',
     recordedAt: new Date(recorded[0]?.start ?? Date.now()).toISOString(),
@@ -286,11 +324,4 @@ try {
   const biome = join(ROOT, 'node_modules', '@biomejs', 'biome', 'bin', 'biome');
   execFileSync(process.execPath, [biome, 'format', '--write', OUT], { stdio: 'ignore' });
   console.log(`wrote ${OUT}`);
-} catch (err) {
-  console.error(err instanceof Error ? err.message : err);
-  process.exitCode = 1;
-} finally {
-  ctrl.abort();
-  await boss.stop({ graceful: false });
-  await sql.end();
 }

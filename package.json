@@ -53,7 +53,9 @@
     "readme:results": "node scripts/readme-results.ts",
     "readme:screener": "dotenv -e .env.web -- tsx scripts/readme-screener.ts",
     "eval": "dotenv -v GATEWAY_URL=http://localhost:4010 -v MCP_URL=http://localhost:4110/mcp -e .env.eval -- tsx eval/src/cli.ts",
-    "demo:connect-wallets": "tsx scripts/connect-wallets.ts"
+    "demo:connect-wallets": "tsx scripts/connect-wallets.ts",
+    "preflight": "tsx scripts/preflight.ts",
+    "video:end-card": "tsx scripts/render-end-card.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",

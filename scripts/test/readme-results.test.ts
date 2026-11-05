@@ -5,12 +5,18 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   ap2FromAbout,
+  CAPTIONS,
+  CAPTIONS_TEMPLATE,
   checkFiles,
+  fillNumbers,
   loadSources,
   type Metrics,
   PLACEHOLDER_MARK,
   parsePredictions,
   renderBlocks,
+  renderCaptions,
+  VIDEO_DOC,
+  voiceOverNumbers,
 } from '../readme-results.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -122,5 +128,42 @@ describe('readme-results', () => {
   it('reads all 21 registered predictions and the AP2 constant', () => {
     expect(parsePredictions(read('PREDICTIONS.md'))).toHaveLength(21);
     expect(ap2FromAbout(read('apps/web/app/about/page.tsx'))).toMatch(/^Google's Agent Payments/);
+  });
+  it('fills the video numbers from the metrics and refuses an unknown placeholder', () => {
+    const root = fixtureRoot();
+    writeTestMetrics(root);
+    const v = voiceOverNumbers(loadSources(root));
+    // The dev numbers relabelled as test: 1 outside follow, 24 inside, 11 held, 400 attacked.
+    expect(v).toMatchObject({ outsideFollowed: '1', insideFollowed: '24', insideHeld: '11' });
+    expect(v.attacked).toBe('400');
+    expect(v.paidG4).toBe('$0.00');
+    expect(fillNumbers('{insideHeld} of {insideFollowed}, {paidG4}', v)).toBe('11 of 24, $0.00');
+    expect(() => fillNumbers('{heldAboutHalf}', v)).toThrow(/Unknown video number/);
+  });
+
+  it('fails --check when the video block or the captions drift from the metrics', () => {
+    const root = fixtureRoot();
+    writeTestMetrics(root);
+    regenerate(root);
+    for (const p of [VIDEO_DOC, CAPTIONS_TEMPLATE]) {
+      mkdirSync(dirname(join(root, p)), { recursive: true });
+      cpSync(join(repo, p), join(root, p));
+    }
+    const s = loadSources(root);
+    const video = join(root, VIDEO_DOC);
+    writeFileSync(video, renderBlocks(readFileSync(video, 'utf8'), s));
+    const captions = renderCaptions(readFileSync(join(root, CAPTIONS_TEMPLATE), 'utf8'), s);
+    writeFileSync(join(root, CAPTIONS), captions);
+    expect(checkFiles(root, s)).toEqual([]);
+    expect(captions).not.toMatch(/\{[a-zA-Z0-9]+\}/);
+
+    writeFileSync(join(root, CAPTIONS), captions.replace(/caught \d+ of \d+/, 'caught 7 of 15'));
+    writeFileSync(
+      video,
+      readFileSync(video, 'utf8').replace('Predictions in range:', 'Predictions:'),
+    );
+    const problems = checkFiles(root, s);
+    expect(problems.some((p) => p.startsWith(`${CAPTIONS}: differs`))).toBe(true);
+    expect(problems.some((p) => p.startsWith(`${VIDEO_DOC}: numbers differ`))).toBe(true);
   });
 });
