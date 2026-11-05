@@ -285,7 +285,7 @@ export async function ensureHijackVault(
     .limit(1);
   if (other) {
     throw new Error(
-      'HIJACK_PAYPAL_PAYMENT_TOKEN_ID is held by another user; vault a different sandbox buyer',
+      'HIJACK_PAYPAL_PAYMENT_TOKEN_ID is held by another user; run vault:hijack again for a fresh token',
     );
   }
   await db.transaction(async (tx) => {

@@ -67,7 +67,8 @@ export interface ExportResult {
   counts: TableCount[];
 }
 
-const CHUNK = 200;
+/** Rows per insert statement: each statement is one round trip to the target. */
+const CHUNK = 500;
 
 function chunks<T>(xs: T[], n = CHUNK): T[][] {
   const out: T[][] = [];
@@ -174,7 +175,21 @@ async function migrationHashes(sql: Sql): Promise<string[]> {
   return rows.map((r) => r.hash);
 }
 
-async function columnsOf(sql: Sql, table: Table): Promise<{ cols: string[]; pk: string[] }> {
+type Columns = { cols: string[]; pk: string[] };
+/** Per export: each table's columns are looked up once, not once per insert. */
+type ColumnCache = Map<Table, Columns>;
+/** Called after each statement with the table, rows written so far and the table's total. */
+export type Progress = (table: Table, done: number, total: number) => void;
+
+async function columnsOf(sql: Sql, table: Table, cache?: ColumnCache): Promise<Columns> {
+  const hit = cache?.get(table);
+  if (hit) return hit;
+  const found = await readColumns(sql, table);
+  cache?.set(table, found);
+  return found;
+}
+
+async function readColumns(sql: Sql, table: Table): Promise<Columns> {
   const cols = await sql.unsafe<{ c: string }[]>(
     `select column_name as c from information_schema.columns
      where table_schema = 'public' and table_name = $1 order by ordinal_position`,
@@ -196,9 +211,11 @@ async function upsert(
   tx: Sql,
   table: Table,
   rows: Row[],
+  cache?: ColumnCache,
+  progress?: Progress,
 ): Promise<{ inserted: number; updated: number }> {
   if (rows.length === 0) return { inserted: 0, updated: 0 };
-  const { cols, pk } = await columnsOf(tx, table);
+  const { cols, pk } = await columnsOf(tx, table, cache);
   const rest = cols.filter((c) => !pk.includes(c));
   const list = cols.map(ident).join(', ');
   const onConflict =
@@ -216,6 +233,7 @@ async function upsert(
       [JSON.stringify(part)],
     );
     for (const r of result) r.inserted ? inserted++ : updated++;
+    progress?.(table, inserted + updated, rows.length);
   }
   return { inserted, updated };
 }
@@ -232,7 +250,11 @@ export async function exportEval(opts: {
   source: string;
   target: string;
   dryRun: boolean;
+  /** Called once the source is read, with each table's row count, before anything is written. */
+  onPlan?: (rows: Record<Table, number>) => void;
+  progress?: Progress;
 }): Promise<ExportResult> {
+  const cache: ColumnCache = new Map();
   if (sameDatabase(opts.source, opts.target)) {
     throw new Error('target is the source database');
   }
@@ -248,6 +270,9 @@ export async function exportEval(opts: {
 
     const data = await readSource(src);
     assertEvalOnly(data);
+    opts.onPlan?.(
+      Object.fromEntries(TABLES.map((t) => [t, data[t].length])) as Record<Table, number>,
+    );
 
     const counts: TableCount[] = [];
     const rollback = new Error('dry run');
@@ -265,21 +290,25 @@ export async function exportEval(opts: {
         }
 
         // Merchants: matched by slug, inserted only when missing, never changed.
+        // One lookup for every slug, then the missing ones in batches (not a round trip each).
         const merchantId = new Map<string, string>();
-        let mInserted = 0;
+        const existing = await tx.unsafe<{ id: string; slug: string }[]>(
+          'select id, slug from merchants where slug = any($1::text[])',
+          [data.merchants.map((m) => String(m.slug))],
+        );
+        const bySlug = new Map(existing.map((e) => [e.slug, e.id]));
+        const missing: Row[] = [];
         for (const m of data.merchants) {
-          const [found] = await tx.unsafe<{ id: string }[]>(
-            'select id from merchants where slug = $1',
-            [String(m.slug)],
-          );
+          const found = bySlug.get(String(m.slug));
           if (found) {
-            merchantId.set(String(m.id), found.id);
+            merchantId.set(String(m.id), found);
           } else {
-            await upsert(tx, 'merchants', [m]);
+            missing.push(m);
             merchantId.set(String(m.id), String(m.id));
-            mInserted++;
           }
         }
+        await upsert(tx, 'merchants', missing, cache, opts.progress);
+        const mInserted = missing.length;
         counts.push({
           table: 'merchants',
           source: data.merchants.length,
@@ -302,7 +331,7 @@ export async function exportEval(opts: {
           if (found) {
             userId.set(String(u.id), found.id);
           } else {
-            await upsert(tx, 'users', [u]);
+            await upsert(tx, 'users', [u], cache);
             userId.set(String(u.id), String(u.id));
             uInserted++;
           }
@@ -335,7 +364,7 @@ export async function exportEval(opts: {
 
         for (const table of TABLES) {
           if (table === 'merchants' || table === 'users') continue;
-          const r = await upsert(tx, table, data[table]);
+          const r = await upsert(tx, table, data[table], cache, opts.progress);
           counts.push({ table, source: data[table].length, ...r, matched: 0 });
         }
         if (opts.dryRun) throw rollback;
@@ -374,7 +403,18 @@ async function main(): Promise<void> {
   }
   const dryRun = values['dry-run'] ?? false;
   console.log(`eval export ${redact(source)} -> ${redact(target)}${dryRun ? ' (dry run)' : ''}`);
-  const { counts } = await exportEval({ source, target, dryRun });
+  const started = Date.now();
+  const secs = () => `${Math.round((Date.now() - started) / 1000)}s`;
+  const { counts } = await exportEval({
+    source,
+    target,
+    dryRun,
+    onPlan: (rows) => {
+      console.log('source rows to copy (merchants and users are matched first, then inserted):');
+      for (const [t, n] of Object.entries(rows)) console.log(`  ${t.padEnd(22)} ${n}`);
+    },
+    progress: (table, done, total) => console.log(`  [${secs()}] ${table} ${done}/${total}`),
+  });
   console.log('table                   source  inserted  updated  matched');
   for (const c of counts) {
     console.log(

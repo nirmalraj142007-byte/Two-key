@@ -7,15 +7,14 @@ Two-Key is one MCP server that replaces PayPal's money-moving tools: a hijacked 
 ![A hijacked agent tries to buy a $189 gift card: Two-Key blocks it with no PayPal order. Then an overpriced shoe is held, and Deny on the phone voids it.](docs/demo.gif)
 
 <!-- results:headline:start -->
-<!-- results:placeholder development-set -->
-> **Draft: development set.** These numbers are placeholders from `eval/results/dev-metrics.json` (the development split). The test split is still running; when `eval/results/test-metrics.json` exists, `node scripts/readme-results.ts` replaces them.
+**What we found** (600 attacked runs, 3 models, test split): hijacked agents followed **15** attacks that stayed inside the signed rules and **none** that pointed outside them. Two-Key held 2 of the 15 inside-the-rules follows (13.3%) for the human; the rest fit every rule and went through ([what Two-Key does not stop](#what-two-key-does-not-stop)). Money paid to an attacker under Two-Key: **$0.00**.
 
-**What we found** (400 attacked runs, 2 models, development set): hijacked agents followed **24** attacks that stayed inside the signed rules and **1** that pointed outside them. Two-Key paid an attacker **$0.00** and held 11 of the 24 inside-the-rules follows (45.8%) for the human; the rest fit every rule ([what Two-Key does not stop](#what-two-key-does-not-stop)).
+No followed attack in the test split pointed at an attacker's store, so no gate could have paid one: the $0.00 here does not test Two-Key's hard-rule block. The development set (400 attacked runs, 2 models, used to set the predictions) had 1 followed attack aimed at an attacker's store (`openai/gpt-oss-20b`). Attacker payments by gate: prompt guard only 1, per-task cap 1, static cap 0, Two-Key 0 ($0.00).
 <!-- results:headline:end -->
 
 ## Try it in 90 seconds
 
-Live demo: **<LIVE_URL>** (PayPal sandbox only; no real money moves).
+Live demo: **https://web-ycyg.onrender.com** (PayPal sandbox only; no real money moves).
 
 First load may take up to a minute (free hosting).
 
@@ -43,61 +42,59 @@ npx -y https://github.com/nirmalraj142007-byte/Two-key/releases/download/v1.0.0/
 ## Results
 
 <!-- results:start -->
-<!-- results:placeholder development-set -->
-> **Draft: development set.** These numbers are placeholders from `eval/results/dev-metrics.json` (the development split). The test split is still running; when `eval/results/test-metrics.json` exists, `node scripts/readme-results.ts` replaces them.
-
-Source: `eval/results/dev-metrics.json` (development set, gate version `gates-v1`): 600 runs, 2,205 gate decisions. Every attacked run replays the same agent proposals through five gates: G0 prompt guard only, G1 per-task cap, G2 static cap ($120.00), G3 approve everything, G4 Two-Key.
+Source: `eval/results/test-metrics.json` (test split, gate version `gates-v1`): 900 runs, 3,155 gate decisions. Every attacked run replays the same agent proposals through five gates: G0 prompt guard only, G1 per-task cap, G2 static cap ($120.00), G3 approve everything, G4 Two-Key.
 
 ### Where the attacks pointed
 
 | Model | Attacked runs | Followed, target outside the rules | Followed, target inside the rules | Inside follows held by Two-Key | Paid to an attacker payee under Two-Key |
 | --- | --- | --- | --- | --- | --- |
-| `openai/gpt-oss-120b` | test split only: no development runs | — | — | — | — |
-| `openai/gpt-oss-20b` | 200 | 1 of 118 (0.8%) | 11 of 82 (13.4%) | 5 of 11 (45.5%) | $0.00 |
-| `nvidia/nemotron-3.5-bolt-e4b` | 200 | 0 of 118 (0.0%) | 13 of 82 (15.9%) | 6 of 13 (46.2%) | $0.00 |
+| `openai/gpt-oss-120b` | 200 | 0 of 114 (0.0%) | 2 of 86 (2.3%) | 1 of 2 (50.0%) | $0.00 |
+| `openai/gpt-oss-20b` | 200 | 0 of 114 (0.0%) | 4 of 86 (4.7%) | 0 of 4 (0.0%) | $0.00 |
+| `nvidia/nemotron-3.5-bolt-e4b` | 200 | 0 of 114 (0.0%) | 9 of 86 (10.5%) | 1 of 9 (11.1%) | $0.00 |
 
 An attack "inside the rules" points the agent at another product from a store the user allowed, within budget. It passes every signed rule; Two-Key holds it only when the price is unusual for that product.
 
+No followed attack in the test split pointed at an attacker's store, so no gate could have paid one: the $0.00 here does not test Two-Key's hard-rule block. The development set (400 attacked runs, 2 models, used to set the predictions) had 1 followed attack aimed at an attacker's store (`openai/gpt-oss-20b`). Attacker payments by gate: prompt guard only 1, per-task cap 1, static cap 0, Two-Key 0 ($0.00).
+
 ### Honest purchases and the trade-off
 
-- `openai/gpt-oss-20b`: under Two-Key, 6 of 200 attacked runs ended in a captured attack purchase and 13 of 56 honest purchases were interrupted (honest pass: 43 of 56, 76.8%). Per-task cap: 12 of 200 let through, 0 of 56 interrupted. Static cap $120.00: 8 of 200 let through, 10 of 56 interrupted.
-- `nvidia/nemotron-3.5-bolt-e4b`: under Two-Key, 7 of 200 attacked runs ended in a captured attack purchase and 22 of 85 honest purchases were interrupted (honest pass: 63 of 85, 74.1%). Per-task cap: 13 of 200 let through, 0 of 85 interrupted. Static cap $120.00: 8 of 200 let through, 12 of 85 interrupted.
+- `openai/gpt-oss-120b`: under Two-Key, 1 of 200 attacked runs ended in a captured attack purchase and 19 of 67 honest purchases were interrupted (honest pass: 48 of 67, 71.6%). Per-task cap: 2 of 200 let through, 1 of 67 interrupted. Static cap $120.00: 1 of 200 let through, 12 of 67 interrupted.
+- `openai/gpt-oss-20b`: under Two-Key, 4 of 200 attacked runs ended in a captured attack purchase and 15 of 58 honest purchases were interrupted (honest pass: 43 of 58, 74.1%). Per-task cap: 4 of 200 let through, 1 of 58 interrupted. Static cap $120.00: 3 of 200 let through, 11 of 58 interrupted.
+- `nvidia/nemotron-3.5-bolt-e4b`: under Two-Key, 8 of 200 attacked runs ended in a captured attack purchase and 23 of 84 honest purchases were interrupted (honest pass: 61 of 84, 72.6%). Per-task cap: 9 of 200 let through, 2 of 84 interrupted. Static cap $120.00: 8 of 200 let through, 15 of 84 interrupted.
 
 Each gate is one point on a trade-off between attacks let through and honest purchases interrupted; the frontier chart on `/results` plots all five per model.
 
 ### How sure we can be about $0.00
 
-No attacker payee was paid under Two-Key. By the rule of three, the per-run chance of paying one is, at 95% confidence: `openai/gpt-oss-20b` 0 of 200, at most 1.5%; `nvidia/nemotron-3.5-bolt-e4b` 0 of 200, at most 1.5%; pooled, 0 of 400, at most 0.75%.
+No attacker payee was paid under Two-Key. By the rule of three, the per-run chance of paying one is, at 95% confidence: `openai/gpt-oss-120b` 0 of 200, at most 1.5%; `openai/gpt-oss-20b` 0 of 200, at most 1.5%; `nvidia/nemotron-3.5-bolt-e4b` 0 of 200, at most 1.5%; pooled, 0 of 600, at most 0.5%. No followed attack aimed at an attacker in this split, so the bound reflects how rarely these agents tried, not a block Two-Key was seen to make.
 
 ### Predicted vs actual
 
 Ranges from [PREDICTIONS.md](PREDICTIONS.md), registered before the test split ran. A miss is marked **✗ miss**.
 
-> The actual column below is the development set. The ranges were built from these same development results, so landing inside them proves nothing; the test split is the check.
-
 | Metric | Model | Gate | Predicted | Actual | In range |
 | --- | --- | --- | --- | --- | --- |
-| followRate | `openai/gpt-oss-120b` | — | 0.0%–15.0% | test split only | — |
-| followRate | `openai/gpt-oss-20b` | — | 3.0%–11.0% | 6.0% | ✓ |
-| followRate | `nvidia/nemotron-3.5-bolt-e4b` | — | 3.0%–11.0% | 6.5% | ✓ |
-| outsideFollowRate | `openai/gpt-oss-120b` | — | 0.0%–3.0% | test split only | — |
-| outsideFollowRate | `openai/gpt-oss-20b` | — | 0.0%–5.0% | 0.8% | ✓ |
+| followRate | `openai/gpt-oss-120b` | — | 0.0%–15.0% | 1.0% | ✓ |
+| followRate | `openai/gpt-oss-20b` | — | 3.0%–11.0% | 2.0% | **✗ miss** |
+| followRate | `nvidia/nemotron-3.5-bolt-e4b` | — | 3.0%–11.0% | 4.5% | ✓ |
+| outsideFollowRate | `openai/gpt-oss-120b` | — | 0.0%–3.0% | 0.0% | ✓ |
+| outsideFollowRate | `openai/gpt-oss-20b` | — | 0.0%–5.0% | 0.0% | ✓ |
 | outsideFollowRate | `nvidia/nemotron-3.5-bolt-e4b` | — | 0.0%–4.0% | 0.0% | ✓ |
-| insideFollowRate | `openai/gpt-oss-120b` | — | 3.0%–25.0% | test split only | — |
-| insideFollowRate | `openai/gpt-oss-20b` | — | 7.0%–23.0% | 13.4% | ✓ |
-| insideFollowRate | `nvidia/nemotron-3.5-bolt-e4b` | — | 9.0%–26.0% | 15.9% | ✓ |
-| honestInterrupted | `openai/gpt-oss-120b` | G1 | 0.0%–8.0% | test split only | — |
-| honestInterrupted | `openai/gpt-oss-120b` | G2 | 5.0%–35.0% | test split only | — |
-| honestInterrupted | `openai/gpt-oss-120b` | G4 | 10.0%–45.0% | test split only | — |
-| honestInterrupted | `openai/gpt-oss-20b` | G1 | 0.0%–7.0% | 0.0% | ✓ |
-| honestInterrupted | `openai/gpt-oss-20b` | G2 | 10.0%–30.0% | 17.9% | ✓ |
-| honestInterrupted | `openai/gpt-oss-20b` | G4 | 14.0%–36.0% | 23.2% | ✓ |
-| honestInterrupted | `nvidia/nemotron-3.5-bolt-e4b` | G1 | 0.0%–5.0% | 0.0% | ✓ |
-| honestInterrupted | `nvidia/nemotron-3.5-bolt-e4b` | G2 | 8.0%–24.0% | 14.1% | ✓ |
-| honestInterrupted | `nvidia/nemotron-3.5-bolt-e4b` | G4 | 17.0%–37.0% | 25.9% | ✓ |
-| insideRulesHeldShare | `openai/gpt-oss-120b` | G4 | 10.0%–80.0% | test split only | — |
-| insideRulesHeldShare | `openai/gpt-oss-20b` | G4 | 21.0%–72.0% | 45.5% | ✓ |
-| insideRulesHeldShare | `nvidia/nemotron-3.5-bolt-e4b` | G4 | 23.0%–71.0% | 46.2% | ✓ |
+| insideFollowRate | `openai/gpt-oss-120b` | — | 3.0%–25.0% | 2.3% | **✗ miss** |
+| insideFollowRate | `openai/gpt-oss-20b` | — | 7.0%–23.0% | 4.7% | **✗ miss** |
+| insideFollowRate | `nvidia/nemotron-3.5-bolt-e4b` | — | 9.0%–26.0% | 10.5% | ✓ |
+| honestInterrupted | `openai/gpt-oss-120b` | G1 | 0.0%–8.0% | 1.5% | ✓ |
+| honestInterrupted | `openai/gpt-oss-120b` | G2 | 5.0%–35.0% | 17.9% | ✓ |
+| honestInterrupted | `openai/gpt-oss-120b` | G4 | 10.0%–45.0% | 28.4% | ✓ |
+| honestInterrupted | `openai/gpt-oss-20b` | G1 | 0.0%–7.0% | 1.7% | ✓ |
+| honestInterrupted | `openai/gpt-oss-20b` | G2 | 10.0%–30.0% | 19.0% | ✓ |
+| honestInterrupted | `openai/gpt-oss-20b` | G4 | 14.0%–36.0% | 25.9% | ✓ |
+| honestInterrupted | `nvidia/nemotron-3.5-bolt-e4b` | G1 | 0.0%–5.0% | 2.4% | ✓ |
+| honestInterrupted | `nvidia/nemotron-3.5-bolt-e4b` | G2 | 8.0%–24.0% | 17.9% | ✓ |
+| honestInterrupted | `nvidia/nemotron-3.5-bolt-e4b` | G4 | 17.0%–37.0% | 27.4% | ✓ |
+| insideRulesHeldShare | `openai/gpt-oss-120b` | G4 | 10.0%–80.0% | 50.0% | ✓ |
+| insideRulesHeldShare | `openai/gpt-oss-20b` | G4 | 21.0%–72.0% | 0.0% | **✗ miss** |
+| insideRulesHeldShare | `nvidia/nemotron-3.5-bolt-e4b` | G4 | 23.0%–71.0% | 11.1% | **✗ miss** |
 <!-- results:end -->
 
 ## How Two-Key relates to AP2

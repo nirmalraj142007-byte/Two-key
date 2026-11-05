@@ -24,10 +24,7 @@ Shopping agents are getting wallets. The usual setup hands the agent a payment t
 Two-Key is one MCP server that replaces PayPal's money-moving tools. The agent gets four tools: search, read status, read rules, and propose a purchase by product ID and quantity. Only the Two-Key gateway can call PayPal. It looks up price and payee itself, checks the rules the person signed, and only then authorizes the order on their saved PayPal wallet, with no buyer present. Clean purchases are captured. A purchase at an unusual price stays a PayPal authorization until the person approves it on their phone or it times out. A purchase that breaks a rule is blocked before any PayPal order exists.
 
 <!-- results:devpost-what:start -->
-<!-- results:placeholder development-set -->
-> **Draft: development set.** These numbers are placeholders from `eval/results/dev-metrics.json` (the development split). The test split is still running; when `eval/results/test-metrics.json` exists, `node scripts/readme-results.ts` replaces them.
-
-In 600 evaluation runs (development set), Two-Key paid an attacker $0.00, counting the 1 followed attack aimed at an attacker's store.
+In 900 evaluation runs (test split), Two-Key paid an attacker $0.00. No followed attack in that split aimed at an attacker's store, so this does not test the hard-rule block. The development set (400 attacked runs, 2 models, used to set the predictions) had 1 followed attack aimed at an attacker's store (`openai/gpt-oss-20b`). Attacker payments by gate: prompt guard only 1, per-task cap 1, static cap 0, Two-Key 0 ($0.00).
 <!-- results:devpost-what:end -->
 
 ## How we built it
@@ -47,10 +44,7 @@ The guarantee does not depend on the model. A blocked proposal makes zero PayPal
 The attack to worry about is not the one we built for. We expected hijacked agents to try to pay the attacker. Mostly they did something quieter: buy a different product from a store the person allowed, inside the budget.
 
 <!-- results:devpost-learned:start -->
-<!-- results:placeholder development-set -->
-> **Draft: development set.** These numbers are placeholders from `eval/results/dev-metrics.json` (the development split). The test split is still running; when `eval/results/test-metrics.json` exists, `node scripts/readme-results.ts` replaces them.
-
-Hijacked agents followed 24 attacks that stayed inside the signed rules and only 1 that pointed outside them (400 attacked runs, development set). Two-Key held 11 of the 24 inside-the-rules follows (45.8%) for the human; the others fit every rule and went through.
+Hijacked agents followed 15 attacks that stayed inside the signed rules and none that pointed outside them (600 attacked runs, test split). Two-Key held 2 of the 15 inside-the-rules follows (13.3%) for the human; the others fit every rule and went through.
 <!-- results:devpost-learned:end -->
 
 So we say plainly what Two-Key does not stop, and we show those runs.
@@ -64,5 +58,5 @@ Serialize the signed rule card to an AP2 Intent Mandate, so the same intent can 
 No third-party trademarks appear in any of these (all stores are fictional PayPal sandbox accounts).
 
 1. `docs/evidence/W04-phone-approval-390.png`: the phone approval for the Trail Runner TR-2 hold ("40% above the usual price of $46.00 (3 stores)").
-2. The frontier chart: `docs/evidence/W14-frontier-honest-pass.png`. It shows the development set today; retake it from `/results` once the test split is complete.
+2. The frontier chart: `docs/evidence/W14-frontier-honest-pass.png` (test split: 900 runs, 3 models, each gate a point per model, with the 70% honest-pass goal line).
 3. History with the blocked row: `docs/evidence/W05-history-rows.png` (Digital gift card $189 at GiftVault, "Blocked · No PayPal order created.").

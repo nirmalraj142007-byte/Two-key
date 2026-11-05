@@ -7,8 +7,9 @@
  * Creates a setup token, prints the approval link, waits for the sandbox buyer to approve, turns
  * it into a payment token and writes HIJACK_PAYPAL_PAYMENT_TOKEN_ID and HIJACK_PAYPAL_CUSTOMER_ID
  * into .env.gateway. The IDs are never printed. A payment token that another user already holds
- * is refused (PayPal hands the same token back for a buyer it has vaulted before): approve with
- * a sandbox buyer no other account uses. Then run `npm run db:seed-users`.
+ * is refused. With permit_multiple_payment_tokens on (our sandbox app), every approval makes a new
+ * token, so one sandbox buyer is fine; if it is refused, approve again. Then run
+ * `npm run db:seed-users`.
  */
 import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -95,7 +96,9 @@ async function main(): Promise<void> {
       .limit(1);
     if (shared) {
       console.error('REFUSED: PayPal returned a payment token another Two-Key user already holds.');
-      console.error('Approve again with a different sandbox buyer account. Nothing was written.');
+      console.error(
+        'Approve again for a fresh token (one sandbox buyer is fine). Nothing was written.',
+      );
       process.exitCode = 1;
       return;
     }

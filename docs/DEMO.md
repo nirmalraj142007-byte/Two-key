@@ -9,11 +9,13 @@ daily reset, the replay fallback and what to monitor.
 | Account | Role | Password | Wallet | Rules |
 | --- | --- | --- | --- | --- |
 | `maya@twokey.demo` | user | `DEMO_PASSWORD` | its own saved PayPal wallet | preset demo card |
-| `judge1@twokey.demo` … `judge3@twokey.demo` | judge_demo | `DEMO_PASSWORD` | its own saved PayPal wallet | preset demo card |
+| `judge1@twokey.demo` | judge_demo | `DEMO_PASSWORD` | its own saved PayPal wallet | preset demo card |
+| `judge2@twokey.demo`, `judge3@twokey.demo` | judge_demo | `DEMO_PASSWORD` | its own saved PayPal wallet (`demo:connect-wallets`) | preset demo card |
 | `hijack@twokey.system` | hijack_system | none (cannot sign in) | its own token (`npm run vault:hijack`) | hijack card |
 
-The production `DEMO_PASSWORD` lives in `~/two-key-secrets/demo-password.txt` (never committed,
-never printed) and is the one given to judges in the README.
+Judges sign in as `judge1@twokey.demo`, the account the README gives. The production
+`DEMO_PASSWORD` lives in `~/two-key-secrets/demo-password.txt` (never committed, never printed)
+and is the one given to judges in the README.
 
 **The preset demo card** (the demo request: "Running shoes, size 10, under $70, only Stride Supply
 or Peak Outfitters, one pair, this week."): Stride Supply and Peak Outfitters; $70.00 per item and
@@ -28,14 +30,15 @@ else works as for any user: the agent console, holds and approvals, history, con
 agent.
 
 **Wallets.** Each demo account needs its *own* saved wallet. `permit_multiple_payment_tokens` is
-on, so one sandbox buyer can approve all four. `demo:setup` lists every account still missing one,
+on, so one sandbox buyer can approve all four (and the hijack user): every approval makes a new
+payment token. `demo:setup` lists every account still missing one,
 with the page to open:
 
 1. In a private window, sign in at `<web>/login` as that account with `DEMO_PASSWORD`.
 2. Open `<web>/onboarding/paypal` → **Connect PayPal** → approve as the sandbox buyer.
 3. Repeat for the next account, then run `demo:setup` again.
 
-`npm run demo:connect-wallets -- --only judge2 --only judge3` does these steps in a headed Edge
+`npm run demo:connect-wallets -- --only <account>` (repeat `--only`; all four without it) does these steps in a headed Edge
 window per account (you run it: it types the demo and sandbox-buyer passwords from
 `~/two-key-secrets/`). It skips accounts that already have a wallet and stops, leaving the window
 open, if PayPal shows a captcha or security check.

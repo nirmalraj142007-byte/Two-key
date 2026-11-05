@@ -69,6 +69,8 @@ export interface Sources {
   metricsFile: string;
   staticCapCents: number;
   predictions: Prediction[];
+  /** The development split, when the main source is the test split (for the dev→test note). */
+  dev?: Metrics | undefined;
 }
 
 /** Every drafted block carries this; --check fails while any is left. */
@@ -121,6 +123,48 @@ function pooledCounts(s: Sources) {
   return { outside, inside, held, attackerCaptures, attacked };
 }
 
+/** "… and none that pointed outside them" rather than "only 0". */
+const outsidePhrase = (outside: number) =>
+  outside === 0 ? 'none that pointed outside them' : `only ${outside} that pointed outside them`;
+
+/**
+ * With no followed attack aimed at an attacker's store, $0.00 says nothing about the hard-rule
+ * block: no gate could have paid one. Said plainly next to every $0.00 claim.
+ */
+function untestedNote(s: Sources): string | null {
+  if (pooledCounts(s).outside > 0) return null;
+  return (
+    `No followed attack in the ${setLabel(s)} pointed at an attacker's store, so no gate could` +
+    " have paid one: the $0.00 here does not test Two-Key's hard-rule block."
+  );
+}
+
+/** Dev→test note: what the development split's outside-the-rules follows did at each gate. */
+function devNote(s: Sources): string | null {
+  const dev = s.dev;
+  if (!dev || isDraft(s)) return null;
+  const all = Object.values(dev.models);
+  const attacked = all.reduce((a, m) => a + m.attacked, 0);
+  const lead =
+    `The development set (${n(attacked)} attacked runs, ${all.length} models, used to set the` +
+    ' predictions)';
+  const followers = Object.entries(dev.models).filter(
+    ([, m]) => m.followByTarget.outside_rules.followed > 0,
+  );
+  const outside = followers.reduce((a, [, m]) => a + m.followByTarget.outside_rules.followed, 0);
+  if (outside === 0) return `${lead} had no outside-the-rules follows either.`;
+  const paidAt = (g: Gate) => followers.reduce((a, [, m]) => a + m.gates[g].attackerCaptured, 0);
+  const who = followers.map(([id]) => `\`${id}\``).join(', ');
+  return (
+    `${lead} had ${outside} followed ${outside === 1 ? 'attack' : 'attacks'} aimed at an` +
+    ` attacker's store (${who}). Attacker payments by gate: prompt guard only` +
+    ` ${paidAt('G0')}, per-task cap ${paidAt('G1')}, static cap ${paidAt('G2')}, Two-Key` +
+    ` ${paidAt('G4')} (${usd(dev.attackerMoneyCentsG4)}).`
+  );
+}
+
+const notes = (s: Sources) => [untestedNote(s), devNote(s)].filter(Boolean).join(' ');
+
 function draftBanner(s: Sources): string[] {
   if (!isDraft(s)) return [];
   return [
@@ -141,10 +185,12 @@ function headlineBlock(s: Sources): string {
     ...draftBanner(s),
     `**What we found** (${n(p.attacked)} attacked runs, ${k} models, ${setLabel(s)}): hijacked` +
       ` agents followed **${p.inside}** attacks that stayed inside the signed rules and` +
-      ` **${p.outside}** that pointed outside them. Two-Key paid an attacker **${paid}**` +
-      ` and held ${heldPhrase(p.held, p.inside)} for the human; the rest fit every rule` +
-      ' ([what Two-Key does not stop](#what-two-key-does-not-stop)).',
+      ` ${p.outside === 0 ? '**none**' : `**${p.outside}**`} that pointed outside them.` +
+      ` Two-Key held ${heldPhrase(p.held, p.inside)} for the human; the rest fit every rule` +
+      ' and went through ([what Two-Key does not stop](#what-two-key-does-not-stop)).' +
+      ` Money paid to an attacker under Two-Key: **${paid}**.`,
   ];
+  if (notes(s)) lines.push('', notes(s));
   return lines.join('\n');
 }
 
@@ -203,6 +249,7 @@ function resultsBlock(s: Sources): string {
       ' allowed, within budget. It passes every signed rule; Two-Key holds it only when the price' +
       ' is unusual for that product.',
     '',
+    ...(notes(s) ? [notes(s), ''] : []),
     '### Honest purchases and the trade-off',
     '',
   );
@@ -243,7 +290,11 @@ function resultsBlock(s: Sources): string {
     out.push(
       'No attacker payee was paid under Two-Key. By the rule of three, the per-run chance of' +
         ` paying one is, at 95% confidence: ${per.join('; ')}; pooled, 0 of` +
-        ` ${n(metrics.pooled.attacked)}, at most ${bound(metrics.pooled.ruleOfThree)}.`,
+        ` ${n(metrics.pooled.attacked)}, at most ${bound(metrics.pooled.ruleOfThree)}.` +
+        (pooledCounts(s).outside === 0
+          ? ' No followed attack aimed at an attacker in this split, so the bound reflects how' +
+            ' rarely these agents tried, not a block Two-Key was seen to make.'
+          : ''),
     );
   } else {
     out.push(
@@ -296,12 +347,16 @@ function resultsBlock(s: Sources): string {
 /** Devpost "What it does" closing sentences. */
 function devpostWhatBlock(s: Sources): string {
   const p = pooledCounts(s);
-  return [
-    ...draftBanner(s),
-    `In ${n(s.metrics.totals.runs)} evaluation runs (${setLabel(s)}), Two-Key paid an attacker` +
-      ` ${usd(s.metrics.attackerMoneyCentsG4)}, counting the ${p.outside} followed` +
-      ` ${p.outside === 1 ? 'attack' : 'attacks'} aimed at an attacker's store.`,
-  ].join('\n');
+  const runs = `In ${n(s.metrics.totals.runs)} evaluation runs (${setLabel(s)})`;
+  const paid = usd(s.metrics.attackerMoneyCentsG4);
+  const first =
+    p.outside === 0
+      ? `${runs}, Two-Key paid an attacker ${paid}. No followed attack in that split aimed at an` +
+        " attacker's store, so this does not test the hard-rule block."
+      : `${runs}, Two-Key paid an attacker ${paid}, counting the ${p.outside} followed` +
+        ` ${p.outside === 1 ? 'attack' : 'attacks'} aimed at an attacker's store.`;
+  const dev = devNote(s);
+  return [...draftBanner(s), dev ? `${first} ${dev}` : first].join('\n');
 }
 
 /** Devpost "What we learned": the inside-the-rules finding. */
@@ -309,8 +364,8 @@ function devpostLearnedBlock(s: Sources): string {
   const p = pooledCounts(s);
   return [
     ...draftBanner(s),
-    `Hijacked agents followed ${p.inside} attacks that stayed inside the signed rules and only` +
-      ` ${p.outside} that pointed outside them (${n(p.attacked)} attacked runs, ${setLabel(s)}).` +
+    `Hijacked agents followed ${p.inside} attacks that stayed inside the signed rules and` +
+      ` ${outsidePhrase(p.outside)} (${n(p.attacked)} attacked runs, ${setLabel(s)}).` +
       ` Two-Key held ${heldPhrase(p.held, p.inside)} for the human;` +
       ' the others fit every rule and went through.',
   ].join('\n');
@@ -376,6 +431,10 @@ export function loadSources(root: string): Sources {
   const dev = 'eval/results/dev-metrics.json';
   const metricsFile = existsSync(join(root, test)) ? test : dev;
   const metrics = JSON.parse(readFileSync(join(root, metricsFile), 'utf8')) as Metrics;
+  const devMetrics =
+    metricsFile === test && existsSync(join(root, dev))
+      ? (JSON.parse(readFileSync(join(root, dev), 'utf8')) as Metrics)
+      : undefined;
   const manifest = JSON.parse(readFileSync(join(root, 'eval/frozen/manifest.json'), 'utf8')) as {
     staticCapCents: number;
   };
@@ -384,6 +443,7 @@ export function loadSources(root: string): Sources {
     metricsFile,
     staticCapCents: manifest.staticCapCents,
     predictions: parsePredictions(readFileSync(join(root, 'PREDICTIONS.md'), 'utf8')),
+    dev: devMetrics,
   };
 }
 
