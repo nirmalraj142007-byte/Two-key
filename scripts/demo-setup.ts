@@ -6,8 +6,10 @@
  * left unchanged. Steps 0, 4 and 5 (catalog, demo hook, hijack user) always run.
  *
  * 0. Runs the idempotent catalog seed (merchants, demo catalog), as db:seed does.
- * 1. Upserts maya@twokey.demo (user) and judge1–3@twokey.demo (judge_demo) with DEMO_PASSWORD,
- *    and hijack@twokey.system (no password).
+ * 1. Upserts judge1–3@twokey.demo (judge_demo) with DEMO_PASSWORD (published in the README),
+ *    maya@twokey.demo (user, unrestricted) with MAYA_PASSWORD (--env prod: from
+ *    ~/two-key-secrets/maya-password.txt), and hijack@twokey.system (no password). Outside
+ *    --env local maya never gets DEMO_PASSWORD: without MAYA_PASSWORD her password is kept.
  * 2. Checks each demo account has its own active PayPal wallet. If any is missing it prints, per
  *    account, where to sign in and the onboarding page to approve once as the sandbox buyer, and
  *    stops (exit 2) before anything else changes. Run it again afterwards.
@@ -94,12 +96,43 @@ try {
 
   // 1. accounts
   const passwordHash = await hash(env.DEMO_PASSWORD);
+  const mayaPassword = process.env.MAYA_PASSWORD;
+  if (mayaPassword !== undefined && mayaPassword.length < 8) {
+    throw new Error('MAYA_PASSWORD must be at least 8 characters');
+  }
+  if (mayaPassword !== undefined && mayaPassword === env.DEMO_PASSWORD) {
+    throw new Error('MAYA_PASSWORD must differ from DEMO_PASSWORD (the judges password is public)');
+  }
+  // maya is unrestricted: off local she gets only her own password, never the published one.
+  const mayaHash = mayaPassword
+    ? await hash(mayaPassword)
+    : envName === 'local'
+      ? passwordHash
+      : undefined;
   const ids = new Map<string, string>();
   for (const a of [
     ...accounts,
     { email: HIJACK_EMAIL, displayName: 'Hijack system', role: 'hijack_system' as const },
   ]) {
-    const hashed = a.role === 'hijack_system' ? null : passwordHash;
+    const isMaya = a.role === 'user';
+    // undefined = keep the stored password (maya off local without MAYA_PASSWORD).
+    const hashed = a.role === 'hijack_system' ? null : isMaya ? mayaHash : passwordHash;
+    if (hashed === undefined) {
+      const [existing] = await db
+        .select({ id: users.id, hasPassword: users.passwordHash })
+        .from(users)
+        .where(eq(users.email, a.email));
+      if (!existing) {
+        throw new Error(`${a.email} does not exist yet: set MAYA_PASSWORD (or maya-password.txt)`);
+      }
+      await db
+        .update(users)
+        .set({ displayName: a.displayName, role: a.role })
+        .where(eq(users.id, existing.id));
+      ids.set(a.email, existing.id);
+      console.log(`user    ${pad(a.email)} ${a.role.padEnd(13)} password kept (no MAYA_PASSWORD)`);
+      continue;
+    }
     const [row] = await db
       .insert(users)
       .values({ ...a, passwordHash: hashed })
@@ -110,9 +143,13 @@ try {
       .returning({ id: users.id });
     if (!row) throw new Error(`upsert of ${a.email} returned no row`);
     ids.set(a.email, row.id);
-    console.log(
-      `user    ${pad(a.email)} ${a.role.padEnd(13)} ${hashed ? 'password set' : 'no password'}`,
-    );
+    const which =
+      hashed === null
+        ? 'no password'
+        : isMaya && mayaPassword
+          ? 'own password set'
+          : 'password set';
+    console.log(`user    ${pad(a.email)} ${a.role.padEnd(13)} ${which}`);
   }
   const idOf = (email: string) => ids.get(email) as string;
 
@@ -129,7 +166,9 @@ try {
       `${missing.length} account(s) need their own saved PayPal wallet. For each, in a private window:`,
     );
     for (const email of missing) {
-      console.log(`  - sign in at ${origin}/login as ${email} (DEMO_PASSWORD),`);
+      console.log(
+        `  - sign in at ${origin}/login as ${email} (${email.startsWith('maya@') ? 'MAYA_PASSWORD' : 'DEMO_PASSWORD'}),`,
+      );
       console.log(
         `    open ${origin}/onboarding/paypal, click Connect PayPal, approve as the sandbox buyer.`,
       );

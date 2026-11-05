@@ -11,7 +11,8 @@
  * Accounts whose onboarding page already says "Saved" (an active wallet) are skipped.
  *
  * Secrets are read from files and never printed:
- *   ~/two-key-secrets/demo-password.txt   the demo accounts' password (one line)
+ *   ~/two-key-secrets/demo-password.txt   the judge accounts' password (one line, public)
+ *   ~/two-key-secrets/maya-password.txt   maya's own password (one line)
  *   ~/two-key-secrets/sandbox-buyer.env   SANDBOX_BUYER_EMAIL=… and SANDBOX_BUYER_PASSWORD=…
  *
  * Safety: the buyer credentials are typed only on www.sandbox.paypal.com / sandbox.paypal.com,
@@ -22,7 +23,7 @@
  *
  * Run `npm run demo:setup -- --env prod` afterwards to check every wallet is active.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -61,7 +62,12 @@ function redact(text: string): string {
   return out;
 }
 
-function readSecrets(): { demoPassword: string; buyerEmail: string; buyerPassword: string } {
+function readSecrets(): {
+  demoPassword: string;
+  mayaPassword: string | undefined;
+  buyerEmail: string;
+  buyerPassword: string;
+} {
   const demoPassword = readFileSync(join(SECRETS_DIR, 'demo-password.txt'), 'utf8').trim();
   const env: Record<string, string> = {};
   for (const line of readFileSync(join(SECRETS_DIR, 'sandbox-buyer.env'), 'utf8').split(/\r?\n/)) {
@@ -74,8 +80,11 @@ function readSecrets(): { demoPassword: string; buyerEmail: string; buyerPasswor
   if (!buyerEmail || !buyerPassword) {
     throw new StopError('sandbox-buyer.env needs SANDBOX_BUYER_EMAIL and SANDBOX_BUYER_PASSWORD');
   }
-  SECRET_VALUES.push(demoPassword, buyerPassword);
-  return { demoPassword, buyerEmail, buyerPassword };
+  // maya (an unrestricted user) has her own password; the judges one is published.
+  const mayaFile = join(SECRETS_DIR, 'maya-password.txt');
+  const mayaPassword = existsSync(mayaFile) ? readFileSync(mayaFile, 'utf8').trim() : undefined;
+  SECRET_VALUES.push(demoPassword, buyerPassword, ...(mayaPassword ? [mayaPassword] : []));
+  return { demoPassword, mayaPassword, buyerEmail, buyerPassword };
 }
 
 type Secrets = ReturnType<typeof readSecrets>;
@@ -193,7 +202,9 @@ async function connectOne(
 ): Promise<'saved' | 'skipped'> {
   const page = await context.newPage();
   page.setDefaultTimeout(STEP_TIMEOUT_MS);
-  await signInToTwoKey(page, origin, email, s.demoPassword);
+  const password = email.startsWith('maya@') ? s.mayaPassword : s.demoPassword;
+  if (!password) throw new StopError(`${email} needs ~/two-key-secrets/maya-password.txt`);
+  await signInToTwoKey(page, origin, email, password);
   console.log(`${email}: signed in`);
 
   await page.goto(`${origin}/onboarding/paypal`);

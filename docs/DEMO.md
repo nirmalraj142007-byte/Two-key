@@ -8,14 +8,16 @@ daily reset, the replay fallback and what to monitor.
 
 | Account | Role | Password | Wallet | Rules |
 | --- | --- | --- | --- | --- |
-| `maya@twokey.demo` | user | `DEMO_PASSWORD` | its own saved PayPal wallet | preset demo card |
+| `maya@twokey.demo` | user (unrestricted) | `MAYA_PASSWORD`, never published | its own saved PayPal wallet | preset demo card |
 | `judge1@twokey.demo` | judge_demo | `DEMO_PASSWORD` | its own saved PayPal wallet | preset demo card |
 | `judge2@twokey.demo`, `judge3@twokey.demo` | judge_demo | `DEMO_PASSWORD` | its own saved PayPal wallet (`demo:connect-wallets`) | preset demo card |
 | `hijack@twokey.system` | hijack_system | none (cannot sign in) | its own token (`npm run vault:hijack`) | hijack card |
 
 Judges sign in as `judge1@twokey.demo`, the account the README gives. The production
-`DEMO_PASSWORD` lives in `~/two-key-secrets/demo-password.txt` (never committed, never printed)
-and is the one given to judges in the README.
+`DEMO_PASSWORD` lives in `~/two-key-secrets/demo-password.txt` and is published in the README for
+the judge accounts, whose role cannot delete the wallet or change the rules. maya is a full user, so
+she has her own password in `~/two-key-secrets/maya-password.txt` (never committed or printed);
+`demo:setup --env prod` never gives her the published one.
 
 **The preset demo card** (the demo request: "Running shoes, size 10, under $70, only Stride Supply
 or Peak Outfitters, one pair, this week."): Stride Supply and Peak Outfitters; $70.00 per item and

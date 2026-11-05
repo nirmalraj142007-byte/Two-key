@@ -34,7 +34,8 @@ Copy rules for the voice-over, captions and edits:
      app in `.env.gateway`.
    - **agent-runner** → Events: its latest deploy is the release commit (preflight cannot see it).
 3. **Push alerts for maya** (optional; the fallback is in beat 0:50). Desktop Chrome:
-   1. Open https://web-ycyg.onrender.com/login, sign in as `maya@twokey.demo`.
+   1. Open https://web-ycyg.onrender.com/login, sign in as `maya@twokey.demo` with the password in
+      `~/two-key-secrets/maya-password.txt` (not the published judges password).
    2. Open https://web-ycyg.onrender.com/approvals → **Phone alerts** → **Turn on alerts** →
       Chrome's prompt → **Allow**. The box says "On. This device gets a notification when a
       purchase is held."

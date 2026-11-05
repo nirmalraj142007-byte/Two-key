@@ -98,6 +98,11 @@ export function loadDemoEnv(argv: string[], script: string): DemoEnv {
   if (env === 'prod' && !process.env.DEMO_PASSWORD && existsSync(passwordFile)) {
     process.env.DEMO_PASSWORD = readFileSync(passwordFile, 'utf8').trim();
   }
+  // maya is a full user (not judge_demo), so she never shares the published judge password.
+  const mayaFile = join(SECRETS_DIR, 'maya-password.txt');
+  if (env === 'prod' && !process.env.MAYA_PASSWORD && existsSync(mayaFile)) {
+    process.env.MAYA_PASSWORD = readFileSync(mayaFile, 'utf8').trim();
+  }
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error(`${script} needs DATABASE_URL`);
