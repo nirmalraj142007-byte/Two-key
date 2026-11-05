@@ -244,9 +244,10 @@ export function AgentConsole({
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,18rem)]">
-      {/* Shown above everything, before and during the run, so no recording can miss it. */}
+      {/* Above everything and sticky, before and during the run, so no recording can miss it
+          (a take scrolls down to watch the card arrive). */}
       {scriptedLabel ? (
-        <div data-slot="scripted-run-label" className="lg:col-span-3">
+        <div data-slot="scripted-run-label" className="sticky top-2 z-20 shadow-sm lg:col-span-3">
           <Banner tone="warning" text={scriptedLabel} />
         </div>
       ) : null}

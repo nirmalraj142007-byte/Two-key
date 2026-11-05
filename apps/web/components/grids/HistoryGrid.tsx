@@ -217,7 +217,8 @@ function columns(opts: {
       headerName: 'Time',
       valueGetter: field('createdAt'),
       valueFormatter: (p) => (p.value ? TIME.format(new Date(p.value as string)) : ''),
-      width: 170,
+      // Sized so every column through State fits a 1280-wide window (the demo video).
+      width: 150,
       sort: enterprise ? 'desc' : undefined,
       cellClass: 'font-mono tabular-nums',
       ...(enterprise ? { cellRenderer: 'agGroupCellRenderer' } : {}),
@@ -227,14 +228,15 @@ function columns(opts: {
       headerName: 'Product',
       valueGetter: field('product'),
       flex: 1,
-      minWidth: 180,
+      // The PayPal ID columns follow, so flex adds nothing at 1280: this is the real width.
+      minWidth: 260,
       tooltipValueGetter: (p) => p.value as string,
     },
     {
       colId: 'store',
       headerName: 'Store',
       valueGetter: field('store'),
-      width: 150,
+      width: 130,
       ...(enterprise ? { rowGroup: groupBy === 'store', enableRowGroup: true } : {}),
     },
     {
@@ -261,7 +263,7 @@ function columns(opts: {
         const d = rowOf(p.data)?.decision;
         return d ? DECISION_LABEL[d] : '—';
       },
-      width: 100,
+      width: 90,
     },
     {
       colId: 'ruleHits',
@@ -274,7 +276,7 @@ function columns(opts: {
         const r = rowOf(p.data);
         return r ? <Chips hits={r.ruleHits} /> : null;
       },
-      width: 330,
+      width: 180,
     },
     {
       colId: 'state',
@@ -284,7 +286,7 @@ function columns(opts: {
         const r = rowOf(p.data);
         return r ? <StateCell row={r} /> : null;
       },
-      width: 290,
+      width: 260,
       ...(enterprise ? { rowGroup: groupBy === 'state', enableRowGroup: true } : {}),
     },
     ...(

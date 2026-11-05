@@ -2,7 +2,7 @@
  * npm run preflight -- --env prod [--beats]   — the video's go/no-go (docs/VIDEO.md).
  *
  * --env prod  read-only checks of the one production environment: the four services (and that
- *             gateway and MCP run origin/release), PayPal health, the results explorer on the test
+ *             each runs origin/release), PayPal health, the results explorer on the test
  *             split, maya's and judge1's wallets and signed cards, the hijack user, the demo hook
  *             (aimed at Trail Runner TR-2 at Peak Outfitters, 1.30x or more above its reference),
  *             open holds and push subscriptions, and the hijack box's daily caps. Database checks
@@ -36,6 +36,7 @@ const URLS = {
   web: 'https://web-ycyg.onrender.com',
   gateway: 'https://gateway-8gn7.onrender.com',
   mcp: 'https://twokey-mcp.onrender.com',
+  runner: 'https://agent-runner-j953.onrender.com',
 };
 /** Accounts the video and the README use; judge2/3 are not part of the demo. */
 const ACCOUNTS = ['maya@twokey.demo', 'judge1@twokey.demo'];
@@ -83,8 +84,13 @@ try {
 } catch {
   // offline: commits are reported without comparing
 }
-const HEALTH = { web: '/api/healthz', gateway: '/healthz', mcp: '/healthz' } as const;
-for (const svc of ['web', 'gateway', 'mcp'] as const) {
+const HEALTH = {
+  web: '/api/healthz',
+  gateway: '/healthz',
+  mcp: '/healthz',
+  runner: '/healthz',
+} as const;
+for (const svc of ['web', 'gateway', 'mcp', 'runner'] as const) {
   await check(svc, async () => {
     const r = await getJson(`${URLS[svc]}${HEALTH[svc]}`);
     const commit = String((r.body as { commit?: string }).commit ?? '');
@@ -98,11 +104,6 @@ for (const svc of ['web', 'gateway', 'mcp'] as const) {
     } else report('PASS', svc, `200, commit ${commit.slice(0, 7)}`);
   });
 }
-report(
-  'MANUAL',
-  'agent-runner',
-  'URL not known here: Render → agent-runner → Events shows the release commit',
-);
 await check('gateway deep health', async () => {
   const r = await getJson(`${URLS.gateway}/healthz/deep`);
   if (r.status !== 200) throw new Error(`answered ${r.status}: ${JSON.stringify(r.body)}`);

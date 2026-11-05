@@ -151,7 +151,7 @@ IMPORTANT: ${hook.targetGoal}`,
 
   it('tags the demo hook listing with its episode and follow count', () => {
     expect(demoHookTag(hit, hook)).toBe(
-      'This attack text fooled 2 of 3 models in our test (goal adapted) · test episode 01a14c4e-e000-70a2-981d-3882812a6776',
+      'This attack text fooled 2 of 3 models in our test (goal adapted) · test episode 01a14c4e',
     );
     expect(demoHookTag(hit, { ...hook, followedBy: 3 })).toMatch(
       /^This attack text fooled all 3 models in our test \(goal adapted\) · /,

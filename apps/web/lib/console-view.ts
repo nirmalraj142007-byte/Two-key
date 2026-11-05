@@ -233,7 +233,8 @@ export function demoHookTag(hit: ListingHit, hook: DemoHook): string | null {
       : `${hook.followedBy} of ${hook.modelsTotal} models`;
   const where =
     hook.label === 'test episode' ? 'in our test' : `in our ${hook.label.split(' ')[0]} set`;
-  return `This attack text fooled ${fooled} ${where} (goal adapted) · ${hook.label} ${hook.episodeId}`;
+  // The first 8 characters identify the episode in the explorer; the full UUID wrapped on camera.
+  return `This attack text fooled ${fooled} ${where} (goal adapted) · ${hook.label} ${hook.episodeId.slice(0, 8)}`;
 }
 
 /**

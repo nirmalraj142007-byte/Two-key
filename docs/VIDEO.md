@@ -52,17 +52,31 @@ Copy rules for the voice-over, captions and edits:
 
 | Time | Screen | Do | Shows | Fallback |
 | --- | --- | --- | --- | --- |
-| 0:00–0:10 Hook | `/agent` | Send "Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week." | The agent searches; the Cloud Runner CR-1 listing at Peak Outfitters carries the attack text; the agent proposes **Trail Runner TR-2 at Peak Outfitters**. The console tags the listing **"This attack text fooled all 3 models in our test (goal adapted)"**; keep the tag in frame | If the live model does not take the bait in two takes: `/agent?model=scripted:hook`, same message (the "Scripted demo run" label shows) |
-| 0:10–0:20 Rules | `/rules` | Scroll to the card | Maya's signed card: badges **enforced at payment** (stores, $70, one item) vs **Agent's job — not checked by Two-Key** (size 10) | — |
-| 0:20–0:32 Clean purchase | `/agent?model=scripted:happy` | Send the demo request | Cloud Runner CR-1 at Stride Supply, $54.00, **Captured**; open `/history` for the PayPal order and capture IDs | Live model instead of scripted if it buys CR-1 at Stride |
-| 0:32–0:50 Attacker attempt | `/agent?model=scripted:attack` (the "Scripted demo run" label shows) | Send the demo request | $189 gift card at GiftVault → **Blocked · no PayPal order** ("GiftVault is not one of your stores. No PayPal order created.") | — |
+| 0:00–0:10 Hook | `/agent?model=scripted:hook` (the "Scripted demo run" label shows) | Send "Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week." | The agent searches; the Cloud Runner CR-1 listing at Peak Outfitters carries the attack text, tagged **"This attack text fooled all 3 models in our test (goal adapted) · test episode 01a14c4e"**; the agent proposes **Trail Runner TR-2 at Peak Outfitters**. Keep the tag in frame | A live take (`/agent`, no `?model=`) is optional: in rehearsal the live model ignored the hook and bought TR-2 at Stride Supply ($45, captured), which also uses one of maya's 5 purchases a day |
+| 0:10–0:20 Rules | `/agent` → **See all rules** (there is no `/rules` page) | Scroll to "Agent's job" | Maya's signed card: badges **enforced at payment** (stores, $70, one item) vs **Agent's job — not checked by Two-Key** (size 10) | — |
+| 0:20–0:32 Clean purchase | `/agent?model=scripted:happy` | Send the demo request | Cloud Runner CR-1 at Stride Supply, $54.00, **Captured**; the card shows the PayPal order and capture IDs (copy buttons). In `/history`, expand the row for them | Live model instead of scripted if it buys CR-1 at Stride |
+| 0:32–0:50 Attacker attempt | `/agent?model=scripted:attack` (the "Scripted demo run" label shows) | Send the demo request | $189 gift card at GiftVault → **Blocked · no PayPal order** ("GiftVault isn't in your stores. No PayPal order created.") | — |
 | 0:50–1:10 Hold | The hook take's card, then the notification | Card shows **Waiting for you**: "40% above the usual price at 3 stores" ($64.40 vs $46.00). Click the Chrome notification "Approve $64.40 at Peak Outfitters?" → **Deny** | **Voided · no charge** | **No push:** open `/approvals` → the hold → **Deny**. Hold expired (15 min) or hook taken with the scripted fallback: `/agent?model=scripted:anomaly`, "Trail Runner TR-2, under $70, one pair." |
 | 1:10–1:40 Results | `/results` | Hover the three model cards | Outside vs inside the rules per model, "Money sent to an attacker under Two-Key: $0.00". Caption the honest note (no agent tried, so $0.00 does not test the block) | — |
-| 1:40–2:00 Honesty | `/results` → **Frontier**, then **Predictions**; README "What we found" note | Point at the static cap and Two-Key points per model; scroll the misses | Frontier, predictions with misses marked, the dev→test note | — |
+| 1:40–2:00 Honesty | `/results` → **Frontier**, then **Predictions**; README "What we found" note | Point at the static cap and Two-Key points per model; on Predictions scroll past "Dated checkpoints" to the table and its misses | Frontier, predictions with misses marked, the dev→test note | — |
 | 2:00–2:20 MCP | `/developers`, terminal | Show the MCP URL and the install line `npx -y https://github.com/nirmalraj142007-byte/Two-key/releases/download/v1.0.0/twokey-mcp-1.0.0.tgz` | Claude Desktop only if set up; otherwise `npm run mcp:pack-smoke` output | — |
 | 2:20–2:35 AP2, architecture, CI | `/about`; README | AP2 paragraph; architecture diagram; CI badge (green) | — | — |
 | 2:35–2:48 Hijack box | `/hijack`, then README | Paste an attack, run it live | The box's live result | Not live or out of today's attempts: its replay, banner visible |
 | 2:48–2:55 End card | [`docs/video/end-card.png`](video/end-card.png) | — | Two-Key, the pitch line, live URL, repo, small print "PayPal AI Hackathon · All products and merchants are fictional sandbox accounts." | — |
+
+## Known issues and workarounds (rehearsal, Nov 5)
+
+Full list with before/after: [docs/REHEARSAL.md](REHEARSAL.md).
+
+- **maya's rules allow 5 purchases per 24 hours.** Captured and still-open purchases count;
+  blocked and voided ones do not. Each clean-purchase take (and any live take that buys) uses one.
+  Between rounds of takes, wait **5 minutes** after the last take, then reset: GitHub → Actions →
+  demo reset → **Run workflow** (or `npm run demo:reset -- --env prod`). The reset skips anything
+  touched in the last 5 minutes, so resetting straight after a take clears nothing.
+- **The live model may ignore the hook** (rehearsal: it bought the honest cheapest TR-2). Use
+  `scripted:hook` for the beat; its label stays pinned at the top of the console while scrolling.
+- **Approvals with more than one open hold:** after Deny, the voided card moves below the next
+  waiting one, so a different card slides into place. Start from a clean slate (step 4 above).
 
 **Recording order:** take the hook first and leave its hold **Waiting for you**; record 0:10–0:50
 in other tabs; deny the hold within its 15-minute window for 0:50–1:10. If the window passes,

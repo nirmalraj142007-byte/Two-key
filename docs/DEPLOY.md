@@ -12,6 +12,16 @@ Two-Key has **one public environment: production.** It is the Render Blueprint i
 | `twokey-mcp` | `@twokey/mcp` | `/healthz` | Streamable HTTP at `/mcp` |
 | `agent-runner` | `@twokey/agent-runner` | `/healthz` | Web service, not a worker |
 
+**Production URLs.** Each health check reports the deployed commit (`RENDER_GIT_COMMIT`);
+`npm run preflight -- --env prod` checks all four against `origin/release`.
+
+| Service | URL | Health |
+| --- | --- | --- |
+| web | https://web-ycyg.onrender.com | `/api/healthz` |
+| gateway | https://gateway-8gn7.onrender.com | `/healthz` |
+| twokey-mcp | https://twokey-mcp.onrender.com | `/healthz` (MCP at `/mcp`) |
+| agent-runner | https://agent-runner-j953.onrender.com | `/healthz` |
+
 **Instance plan** (`plan:` in `render.yaml`; `check:secrets` accepts `free` or `starter`).
 
 **Plan B is in force: every service stays `free`** (no card on the Render account). Free

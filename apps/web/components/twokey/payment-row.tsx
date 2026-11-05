@@ -49,15 +49,17 @@ export function PaymentRow({
         className,
       )}
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-base font-medium text-text">{product}</span>
-          <span className="text-sm text-text-muted">{merchant}</span>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <Money cents={cents} currency="USD" className="text-base font-medium text-text" />
-          <StateBadge state={state} />
-        </div>
+      {/* Product and price, then store and state: in the console's narrow column a wide badge
+          ("Blocked · no PayPal order") beside the title squeezed it to "Digital g…". */}
+      <div className="flex items-start justify-between gap-3">
+        <span className="line-clamp-2 min-w-0 break-words text-base font-medium text-text">
+          {product}
+        </span>
+        <Money cents={cents} currency="USD" className="shrink-0 text-base font-medium text-text" />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+        <span className="text-sm text-text-muted">{merchant}</span>
+        <StateBadge state={state} />
       </div>
       {reason ? <p className="text-sm text-text-muted">{reason}</p> : null}
       {idList.length > 0 ? (
