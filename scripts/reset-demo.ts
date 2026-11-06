@@ -36,6 +36,7 @@ import {
   ruleKey,
   signDemoCard,
   signHijackCard,
+  wrongKeyAccounts,
 } from './demo-lib.js';
 
 const SCRIPT = 'demo:reset';
@@ -220,6 +221,30 @@ try {
       (await cardVerifies(db, userId, key, now))
     );
   };
+  // Before signing anything: a card that is valid by date but fails to verify means this run's
+  // key is not the gateway's. Re-signing with it would block every purchase, so sign nothing.
+  const [hijackUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, HIJACK_EMAIL));
+  const checked = [];
+  for (const p of [...people, ...(hijackUser ? [{ ...hijackUser, email: HIJACK_EMAIL }] : [])]) {
+    const card = await activeCard(db, p.id, now);
+    checked.push({
+      email: p.email,
+      hasCard: card !== undefined && card !== null,
+      expiresSoon:
+        card?.expiresAt == null || card.expiresAt.getTime() - now.getTime() <= RESIGN_WITHIN_MS,
+      verifies: card ? await cardVerifies(db, p.id, key, now) : false,
+    });
+  }
+  const wrong = wrongKeyAccounts(checked);
+  if (wrong.length > 0) {
+    throw new Error(
+      `RULE_HMAC_KEY does not verify the live cards of ${wrong.join(', ')}: this run's key is not the gateway's. ` +
+        "No card was signed. Fix the key (GitHub: repository secret PROD_RULE_HMAC_KEY = the gateway service's RULE_HMAC_KEY) and run again.",
+    );
+  }
   for (const a of DEMO_ACCOUNTS) {
     const u = people.find((p) => p.email === a.email);
     if (!u || (await fresh(u.id))) continue;

@@ -152,6 +152,22 @@ export function databaseUrlProblem(
   return null;
 }
 
+/**
+ * The accounts that show this run's RULE_HMAC_KEY is not the gateway's, or [] when the key looks
+ * right. Only cards still valid by date count (a missing or expiring card says nothing). If none
+ * of them verifies, the key is wrong: return them all. If at least one verifies, the key is right
+ * and the failing ones are just bad cards (for example signed earlier with a wrong key), which
+ * the reset re-signs. On Nov 6 a wrong PROD_RULE_HMAC_KEY made the reset re-sign every card with
+ * it, so the gateway would have blocked every purchase; the reset now stops instead.
+ */
+export function wrongKeyAccounts(
+  cards: { email: string; hasCard: boolean; expiresSoon: boolean; verifies: boolean }[],
+): string[] {
+  const valid = cards.filter((c) => c.hasCard && !c.expiresSoon);
+  if (valid.length === 0 || valid.some((c) => c.verifies)) return [];
+  return valid.map((c) => c.email);
+}
+
 export function requireVars<K extends string>(script: string, keys: K[]): Record<K, string> {
   const missing = keys.filter((k) => !process.env[k]?.trim());
   if (missing.length > 0) {
