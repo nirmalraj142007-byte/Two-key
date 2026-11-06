@@ -13,12 +13,11 @@ MANUAL: `ALLOW_SCRIPTED`); all four services on the release commit. `npm run smo
 
 Left, in order:
 
-1. **Demo reset workflow:** it has failed on every scheduled run since it moved to GitHub Actions
-   (Nov 3, 4, 5; the `npm run demo:reset` step). Most likely its four repository secrets are not
-   set: Settings → Secrets and variables → Actions → `PROD_DATABASE_URL`, `PROD_RULE_HMAC_KEY`,
-   `PROD_RULE_HMAC_KEY_ID`, `PROD_MERCHANT_API_CREDENTIALS` (the gateway's values). Then
-   Actions → Demo reset → **Run workflow** and check it goes green. The video's retake workaround
-   (docs/VIDEO.md) depends on it.
+1. ~~Demo reset workflow~~ **fixed Nov 6.** It failed Nov 3–5 (missing merchant credentials
+   secret); then a `PROD_RULE_HMAC_KEY` that differed from the gateway's made it re-sign every card
+   with the wrong key (restored the same hour with `demo:setup`). Secrets re-entered; the reset now
+   refuses to sign when no card verifies with its key. Manual run Nov 6 05:42 UTC: green, preflight
+   GO afterwards.
 2. **Render:** `ALLOW_SCRIPTED=true` on web and agent-runner; gateway `HIJACK_PAYPAL_*` set and
    `PAYPAL_CLIENT_ID` = the sandbox app in `.env.gateway`.
 3. **judge2 and judge3 wallets:** `npm run demo:connect-wallets -- --only judge2 --only judge3`,
@@ -61,8 +60,8 @@ Left, in order:
 - [ ] judge1 (the README account) signs in, has a wallet and the demo card; the console starts
       a run. Check in a private window with the demo password (wallet and card: preflight PASS).
 - [x] Hijack box live with headroom today (Nov 6: 200 attempts, 150,000 tokens).
-- [ ] Daily demo reset ran in the last 24 hours (GitHub → Actions → Demo reset): **failing**, see
-      Status item 1.
+- [x] Daily demo reset ran in the last 24 hours (GitHub → Actions → Demo reset): green on Nov 6;
+      check it again on recording day.
 
 ## Video (docs/VIDEO.md)
 

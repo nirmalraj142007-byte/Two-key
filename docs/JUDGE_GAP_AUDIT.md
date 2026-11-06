@@ -83,9 +83,10 @@ Done:
 - Production health (Nov 6): `npm run preflight -- --env prod` GO (all four services on the
   release commit); `npm run smoke -- --env prod` 8 of 9 without an agent token.
 
+- Daily demo reset workflow: green on Nov 6 after the secrets were fixed; it now refuses to sign
+  cards with a key the gateway does not use.
+
 Left (owner):
-- The daily demo reset workflow: failing since Nov 3 (likely missing repository secrets;
-  docs/SUBMISSION.md, Status item 1).
 
 - judge2 and judge3 wallets (`npm run demo:connect-wallets -- --only judge2 --only judge3`).
 - Production smoke 9 of 9: rerun with `SMOKE_AGENT_TOKEN` (an agent token from /onboarding/agent)
