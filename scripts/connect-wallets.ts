@@ -37,6 +37,8 @@ const SAVED_TEXT = 'Saved. Future purchases need no PayPal pop-up.';
 const STEP_TIMEOUT_MS = 60_000;
 /** Render free instances can take a minute to wake. */
 const FIRST_LOAD_TIMEOUT_MS = 120_000;
+/** How long the sign-in page may take to appear while a free-plan service wakes. */
+const COLD_START_MS = 90_000;
 
 /** Challenge pages PayPal redirects to; the normal /signin page is not one of them. */
 const CHALLENGE_PATH =
@@ -53,6 +55,8 @@ const CHALLENGE_TEXT =
   /security (check|challenge)|verify (it'?s|that it'?s) you|i'?m not a robot|quick security check/i;
 
 class StopError extends Error {}
+/** A stop that needs waiting or a fix, not a person at the window: the browser closes. */
+class WaitError extends StopError {}
 
 /** Values that must never reach the console; filled once the secret files are read. */
 const SECRET_VALUES: string[] = [];
@@ -128,12 +132,62 @@ async function declineCookies(page: Page): Promise<void> {
   if (await decline.isVisible().catch(() => false)) await decline.click().catch(() => undefined);
 }
 
+/**
+ * Opens /login and waits for its form, reloading while a free Render instance wakes (the first
+ * request can hang or get a placeholder page) for up to COLD_START_MS.
+ */
+async function openLogin(page: Page, origin: string) {
+  const emailBox = page.getByLabel('Email', { exact: true });
+  const deadline = Date.now() + COLD_START_MS;
+  for (let attempt = 1; ; attempt++) {
+    const left = deadline - Date.now();
+    if (left <= 0) {
+      throw new StopError(
+        `${origin}/login did not show its sign-in form within ${COLD_START_MS / 1000} s (cold start?). Run the same command again.`,
+      );
+    }
+    try {
+      await page.goto(`${origin}/login`, { timeout: left, waitUntil: 'domcontentloaded' });
+      await emailBox.waitFor({ state: 'visible', timeout: Math.min(left, 30_000) });
+      return;
+    } catch {
+      if (attempt === 1) console.log('  waiting for Two-Key to wake (free plan)…');
+      await page.waitForTimeout(3_000);
+    }
+  }
+}
+
+/** Two-Key's own sign-in messages (apps/web/app/login/actions.ts). */
+const RATE_LIMITED = /Too many sign-in attempts/i;
+const WRONG_PASSWORD = /Wrong email or password/i;
+
 async function signInToTwoKey(page: Page, origin: string, email: string, password: string) {
-  await page.goto(`${origin}/login`, { timeout: FIRST_LOAD_TIMEOUT_MS });
-  await page.locator('#email').fill(email);
-  await page.locator('#password').fill(password);
+  await openLogin(page, origin);
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: STEP_TIMEOUT_MS });
+
+  // Signed in (the URL leaves /login), or the form says why not.
+  const alert = page.getByRole('alert');
+  const deadline = Date.now() + STEP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (!new URL(page.url()).pathname.startsWith('/login')) return;
+    const text = (await alert.allInnerTexts().catch(() => [])).join(' ');
+    if (RATE_LIMITED.test(text)) {
+      // 5 attempts per minute per IP (LOGIN_POINTS / LOGIN_WINDOW_S in apps/web/lib/rate-limit.ts).
+      throw new WaitError(
+        `Two-Key is rate-limiting sign-in from this network (5 attempts a minute). Wait 60 seconds, then run the same command again (accounts already saved are skipped).`,
+      );
+    }
+    if (WRONG_PASSWORD.test(text)) {
+      const file = email.startsWith('maya@') ? 'maya-password.txt' : 'demo-password.txt';
+      throw new WaitError(
+        `Two-Key rejected the password for ${email}: check ~/two-key-secrets/${file}. Not retrying, so the sign-in limit is not used up.`,
+      );
+    }
+    await page.waitForTimeout(500);
+  }
+  throw new StopError(`signing in as ${email} did not finish within ${STEP_TIMEOUT_MS / 1000} s`);
 }
 
 /**
@@ -262,9 +316,14 @@ async function main() {
       } catch (err) {
         const msg = redact(err instanceof Error ? err.message : String(err));
         console.error(`${email}: stopped — ${msg}`);
-        console.error('The window is left open. Close it (Ctrl-C) when done.');
         console.log(`saved: ${saved.join(', ') || 'none'}`);
         process.exitCode = 1;
+        if (err instanceof WaitError) {
+          // Nothing for a person to do in the window: close it and exit.
+          await browser.close();
+          return;
+        }
+        console.error('The window is left open. Close it (Ctrl-C) when done.');
         await new Promise(() => undefined); // keep the window for a human
       }
     }

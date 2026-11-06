@@ -14,7 +14,7 @@ Copy rules for the voice-over, captions and edits:
 - A scripted run is a stand-in, not a live model. The console labels every one "Scripted demo
   run (scripted:<name>): a fixed script plays the agent, not a live AI model"; keep that label in
   frame. Anything replayed keeps its banner "Replaying a recorded run".
-- No AG Grid claim anywhere (prize criteria not checked).
+- No AG Grid prize claim anywhere: we are not entering it (it targets AG Studio).
 
 ## Before recording
 

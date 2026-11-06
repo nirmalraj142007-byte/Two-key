@@ -13,7 +13,7 @@ The agent can authorize the payment, but it can't capture it.
 
 ## Prizes to enter
 
-This hackathon has no tracks. Special awards that fit: **Best Use of Agentic Commerce · Best Use of PayPal + AI · Most Impactful**. AG Grid sponsor prize: *pending criteria check* (we use AG Grid and AG Charts Community; no Enterprise licence yet).
+This hackathon has no tracks. Special awards that fit: **Best Use of Agentic Commerce · Best Use of PayPal + AI · Most Impactful**.
 
 ## Inspiration
 

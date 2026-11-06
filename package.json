@@ -70,5 +70,6 @@
     "typescript": "^5",
     "vitest": "^3",
     "yaml": "^2"
-  }
+  },
+  "license": "MIT"
 }

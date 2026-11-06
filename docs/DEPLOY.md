@@ -146,6 +146,13 @@ It prints a checklist and exits 1 on any failure. `--env prod` needs `SMOKE_WEB_
 `tk_agent_…` token from **Connect your agent** (`/onboarding/agent`) on the matching site; it is
 sent only to the MCP URL and never printed.
 
+```bash
+SMOKE_WEB_URL=https://web-ycyg.onrender.com SMOKE_GATEWAY_URL=https://gateway-8gn7.onrender.com SMOKE_MCP_URL=https://twokey-mcp.onrender.com SMOKE_RUNNER_URL=https://agent-runner-j953.onrender.com npm run smoke -- --env prod
+```
+
+Without `SMOKE_AGENT_TOKEN` it passes 8 of 9 and exits 1 (`tools/list` is the one it cannot run);
+Nov 6 result: 8 of 9.
+
 Free services sleep when idle and the gateway took 37 s to wake (each check times out at 20 s),
 so open each service's `/healthz` once before a smoke run.
 
