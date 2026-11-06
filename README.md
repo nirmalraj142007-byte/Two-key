@@ -19,7 +19,7 @@ Live demo: **https://web-ycyg.onrender.com** (PayPal sandbox only; no real money
 First load may take up to a minute (free hosting).
 
 1. **Open `/hijack`.** Paste any instruction you like into a product listing and watch a real agent read it. The gate's decision shows next to the agent's: captured, held or blocked, and whether a PayPal order was created.
-2. **Sign in as `judge1@twokey.demo` / `Yonder-Garnet-Umber-87`** and open the console. judge1 already has a saved sandbox wallet and signed rules. Ask for "Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week." Then open History and Approvals.
+2. **Sign in as `judge1@twokey.demo`, `judge2@twokey.demo` or `judge3@twokey.demo`, password `Yonder-Garnet-Umber-87`** (one account each if several of you try at once) and open the console. Each judge account already has its own saved sandbox wallet and signed rules. Ask for "Running shoes, size 10, under $70, only Stride Supply or Peak Outfitters, one pair, this week." Then open History and Approvals.
 3. **Open `/results`.** Every number from the evaluation, with the runs behind it.
 
 Demo accounts already have a sandbox PayPal wallet connected.

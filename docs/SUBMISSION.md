@@ -20,8 +20,8 @@ Left, in order:
    GO afterwards.
 2. **Render:** `ALLOW_SCRIPTED=true` on web and agent-runner; gateway `HIJACK_PAYPAL_*` set and
    `PAYPAL_CLIENT_ID` = the sandbox app in `.env.gateway`.
-3. **judge2 and judge3 wallets:** `npm run demo:connect-wallets -- --only judge2 --only judge3`,
-   then `npm run demo:setup -- --env prod`.
+3. ~~judge2 and judge3 wallets~~ **done Nov 6:** judge1–3 each have an active wallet and a card
+   that verifies with the gateway key; README and DEVPOST list all three.
 4. **Production smoke 9 of 9:** sign in, create an agent token at /onboarding/agent, then
    `SMOKE_AGENT_TOKEN=tk_agent_… npm run smoke -- --env prod` (with the four `SMOKE_*_URL`s from
    docs/DEPLOY.md).
@@ -57,8 +57,10 @@ Left, in order:
 - [x] All four `/healthz` show the release commit (preflight and smoke check it; URLs in
       docs/DEPLOY.md).
 - [x] Results explorer shows the test split: 900 runs, 3 models.
-- [ ] judge1 (the README account) signs in, has a wallet and the demo card; the console starts
-      a run. Check in a private window with the demo password (wallet and card: preflight PASS).
+- [x] judge1, judge2 and judge3 each have an active wallet and the demo card, verified with the
+      gateway key (Nov 6).
+- [ ] One judge account signs in and the console starts a run: check in a private window with
+      the published password.
 - [x] Hijack box live with headroom today (Nov 6: 200 attempts, 150,000 tokens).
 - [x] Daily demo reset ran in the last 24 hours (GitHub → Actions → Demo reset): green on Nov 6;
       check it again on recording day.
@@ -82,8 +84,8 @@ Left, in order:
 - [ ] Try-it link: https://web-ycyg.onrender.com; code link:
       https://github.com/nirmalraj142007-byte/Two-key; video link.
 - [ ] Images from DEVPOST.md "Images to upload" (frontier: the test-split screenshot).
-- [ ] Judge sign-in: `judge1@twokey.demo` and the demo password, in the testing instructions
-      field (also in the README).
+- [ ] Judge sign-in: `judge1@twokey.demo`, `judge2@twokey.demo`, `judge3@twokey.demo` and the
+      published password, in the testing instructions field (also in the README and DEVPOST.md).
 - [ ] Special awards as listed in DEVPOST.md: Best Use of Agentic Commerce, Best Use of
       PayPal + AI, Most Impactful. Not the AG Grid prize (it targets AG Studio).
 - [ ] Built-with tags match DEVPOST.md "Built with".

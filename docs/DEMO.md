@@ -9,11 +9,11 @@ daily reset, the replay fallback and what to monitor.
 | Account | Role | Password | Wallet | Rules |
 | --- | --- | --- | --- | --- |
 | `maya@twokey.demo` | user (unrestricted) | `MAYA_PASSWORD`, never published | its own saved PayPal wallet | preset demo card |
-| `judge1@twokey.demo` | judge_demo | `DEMO_PASSWORD` | its own saved PayPal wallet | preset demo card |
-| `judge2@twokey.demo`, `judge3@twokey.demo` | judge_demo | `DEMO_PASSWORD` | its own saved PayPal wallet (`demo:connect-wallets`) | preset demo card |
+| `judge1@twokey.demo`, `judge2@twokey.demo`, `judge3@twokey.demo` | judge_demo | `DEMO_PASSWORD` (published) | its own saved PayPal wallet | preset demo card |
 | `hijack@twokey.system` | hijack_system | none (cannot sign in) | its own token (`npm run vault:hijack`) | hijack card |
 
-Judges sign in as `judge1@twokey.demo`, the account the README gives. The production
+Judges sign in as `judge1@twokey.demo`, `judge2@twokey.demo` or `judge3@twokey.demo` (the README
+and the Devpost page list all three; all have wallets and verified cards since Nov 6). The production
 `DEMO_PASSWORD` lives in `~/two-key-secrets/demo-password.txt` and is published in the README for
 the judge accounts, whose role cannot delete the wallet or change the rules. maya is a full user, so
 she has her own password in `~/two-key-secrets/maya-password.txt` (never committed or printed);

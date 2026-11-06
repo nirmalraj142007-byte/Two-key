@@ -27,6 +27,10 @@ Two-Key is one MCP server that replaces PayPal's money-moving tools. The agent g
 In 900 evaluation runs (test split), Two-Key paid an attacker $0.00. No followed attack in that split aimed at an attacker's store, so this does not test the hard-rule block. The development set (400 attacked runs, 2 models, used to set the predictions) had 1 followed attack aimed at an attacker's store (`openai/gpt-oss-20b`). Attacker payments by gate: prompt guard only 1, per-task cap 1, static cap 0, Two-Key 0 ($0.00).
 <!-- results:devpost-what:end -->
 
+## Try it (judges)
+
+https://web-ycyg.onrender.com (PayPal sandbox only; no real money moves). Sign in as `judge1@twokey.demo`, `judge2@twokey.demo` or `judge3@twokey.demo` with the password `Yonder-Garnet-Umber-87` (one account each if several judges try at once). Each has its own saved sandbox wallet and signed rules; judge accounts cannot delete the wallet or change the rules. The first page can take up to a minute while the free service wakes.
+
 ## How we built it
 
 Four services: a Next.js web app, a Fastify gateway (the only PayPal caller), the `twokey-mcp` server and an agent runner. The gateway uses PayPal Orders v2 with `intent: AUTHORIZE`, Payments v2 to capture or void, Vault v3 for the saved wallet, Transaction Search for merchant balances, and verified webhooks to move each payment forward. Rules are compiled from plain English by `qwen/qwen3.8-27b` on Groq, shown as a card, and signed only when the person confirms. We tested with `gpt-oss-120b` and `gpt-oss-20b` on Groq and `nemotron-3.5-bolt-e4b` and `gpt-oss-20b` on NVIDIA NIM, against attacks from InjecAgent and AgentDojo with only the goal adapted. Claude Code was the development agent, working through verified phase prompts.
