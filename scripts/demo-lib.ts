@@ -103,27 +103,65 @@ export function loadDemoEnv(argv: string[], script: string): DemoEnv {
   if (env === 'prod' && !process.env.MAYA_PASSWORD && existsSync(mayaFile)) {
     process.env.MAYA_PASSWORD = readFileSync(mayaFile, 'utf8').trim();
   }
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    console.error(`${script} needs DATABASE_URL`);
-    process.exit(1);
-  }
-  const local = LOCAL_HOSTS.has(new URL(url).hostname);
-  if (env === 'local' && !local) {
-    console.error(`${script} --env local refuses a non-local database`);
-    process.exit(1);
-  }
-  if (env !== 'local' && local) {
-    console.error(`${script} --env ${env} refuses a local database`);
+  const problem = databaseUrlProblem(process.env.DATABASE_URL, env, file);
+  if (problem) {
+    console.error(`${script}: ${problem}`);
     process.exit(1);
   }
   return env;
 }
 
+/** Where a hosted run's variable comes from, for error messages (never the value). */
+function sourceOf(key: string, env: DemoEnv, file?: string): string {
+  if (env === 'hosted') {
+    return process.env.GITHUB_ACTIONS === 'true'
+      ? `GitHub repository secret PROD_${key} (Settings → Secrets and variables → Actions)`
+      : `the Render service's ${key}`;
+  }
+  return file ? `${key} in ${file}` : key;
+}
+
+/**
+ * Why DATABASE_URL can't be used for this env, or null. Says whether it is missing or empty, not a
+ * Postgres URL, or on the wrong side of local/production. Prints at most the hostname, never the
+ * URL (it carries the password).
+ */
+export function databaseUrlProblem(
+  value: string | undefined,
+  env: DemoEnv,
+  file?: string,
+): string | null {
+  if (value === undefined || value.trim() === '') {
+    return `DATABASE_URL is missing or empty: set ${sourceOf('DATABASE_URL', env, file)}`;
+  }
+  let host: string;
+  try {
+    const u = new URL(value.trim());
+    if (u.protocol !== 'postgres:' && u.protocol !== 'postgresql:') throw new Error('protocol');
+    host = u.hostname;
+  } catch {
+    return `DATABASE_URL is set but is not a postgres:// URL (value not printed): check ${sourceOf('DATABASE_URL', env, file)}`;
+  }
+  const local = LOCAL_HOSTS.has(host);
+  if (env === 'local' && !local) {
+    return `--env local needs a local database, but DATABASE_URL points at ${host}`;
+  }
+  if (env !== 'local' && local) {
+    return `--env ${env} needs the production database, but DATABASE_URL points at a local host (${host}): check ${sourceOf('DATABASE_URL', env, file)}`;
+  }
+  return null;
+}
+
 export function requireVars<K extends string>(script: string, keys: K[]): Record<K, string> {
-  const missing = keys.filter((k) => !process.env[k]);
+  const missing = keys.filter((k) => !process.env[k]?.trim());
   if (missing.length > 0) {
-    console.error(`${script} needs ${missing.join(', ')}`);
+    const hosted = process.env.GITHUB_ACTIONS === 'true';
+    console.error(`${script} needs ${missing.join(', ')} (missing or empty)`);
+    if (hosted) {
+      console.error(
+        `Set the repository secret(s) ${missing.map((k) => `PROD_${k}`).join(', ')} (Settings → Secrets and variables → Actions).`,
+      );
+    }
     process.exit(1);
   }
   return Object.fromEntries(keys.map((k) => [k, process.env[k] as string])) as Record<K, string>;

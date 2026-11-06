@@ -21,15 +21,38 @@ afterEach(() => {
   for (const c of children.splice(0)) c.kill();
 });
 
+/** A port free on every interface: the services bind 0.0.0.0, so probe there, not 127.0.0.1. */
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const s = createServer();
     s.once('error', reject);
-    s.listen(0, '127.0.0.1', () => {
+    s.listen(0, '0.0.0.0', () => {
       const { port } = s.address() as { port: number };
       s.close(() => resolve(port));
     });
   });
+}
+
+const PORT_TRIES = 3;
+
+/**
+ * Starts the entry on a free port. Another test file can still take that port between the probe
+ * closing and the child binding it (CI once saw EADDRINUSE), so a child that exits with
+ * EADDRINUSE is retried on a fresh port; any other failure is reported as it is.
+ */
+async function startOnFreePort(
+  entry: string,
+  envFor: (port: number) => NodeJS.ProcessEnv,
+): Promise<{ addr: { host: string; port: number }; port: number }> {
+  for (let attempt = 1; ; attempt++) {
+    const port = await freePort();
+    try {
+      return { addr: await start(entry, envFor(port)), port };
+    } catch (err) {
+      const inUse = err instanceof Error && err.message.includes('EADDRINUSE');
+      if (!inUse || attempt >= PORT_TRIES) throw err;
+    }
+  }
 }
 
 /** Only what a child needs to run; HOST deliberately absent. */
@@ -110,11 +133,10 @@ describe('services listen on 0.0.0.0:PORT', () => {
   it(
     'twokey-mcp',
     async () => {
-      const port = await freePort();
-      const addr = await start('apps/mcp/src/index.ts', {
-        ...baseEnv(port),
+      const { addr, port } = await startOnFreePort('apps/mcp/src/index.ts', (p) => ({
+        ...baseEnv(p),
         GATEWAY_URL: 'http://127.0.0.1:9',
-      });
+      }));
       await expectAllInterfaces(addr, port);
     },
     STARTUP_MS + 10_000,
@@ -136,12 +158,11 @@ describe('services listen on 0.0.0.0:PORT', () => {
     it(
       'agent-runner',
       async () => {
-        const port = await freePort();
-        const addr = await start('apps/agent-runner/src/index.ts', {
-          ...baseEnv(port),
+        const { addr, port } = await startOnFreePort('apps/agent-runner/src/index.ts', (p) => ({
+          ...baseEnv(p),
           DATABASE_URL: dbUrl,
           MCP_URL: 'http://127.0.0.1:9/mcp',
-        });
+        }));
         await expectAllInterfaces(addr, port);
       },
       STARTUP_MS + 10_000,
@@ -150,10 +171,9 @@ describe('services listen on 0.0.0.0:PORT', () => {
     it(
       'gateway',
       async () => {
-        const port = await freePort();
         const { publicKey } = generateKeyPairSync('ed25519');
-        const addr = await start('apps/gateway/src/server.ts', {
-          ...baseEnv(port),
+        const { addr, port } = await startOnFreePort('apps/gateway/src/server.ts', (p) => ({
+          ...baseEnv(p),
           DATABASE_URL: dbUrl,
           PAYPAL_ENV: 'sandbox',
           PAYPAL_CLIENT_ID: 'test-client',
@@ -166,7 +186,7 @@ describe('services listen on 0.0.0.0:PORT', () => {
           VAPID_PRIVATE_KEY: 'test-vapid-private',
           WEB_ORIGIN: 'http://localhost:3000',
           PUBLIC_BASE_URL: 'http://localhost:4000',
-        });
+        }));
         await expectAllInterfaces(addr, port);
       },
       STARTUP_MS + 10_000,

@@ -24,7 +24,35 @@ jobs:
   reset:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Every PROD_* secret mapped once, to the name the script reads. MERCHANT_API_CREDENTIALS
+    # also accepts an unprefixed secret of that name (it was saved that way on Nov 6).
+    env:
+      DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+      RULE_HMAC_KEY: ${{ secrets.PROD_RULE_HMAC_KEY }}
+      RULE_HMAC_KEY_ID: ${{ secrets.PROD_RULE_HMAC_KEY_ID }}
+      MERCHANT_API_CREDENTIALS: ${{ secrets.PROD_MERCHANT_API_CREDENTIALS || secrets.MERCHANT_API_CREDENTIALS }}
     steps:
+      # Names the missing secret before anything installs; never prints a value.
+      - name: Check repository secrets
+        run: |
+          missing=0
+          check() {
+            if [ -z "$(printf '%s' "$2" | tr -d '[:space:]')" ]; then
+              echo "::error::Repository secret $1 is missing or empty (Settings → Secrets and variables → Actions)"
+              missing=1
+            else
+              echo "$1: set"
+            fi
+          }
+          check PROD_DATABASE_URL "$DATABASE_URL"
+          check PROD_RULE_HMAC_KEY "$RULE_HMAC_KEY"
+          check PROD_RULE_HMAC_KEY_ID "$RULE_HMAC_KEY_ID"
+          check PROD_MERCHANT_API_CREDENTIALS "$MERCHANT_API_CREDENTIALS"
+          case "$DATABASE_URL" in
+            postgres://*|postgresql://*) ;;
+            *) [ -n "$DATABASE_URL" ] && echo "::error::PROD_DATABASE_URL is set but is not a postgres:// URL (value not printed)" && missing=1 ;;
+          esac
+          exit $missing
       # The code production runs: the release branch.
       - uses: actions/checkout@v4
         with:
@@ -41,7 +69,3 @@ jobs:
           NODE_ENV: production
           LOG_LEVEL: warn
           PAYPAL_ENV: sandbox
-          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
-          RULE_HMAC_KEY: ${{ secrets.PROD_RULE_HMAC_KEY }}
-          RULE_HMAC_KEY_ID: ${{ secrets.PROD_RULE_HMAC_KEY_ID }}
-          MERCHANT_API_CREDENTIALS: ${{ secrets.PROD_MERCHANT_API_CREDENTIALS }}

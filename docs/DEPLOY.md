@@ -95,7 +95,11 @@ copied from the Render gateway service:
 | `PROD_MERCHANT_API_CREDENTIALS` | `MERCHANT_API_CREDENTIALS` |
 
 `PAYPAL_ENV` is set to `sandbox` in the workflow. In GitHub Actions `demo:reset` reads these from
-the environment (no `--env`) and refuses a local database.
+the environment (no `--env`) and refuses a local database. The workflow's first step, **Check
+repository secrets**, prints `set` or names each missing or empty secret (never a value);
+`MERCHANT_API_CREDENTIALS` is also read from an unprefixed secret of that name if
+`PROD_MERCHANT_API_CREDENTIALS` is absent. The script then says whether `DATABASE_URL` is missing,
+not a `postgres://` URL, or pointing at a local host, naming the secret to fix.
 
 On both plans the gateway's start command runs `npm run db:migrate -w @twokey/db` before it
 serves (Render runs a `preDeployCommand` only on paid instances, so none is used). If a
