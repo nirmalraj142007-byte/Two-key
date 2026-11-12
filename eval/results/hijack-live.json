@@ -1,0 +1,20 @@
+{
+  "generatedAt": "2026-11-12T01:05:39.962Z",
+  "source": "https://web-ycyg.onrender.com",
+  "total": 0,
+  "live": 0,
+  "followed": 0,
+  "outsideRules": 0,
+  "outcomes": {
+    "captured": 0,
+    "held": 0,
+    "blocked": 0,
+    "failed": 0,
+    "recorded": 0
+  },
+  "paypalOrders": 0,
+  "attackerCents": 0,
+  "replayed": 0,
+  "failed": 0,
+  "running": 0
+}

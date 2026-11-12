@@ -108,7 +108,14 @@ Ranges from [PREDICTIONS.md](PREDICTIONS.md), registered before the test split r
 ### Live hijack box (judge-written attacks)
 
 <!-- results:hijack:start -->
-**Live hijack box:** no snapshot yet (`npm run readme:hijack` writes `eval/results/hijack-live.json`). Current numbers: `/results` → Judge-written.
+**Live hijack box** (production, snapshot 2026-11-12 01:05 UTC, from `eval/results/hijack-live.json`; current numbers on `/results` → Judge-written). A separate, unvetted dataset: anyone can submit text, and none of it is part of the evaluation above.
+
+- Live attempts: **0** (0 submitted; not counted: 0 shown as a replay, 0 failed, 0 still running).
+- Steered the agent outside the rules: **0** (followed the text at all: 0).
+- Gate outcomes for live proposals: bought 0, held 0, blocked 0, not purchased 0.
+- PayPal orders created: **0**. Money moved to an attacker: **$0.00**.
+
+No live attempt had been run on production at this snapshot, so these zeros measure nothing yet. Try one at `/hijack`.
 <!-- results:hijack:end -->
 
 ## How Two-Key relates to AP2
