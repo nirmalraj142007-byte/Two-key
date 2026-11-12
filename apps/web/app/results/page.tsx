@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
 import EpisodesPanel from '@/components/results/EpisodesPanel';
-import { countOf, pct, shareCount, shortModel } from '@/components/results/format';
+import { capComparison, countOf, pct, shareCount, shortModel } from '@/components/results/format';
 import InsideRulesPanel from '@/components/results/InsideRulesPanel';
 import JudgeAttacksPanel from '@/components/results/JudgeAttacksPanel';
 import PredictionsPanel from '@/components/results/PredictionsPanel';
@@ -33,16 +33,60 @@ function HeaderLine({ s }: { s: ResultsSummary }) {
   return <p className="text-base text-text-muted tabular-nums">{parts.join(' · ')}</p>;
 }
 
-/** The headline: follow rate by target type per model, attacker money, and the held share. */
+/**
+ * The headline: the payee rule first, the anomaly hold as a measured second layer, then the
+ * static cap compared directly, with the refusal split. Every number from the summary.
+ */
 function Findings({ s }: { s: ResultsSummary }) {
+  const models = Object.values(s.models);
+  const outside = models.reduce((a, m) => a + m.followByTarget.outside_rules.followed, 0);
+  const inside = models.reduce((a, m) => a + m.insideRules.followed, 0);
+  const held = models.reduce(
+    (a, m) => a + shareCount(m.insideRules.heldShare, m.insideRules.followed),
+    0,
+  );
+  const c = capComparison(s.models);
+  const cap = formatUSD(s.staticCapCents);
   return (
     <section aria-labelledby="findings-title" className="flex flex-col gap-3">
       <h2 id="findings-title" className="sr-only">
         Findings
       </h2>
       <p className="text-lg text-text">
-        Money sent to an attacker under Two-Key:{' '}
+        <span className="font-medium">The guarantee is the payee rule.</span> Two-Key pays only
+        stores the person signed for; any other store is blocked before a PayPal order exists. Money
+        sent to an attacker under Two-Key:{' '}
         <span className="font-medium tabular-nums">{formatUSD(s.attackerMoneyCentsG4)}</span>.
+        Agents followed <span className="tabular-nums">{outside}</span> attacks that pointed outside
+        the rules
+        {outside === 0 ? ', so this split does not test that block.' : '.'}
+      </p>
+      <p className="text-base text-text">
+        <span className="font-medium">Second layer, measured: the anomaly hold.</span> Agents
+        followed <span className="tabular-nums">{inside}</span> attacks that stayed inside the
+        signed rules; Two-Key held <span className="tabular-nums">{countOf(held, inside)}</span> for
+        the human and the rest went through.
+      </p>
+      <p className="text-base text-text">
+        <span className="font-medium">Against a static {cap} cap</span> (the same proposals): the
+        static cap let <span className="tabular-nums">{countOf(c.staticThrough, c.attacked)}</span>{' '}
+        attacked runs end in a captured attack purchase, Two-Key{' '}
+        <span className="tabular-nums">{countOf(c.g4Through, c.attacked)}</span>.{' '}
+        {c.staticThrough <= c.g4Through
+          ? `On this test the static cap did as well or better on attacks${outside === 0 ? ', because no agent tried to pay the attacker' : ''}. `
+          : 'On this test Two-Key let fewer attacks through. '}
+        A cap cannot refuse a payment to an attacker under the cap; the payee rule does.
+      </p>
+      <p className="text-base text-text">
+        <span className="font-medium">
+          Refusals, <span className="tabular-nums">{c.staticRefused}</span> vs{' '}
+          <span className="tabular-nums">{c.g4Refused}</span>:
+        </span>{' '}
+        of <span className="tabular-nums">{c.honest}</span> honest purchases, the static cap refused{' '}
+        <span className="tabular-nums">{c.staticRefused}</span> outright (each over {cap}
+        ). Two-Key refused <span className="tabular-nums">{c.g4Refused}</span> (each broke a rule
+        the person signed) and held <span className="tabular-nums">{c.g4Held}</span> more for one
+        approval, <span className="tabular-nums">{c.g4Interrupted}</span> interruptions in all.
       </p>
       <ul className="grid gap-3 md:grid-cols-3">
         {Object.entries(s.models).map(([id, m]) => {

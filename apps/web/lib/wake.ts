@@ -19,6 +19,19 @@ export function wakeTargets(env: { AGENT_RUNNER_URL?: string; MCP_PUBLIC_URL?: s
   return out;
 }
 
+/** Every service that sleeps on the free plan: the gateway's /healthz plus wakeTargets. */
+export function allWakeTargets(env: {
+  GATEWAY_URL?: string;
+  AGENT_RUNNER_URL?: string;
+  MCP_PUBLIC_URL?: string;
+}) {
+  const out = env.GATEWAY_URL
+    ? [new URL('/healthz', new URL(env.GATEWAY_URL).origin).toString()]
+    : [];
+  for (const u of wakeTargets(env)) if (!out.includes(u)) out.push(u);
+  return out;
+}
+
 /** Sends a GET to each target without waiting for, or failing on, the answer. */
 export function wakeServices(targets: readonly string[], fetchImpl: typeof fetch = fetch): void {
   for (const url of targets) {

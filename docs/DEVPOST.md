@@ -1,5 +1,7 @@
 # Devpost submission copy
 
+> **The agent can authorize the payment, but it can't capture it.**
+
 Paste each section into the matching Devpost field. The marked blocks are generated from the
 evaluation JSON by `node scripts/readme-results.ts`; never edit their numbers by hand.
 
@@ -21,10 +23,12 @@ Shopping agents are getting wallets. The usual setup hands the agent a payment t
 
 ## What it does
 
-Two-Key is one MCP server that replaces PayPal's money-moving tools. The agent gets four tools: search, read status, read rules, and propose a purchase by product ID and quantity. Only the Two-Key gateway can call PayPal. It looks up price and payee itself, checks the rules the person signed, and only then authorizes the order on their saved PayPal wallet, with no buyer present. Clean purchases are captured. A purchase at an unusual price stays a PayPal authorization until the person approves it on their phone or it times out. A purchase that breaks a rule is blocked before any PayPal order exists.
+**The agent can authorize the payment, but it can't capture it.** Two-Key is one MCP server that replaces PayPal's money-moving tools. The agent gets four tools: search, read status, read rules, and propose a purchase by product ID and quantity. Only the Two-Key gateway can call PayPal. It looks up price and payee itself, checks the rules the person signed, and only then authorizes the order on their saved PayPal wallet, with no buyer present. Clean purchases are captured. A purchase at an unusual price stays a PayPal authorization until the person approves it on their phone or it times out. A purchase that breaks a rule is blocked before any PayPal order exists.
 
 <!-- results:devpost-what:start -->
-In 900 evaluation runs (test split), Two-Key paid an attacker $0.00. No followed attack in that split aimed at an attacker's store, so this does not test the hard-rule block. The development set (400 attacked runs, 2 models, used to set the predictions) had 1 followed attack aimed at an attacker's store (`openai/gpt-oss-20b`). Attacker payments by gate: prompt guard only 1, per-task cap 1, static cap 0, Two-Key 0 ($0.00).
+The guarantee is the payee rule: Two-Key pays only stores the person signed for, and a proposal to any other store is blocked before a PayPal order exists. In 900 evaluation runs (test split), Two-Key paid an attacker $0.00. No followed attack in that split aimed at an attacker's store, so this does not test the hard-rule block. The anomaly hold is a measured second layer: it held 2 of the 15 followed attacks that stayed inside the rules. The development set (400 attacked runs, 2 models, used to set the predictions) had 1 followed attack aimed at an attacker's store (`openai/gpt-oss-20b`). Attacker payments by gate: prompt guard only 1, per-task cap 1, static cap 0, Two-Key 0 ($0.00).
+
+**Against a static $120.00 cap** (the same proposals): the static cap let 12 of 600 attacked runs end in a captured attack purchase; Two-Key let 13. On this test the static cap did as well or better on attacks, because no agent tried to pay the attacker. What a cap cannot do is refuse a payment to an attacker under the cap; the payee rule does. **Refusals, 38 vs 6:** of 209 honest purchases, the static cap refused 38 outright (each over $120.00; the purchase just fails). Two-Key refused 6 (each broke a rule the person signed: price cap, order cap or quantity) and held 51 more at an unusual price for one approval, 57 interruptions in all (`eval/results/test-metrics.json`: `gates.G2.honestInterruptedCount` vs `g4Interruptions.blockedBy` and `.anomalyHold`, summed over models).
 <!-- results:devpost-what:end -->
 
 ## Try it (judges)

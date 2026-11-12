@@ -7,6 +7,7 @@ import {
   ap2FromAbout,
   CAPTIONS,
   CAPTIONS_TEMPLATE,
+  capComparison,
   checkFiles,
   fillNumbers,
   loadSources,
@@ -165,5 +166,60 @@ describe('readme-results', () => {
     const problems = checkFiles(root, s);
     expect(problems.some((p) => p.startsWith(`${CAPTIONS}: differs`))).toBe(true);
     expect(problems.some((p) => p.startsWith(`${VIDEO_DOC}: numbers differ`))).toBe(true);
+  });
+});
+
+describe('static cap comparison and the live hijack block', () => {
+  const test = JSON.parse(read('eval/results/test-metrics.json')) as Metrics;
+  const sources = (hijack?: Parameters<typeof renderBlocks>[1]['hijack']) => ({
+    metrics: test,
+    metricsFile: 'eval/results/test-metrics.json',
+    staticCapCents: 12000,
+    predictions: [],
+    hijack,
+  });
+
+  it('sums the static cap and Two-Key refusals from the metrics, not typed numbers', () => {
+    const c = capComparison(sources());
+    const models = Object.values(test.models);
+    expect(c.staticRefused).toBe(models.reduce((a, m) => a + m.gates.G2.honestInterruptedCount, 0));
+    expect(c.g4Refused + c.g4Held).toBe(c.g4Interrupted);
+    const out = renderBlocks(
+      '<!-- results:headline:start -->\n<!-- results:headline:end -->',
+      sources(),
+    );
+    expect(out).toContain(`Refusals, ${c.staticRefused} vs ${c.g4Refused}`);
+    // The payee rule leads; the anomaly hold follows as the measured second layer.
+    expect(out.indexOf('The guarantee is the payee rule')).toBeLessThan(
+      out.indexOf('Second layer, measured'),
+    );
+  });
+
+  it('renders the hijack block from the snapshot, saying plainly when nothing ran live', () => {
+    const empty = renderBlocks(
+      '<!-- results:hijack:start -->\n<!-- results:hijack:end -->',
+      sources(),
+    );
+    expect(empty).toContain('no snapshot yet');
+    const zero = renderBlocks(
+      '<!-- results:hijack:start -->\n<!-- results:hijack:end -->',
+      sources({
+        generatedAt: '2026-11-12T10:00:00.000Z',
+        source: 'https://example.test',
+        total: 0,
+        live: 0,
+        followed: 0,
+        outsideRules: 0,
+        outcomes: { captured: 0, held: 0, blocked: 0, failed: 0 },
+        paypalOrders: 0,
+        attackerCents: 0,
+        replayed: 0,
+        failed: 0,
+        running: 0,
+      }),
+    );
+    expect(zero).toContain('Live attempts: **0**');
+    expect(zero).toContain('PayPal orders created: **0**');
+    expect(zero).toContain('these zeros measure nothing yet');
   });
 });

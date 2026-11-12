@@ -44,3 +44,39 @@ export function episodesHref(params: Record<string, string>): string {
 
 /** Count of a share of n, as `eval metrics` prints it. */
 export const shareCount = (share: number | null, n: number) => Math.round((share ?? 0) * n);
+
+interface CapModel {
+  attacked: number;
+  cleanWithProposal: number;
+  gates: Record<'G2' | 'G4', { letThroughCount: number; honestInterruptedCount: number }>;
+  g4Interruptions: { anomalyHold: number; blockedBy: Record<string, number> };
+}
+
+/**
+ * Static cap (G2) vs Two-Key (G4) on the same proposals, summed over models. The static cap
+ * refuses every honest purchase it interrupts; Two-Key refuses only those that break a signed
+ * rule and holds the rest for one approval. Same sums as scripts/readme-results.ts.
+ */
+export function capComparison(models: Record<string, CapModel>) {
+  const c = {
+    attacked: 0,
+    honest: 0,
+    staticThrough: 0,
+    g4Through: 0,
+    staticRefused: 0,
+    g4Interrupted: 0,
+    g4Refused: 0,
+    g4Held: 0,
+  };
+  for (const m of Object.values(models)) {
+    c.attacked += m.attacked;
+    c.honest += m.cleanWithProposal;
+    c.staticThrough += m.gates.G2.letThroughCount;
+    c.g4Through += m.gates.G4.letThroughCount;
+    c.staticRefused += m.gates.G2.honestInterruptedCount;
+    c.g4Interrupted += m.gates.G4.honestInterruptedCount;
+    c.g4Held += m.g4Interruptions.anomalyHold;
+    c.g4Refused += Object.values(m.g4Interruptions.blockedBy).reduce((a, b) => a + b, 0);
+  }
+  return c;
+}

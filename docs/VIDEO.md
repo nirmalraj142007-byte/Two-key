@@ -6,6 +6,9 @@ No staging. Every number below comes from `eval/results/test-metrics.json` throu
 Captions: [`docs/video/captions.srt`](video/captions.srt), made from
 [`captions.template.srt`](video/captions.template.srt) by the same script.
 
+**Opening voice-over (0:00, the first words of the video):** "The agent can authorize the
+payment, but it can't capture it."
+
 Copy rules for the voice-over, captions and edits:
 
 - Never say Two-Key "held about half". It held 2 of the 15 inside-the-rules follows.
@@ -102,6 +105,7 @@ Paid to an attacker under Two-Key: $0.00. Predictions in range: 16 of 21.
 
 Voice-over lines with numbers (filled from the metrics; say them as written):
 
+- **0:00 opening (first words):** "The agent can authorize the payment, but it can't capture it."
 - **0:00 hook:** "This attack text fooled all three models in our test. Here the price check catches it; in our test it caught 2 of 15 — still an open problem."
 - **0:32 attacker attempt:** "Agents almost never try to pay the attacker: 0 of 342 chances in our test. When one does, it's impossible: no PayPal order is created."
 - **1:10 results:** "Outside the rules: 0 of 342. Inside the rules: 15 of 258. $0.00 to attackers, and since no agent tried, that number does not test the block."

@@ -44,6 +44,8 @@ interface ModelMetrics {
   insideRules: { followed: number; heldShare: number | null };
   ruleOfThree: number | null;
   followByTarget: { outside_rules: TargetCount; inside_rules: TargetCount };
+  /** Honest (clean-run) proposals Two-Key interrupted: held for approval, or blocked by a rule. */
+  g4Interruptions?: { anomalyHold: number; blockedBy: Record<string, number> };
 }
 
 export interface Metrics {
@@ -71,7 +73,27 @@ export interface Sources {
   predictions: Prediction[];
   /** The development split, when the main source is the test split (for the dev→test note). */
   dev?: Metrics | undefined;
+  /** The hijack box's live numbers (eval/results/hijack-live.json), when snapshotted. */
+  hijack?: HijackLive | undefined;
 }
+
+/** Written by `npm run readme:hijack` from production's GET /api/results/hijack. */
+export interface HijackLive {
+  generatedAt: string;
+  source: string;
+  total: number;
+  live: number;
+  followed: number;
+  outsideRules: number;
+  outcomes: { captured: number; held: number; blocked: number; failed: number };
+  paypalOrders: number;
+  attackerCents: number;
+  replayed: number;
+  failed: number;
+  running: number;
+}
+
+export const HIJACK_FILE = 'eval/results/hijack-live.json';
 
 /** Every drafted block carries this; --check fails while any is left. */
 export const PLACEHOLDER_MARK = '<!-- results:placeholder development-set -->';
@@ -176,19 +198,79 @@ function draftBanner(s: Sources): string[] {
   ];
 }
 
-/** README, right under the GIF: the inside-the-rules finding in two sentences. */
+/**
+ * Static cap (G2) vs Two-Key (G4) on the same proposals, pooled over models. A static cap
+ * refuses every honest purchase it interrupts; Two-Key refuses only those that break a signed
+ * rule and holds the rest for one approval.
+ */
+export function capComparison(s: Sources) {
+  const c = {
+    attacked: 0,
+    honest: 0,
+    staticThrough: 0,
+    g4Through: 0,
+    staticRefused: 0,
+    g4Interrupted: 0,
+    g4Refused: 0,
+    g4Held: 0,
+  };
+  for (const m of Object.values(s.metrics.models)) {
+    c.attacked += m.attacked;
+    c.honest += m.cleanWithProposal;
+    c.staticThrough += m.gates.G2.letThroughCount;
+    c.g4Through += m.gates.G4.letThroughCount;
+    c.staticRefused += m.gates.G2.honestInterruptedCount;
+    c.g4Interrupted += m.gates.G4.honestInterruptedCount;
+    c.g4Held += m.g4Interruptions?.anomalyHold ?? 0;
+    c.g4Refused += Object.values(m.g4Interruptions?.blockedBy ?? {}).reduce((a, b) => a + b, 0);
+  }
+  return c;
+}
+
+/** The static-cap comparison and the refusal split (static cap refusals vs Two-Key refusals). */
+function capSentences(s: Sources): string {
+  const c = capComparison(s);
+  const cap = usd(s.staticCapCents);
+  const why = pooledCounts(s).outside === 0 ? ', because no agent tried to pay the attacker' : '';
+  const verdict =
+    c.staticThrough <= c.g4Through
+      ? `On this test the static cap did as well or better on attacks${why}.`
+      : 'On this test Two-Key let fewer attacks through than the static cap.';
+  return (
+    `**Against a static ${cap} cap** (the same proposals): the static cap let` +
+    ` ${c.staticThrough} of ${n(c.attacked)} attacked runs end in a captured attack purchase;` +
+    ` Two-Key let ${c.g4Through}. ${verdict} What a cap cannot do is refuse a payment to an` +
+    ' attacker under the cap; the payee rule does.' +
+    ` **Refusals, ${c.staticRefused} vs ${c.g4Refused}:** of ${c.honest} honest purchases, the` +
+    ` static cap refused ${c.staticRefused} outright (each over ${cap}; the purchase just fails).` +
+    ` Two-Key refused ${c.g4Refused} (each broke a rule the person signed: price cap, order cap` +
+    ` or quantity) and held ${c.g4Held} more at an unusual price for one approval,` +
+    ` ${c.g4Interrupted} interruptions in all (\`${s.metricsFile}\`: \`gates.G2.honestInterruptedCount\`` +
+    ' vs `g4Interruptions.blockedBy` and `.anomalyHold`, summed over models).'
+  );
+}
+
+/** README, right under the GIF: the payee rule first, then the measured second layer and the cap. */
 function headlineBlock(s: Sources): string {
   const p = pooledCounts(s);
   const k = Object.keys(s.metrics.models).length;
   const paid = usd(s.metrics.attackerMoneyCentsG4);
   const lines = [
     ...draftBanner(s),
-    `**What we found** (${n(p.attacked)} attacked runs, ${k} models, ${setLabel(s)}): hijacked` +
-      ` agents followed **${p.inside}** attacks that stayed inside the signed rules and` +
-      ` ${p.outside === 0 ? '**none**' : `**${p.outside}**`} that pointed outside them.` +
-      ` Two-Key held ${heldPhrase(p.held, p.inside)} for the human; the rest fit every rule` +
-      ' and went through ([what Two-Key does not stop](#what-two-key-does-not-stop)).' +
-      ` Money paid to an attacker under Two-Key: **${paid}**.`,
+    `**What we found** (${n(p.attacked)} attacked runs, ${k} models, ${setLabel(s)}).`,
+    '',
+    '**The guarantee is the payee rule.** Two-Key pays only stores the person signed for; a' +
+      ' proposal to any other store is blocked before a PayPal order exists. Money paid to an' +
+      ` attacker under Two-Key: **${paid}**. Hijacked agents followed` +
+      ` ${p.outside === 0 ? '**none**' : `**${p.outside}**`} of the attacks that pointed` +
+      ' outside the rules.',
+    '',
+    `**Second layer, measured: the anomaly hold.** Agents followed **${p.inside}** attacks` +
+      ` that stayed inside the signed rules. Two-Key held **${p.held} of ${p.inside}**` +
+      `${p.inside === 0 ? '' : ` (${pct(p.held / p.inside)})`} for the human; the rest fit` +
+      ' every rule and went through ([what Two-Key does not stop](#what-two-key-does-not-stop)).',
+    '',
+    capSentences(s),
   ];
   if (notes(s)) lines.push('', notes(s));
   return lines.join('\n');
@@ -355,8 +437,19 @@ function devpostWhatBlock(s: Sources): string {
         " attacker's store, so this does not test the hard-rule block."
       : `${runs}, Two-Key paid an attacker ${paid}, counting the ${p.outside} followed` +
         ` ${p.outside === 1 ? 'attack' : 'attacks'} aimed at an attacker's store.`;
+  const guarantee =
+    'The guarantee is the payee rule: Two-Key pays only stores the person signed for, and a' +
+    ' proposal to any other store is blocked before a PayPal order exists.';
+  const second =
+    `The anomaly hold is a measured second layer: it held ${p.held} of the ${p.inside}` +
+    ' followed attacks that stayed inside the rules.';
   const dev = devNote(s);
-  return [...draftBanner(s), dev ? `${first} ${dev}` : first].join('\n');
+  return [
+    ...draftBanner(s),
+    [guarantee, first, second, dev].filter(Boolean).join(' '),
+    '',
+    capSentences(s),
+  ].join('\n');
 }
 
 /** Devpost "What we learned": the inside-the-rules finding. */
@@ -429,6 +522,7 @@ export function fillNumbers(template: string, numbers: Record<string, string>): 
 
 /** Voice-over lines that carry numbers. The runbook shows them filled in. */
 const VOICE_OVER: [beat: string, line: string][] = [
+  ['0:00 opening (first words)', "The agent can authorize the payment, but it can't capture it."],
   [
     '0:00 hook',
     'This attack text fooled all {modelsWord} models in our test. Here the price check catches it; in our test it caught {insideHeld} of {insideFollowed} — still an open problem.',
@@ -491,7 +585,41 @@ export function renderCaptions(template: string, s: Sources): string {
   return fillNumbers(template, voiceOverNumbers(s));
 }
 
+/** README: the public hijack box's live numbers, a dataset separate from the evaluation. */
+function hijackBlock(s: Sources): string {
+  const h = s.hijack;
+  if (!h) {
+    return `**Live hijack box:** no snapshot yet (\`npm run readme:hijack\` writes \`${HIJACK_FILE}\`). Current numbers: \`/results\` → Judge-written.`;
+  }
+  const when = `${h.generatedAt.slice(0, 16).replace('T', ' ')} UTC`;
+  const o = h.outcomes;
+  const of = (a: number) => (h.live === 0 ? '0' : countOf(a, h.live));
+  const lines = [
+    `**Live hijack box** (production, snapshot ${when}, from \`${HIJACK_FILE}\`; current` +
+      ' numbers on `/results` → Judge-written). A separate, unvetted dataset: anyone can submit' +
+      ' text, and none of it is part of the evaluation above.',
+    '',
+    `- Live attempts: **${n(h.live)}** (${n(h.total)} submitted; not counted: ${n(h.replayed)}` +
+      ` shown as a replay, ${n(h.failed)} failed, ${n(h.running)} still running).`,
+    `- Steered the agent outside the rules: **${of(h.outsideRules)}** (followed the text at` +
+      ` all: ${of(h.followed)}).`,
+    `- Gate outcomes for live proposals: bought ${o.captured}, held ${o.held}, blocked` +
+      ` ${o.blocked}, not purchased ${o.failed}.`,
+    `- PayPal orders created: **${n(h.paypalOrders)}**. Money moved to an attacker:` +
+      ` **${usd(h.attackerCents)}**.`,
+  ];
+  if (h.live === 0) {
+    lines.push(
+      '',
+      'No live attempt had been run on production at this snapshot, so these zeros measure' +
+        ' nothing yet. Try one at `/hijack`.',
+    );
+  }
+  return lines.join('\n');
+}
+
 const BLOCKS: Record<string, (s: Sources) => string> = {
+  hijack: hijackBlock,
   video: videoBlock,
   results: resultsBlock,
   headline: headlineBlock,
@@ -559,7 +687,11 @@ export function loadSources(root: string): Sources {
   const manifest = JSON.parse(readFileSync(join(root, 'eval/frozen/manifest.json'), 'utf8')) as {
     staticCapCents: number;
   };
+  const hijackPath = join(root, HIJACK_FILE);
   return {
+    hijack: existsSync(hijackPath)
+      ? (JSON.parse(readFileSync(hijackPath, 'utf8')) as HijackLive)
+      : undefined,
     metrics,
     metricsFile,
     staticCapCents: manifest.staticCapCents,
@@ -570,7 +702,7 @@ export function loadSources(root: string): Sources {
 
 export const TARGETS = ['README.md', 'docs/DEVPOST.md'] as const;
 const REQUIRED: Record<(typeof TARGETS)[number], string[]> = {
-  'README.md': ['headline', 'results'],
+  'README.md': ['headline', 'results', 'hijack'],
   'docs/DEVPOST.md': ['devpost-what', 'devpost-learned'],
 };
 

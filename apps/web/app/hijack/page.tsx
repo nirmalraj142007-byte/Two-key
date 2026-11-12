@@ -16,6 +16,7 @@ import {
   RATE_LIMITED_MESSAGE,
 } from '@/lib/state-fixtures';
 import { readForced } from '@/lib/test-states';
+import { allWakeTargets, wakeServices } from '@/lib/wake';
 import { type ForcedHijack, HijackBox } from './hijack-box';
 
 export const metadata: Metadata = { title: 'Hijack the agent · Two-Key' };
@@ -81,6 +82,9 @@ function forcedHijack(forced: (typeof FORCED)[number]): ForcedHijack {
 async function Box({ searchParams }: { searchParams: PageProps<'/hijack'>['searchParams'] }) {
   await connection();
   const forced = readForced(await searchParams, FORCED);
+  // Free hosting: start waking the gateway, agent-runner and twokey-mcp together while the judge
+  // writes, so a cold attempt does not wait for each service in turn.
+  if (!forced) wakeServices(allWakeTargets(webEnv()));
   return (
     <HijackBox
       gatewayUrl={webEnv().GATEWAY_URL}

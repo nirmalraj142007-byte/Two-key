@@ -32,10 +32,48 @@ export default async function JudgeAttacksPanel() {
       />
     );
   }
+  const o = s.outcomes;
+  const stats = (
+    <ul
+      className="grid gap-3 text-sm md:grid-cols-2 lg:grid-cols-4"
+      aria-label="Live hijack box numbers"
+    >
+      <li className="flex flex-col gap-1 rounded-lg border border-border bg-surface-raised p-4">
+        <span className="font-medium text-text">Live attempts</span>
+        <span className="tabular-nums text-text">{s.live.toLocaleString('en-US')}</span>
+        <span className="text-xs text-text-muted">
+          Of {s.total.toLocaleString('en-US')} submitted. Not counted:{' '}
+          {s.replayed.toLocaleString('en-US')} shown as a replay, {s.failed.toLocaleString('en-US')}{' '}
+          failed, {s.running.toLocaleString('en-US')} still running.
+        </span>
+      </li>
+      <li className="flex flex-col gap-1 rounded-lg border border-border bg-surface-raised p-4">
+        <span className="font-medium text-text">Steered the agent outside the rules</span>
+        <span className="tabular-nums text-text">{countOf(s.outsideRules, s.live)}</span>
+        <span className="text-xs text-text-muted">
+          Followed the text at all: {countOf(s.followed, s.live)}.
+        </span>
+      </li>
+      <li className="flex flex-col gap-1 rounded-lg border border-border bg-surface-raised p-4">
+        <span className="font-medium text-text">Gate outcomes (live proposals)</span>
+        <span className="tabular-nums text-text">
+          Bought {o.captured} · Held {o.held} · Blocked {o.blocked} · Not purchased {o.failed}
+        </span>
+      </li>
+      <li className="flex flex-col gap-1 rounded-lg border border-border bg-surface-raised p-4">
+        <span className="font-medium text-text">PayPal orders created</span>
+        <span className="tabular-nums text-text">{s.paypalOrders.toLocaleString('en-US')}</span>
+        <span className="text-xs text-text-muted">
+          Money moved to an attacker: {formatUSD(s.attackerCents)}.
+        </span>
+      </li>
+    </ul>
+  );
   if (s.total === 0) {
     return (
       <div className="flex flex-col gap-4">
         <Banner tone="info" text={BANNER} />
+        {stats}
         <EmptyState
           title="No attempts yet"
           body="Attempts from the hijack box appear here, redacted and shortened."
@@ -43,33 +81,13 @@ export default async function JudgeAttacksPanel() {
       </div>
     );
   }
-  const o = s.outcomes;
   return (
     <section aria-labelledby="judge-title" className="flex flex-col gap-4">
       <h2 id="judge-title" className="sr-only">
         Judge-written attacks
       </h2>
       <Banner tone="info" text={BANNER} />
-      <ul className="grid gap-3 text-sm md:grid-cols-3">
-        <li className="flex flex-col gap-1 rounded-lg border border-border bg-surface-raised p-4">
-          <span className="font-medium text-text">Followed the text (live runs)</span>
-          <span className="tabular-nums text-text">{countOf(s.followed, s.liveFinished)}</span>
-          <span className="text-xs text-text-muted">
-            Not counted: {s.replayed.toLocaleString('en-US')} shown as a replay,{' '}
-            {s.failed.toLocaleString('en-US')} failed.
-          </span>
-        </li>
-        <li className="flex flex-col gap-1 rounded-lg border border-border bg-surface-raised p-4">
-          <span className="font-medium text-text">Gate outcomes (live proposals)</span>
-          <span className="tabular-nums text-text">
-            Bought {o.captured} · Held {o.held} · Blocked {o.blocked} · Not purchased {o.failed}
-          </span>
-        </li>
-        <li className="flex flex-col gap-1 rounded-lg border border-border bg-surface-raised p-4">
-          <span className="font-medium text-text">Money moved to an attacker</span>
-          <span className="tabular-nums text-text">{formatUSD(s.attackerCents)}</span>
-        </li>
-      </ul>
+      {stats}
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full min-w-[720px] text-left text-sm">
           <caption className="sr-only">Latest {JUDGE_ROWS_SHOWN} attempts, newest first</caption>
