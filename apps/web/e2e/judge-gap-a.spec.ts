@@ -268,7 +268,7 @@ test('W05 + W10 history: blocked, held and captured rows', async ({ browser }) =
 
   await page.goto('/onboarding/paypal');
   await settle(page);
-  await expect(page.getByText('Connect PayPal once', { exact: true })).toBeVisible();
+  await expect(page.getByText('PayPal is connected', { exact: true })).toBeVisible();
   await shot(page, 'W10-connect-paypal-once');
 });
 

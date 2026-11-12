@@ -49,11 +49,29 @@ async function PayPalStep({
   return <ConnectPayPal />;
 }
 
+/** The title says whether this step is done, so a connected wallet never reads as "not done". */
+async function PayPalTitle({
+  searchParams,
+}: {
+  searchParams: PageProps<'/onboarding/paypal'>['searchParams'];
+}) {
+  const forced = readForced(await searchParams, FORCED);
+  const connected =
+    forced === 'saved' || (forced === null && (await getProgress())?.vaultConnected === true);
+  return (
+    <CardTitle className="text-xl">{connected ? CONNECTED_TITLE : 'Connect PayPal once'}</CardTitle>
+  );
+}
+
+const CONNECTED_TITLE = 'PayPal is connected';
+
 export default function PayPalPage(props: PageProps<'/onboarding/paypal'>) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl">Connect PayPal once</CardTitle>
+        <Suspense fallback={<CardTitle className="text-xl">Connect PayPal</CardTitle>}>
+          <PayPalTitle searchParams={props.searchParams} />
+        </Suspense>
         <CardDescription className="text-base">
           You approve your PayPal account one time, so future purchases inside your rules need no
           PayPal pop-up.
