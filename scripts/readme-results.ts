@@ -207,6 +207,8 @@ export function capComparison(s: Sources) {
   const c = {
     attacked: 0,
     honest: 0,
+    g0Through: 0,
+    g0Refused: 0,
     staticThrough: 0,
     g4Through: 0,
     staticRefused: 0,
@@ -217,6 +219,8 @@ export function capComparison(s: Sources) {
   for (const m of Object.values(s.metrics.models)) {
     c.attacked += m.attacked;
     c.honest += m.cleanWithProposal;
+    c.g0Through += m.gates.G0.letThroughCount;
+    c.g0Refused += m.gates.G0.honestInterruptedCount;
     c.staticThrough += m.gates.G2.letThroughCount;
     c.g4Through += m.gates.G4.letThroughCount;
     c.staticRefused += m.gates.G2.honestInterruptedCount;
@@ -250,30 +254,75 @@ function capSentences(s: Sources): string {
   );
 }
 
-/** README, right under the GIF: the payee rule first, then the measured second layer and the cap. */
-function headlineBlock(s: Sources): string {
-  const p = pooledCounts(s);
+/** The first-screen lead: honest purchases refused, Two-Key vs the static cap. */
+function leadSentence(s: Sources): string {
+  const c = capComparison(s);
+  const cap = usd(s.staticCapCents);
+  const similar = Math.abs(c.g4Through - c.staticThrough) <= 2;
+  const through = similar
+    ? `with about the same attacks let through (${c.g4Through} vs ${c.staticThrough} of ${n(c.attacked)})`
+    : `with ${c.g4Through} vs ${c.staticThrough} of ${n(c.attacked)} attacks let through`;
+  return (
+    `**Two-Key refused ${c.g4Refused} honest purchases where a static ${cap} cap refused` +
+    ` ${c.staticRefused}, ${through}.** The other ${c.g4Held} honest purchases Two-Key` +
+    ' interrupted were held for a one-tap approval, not refused.'
+  );
+}
+
+/** Three gates on the same proposals: attacks let through, honest purchases refused, held. */
+function gateTable(s: Sources): string {
+  const c = capComparison(s);
+  const cap = usd(s.staticCapCents);
   const k = Object.keys(s.metrics.models).length;
-  const paid = usd(s.metrics.attackerMoneyCentsG4);
-  const lines = [
+  return [
+    `| Gate (same agent proposals, ${setLabel(s)}, ${k} models) | Attacks let through (of ${n(c.attacked)} attacked runs) | Honest purchases refused (of ${c.honest}) | Held for a one-tap approval |`,
+    '| --- | --- | --- | --- |',
+    `| Prompt guard only | ${c.g0Through} | ${c.g0Refused} | 0 |`,
+    `| Static ${cap} cap | ${c.staticThrough} | ${c.staticRefused} | 0 |`,
+    `| **Two-Key** | **${c.g4Through}** | **${c.g4Refused}** | ${c.g4Held} |`,
+  ].join('\n');
+}
+
+/** The payee guarantee: from how the gateway works, not from the evaluation. */
+function payeeSentence(s: Sources): string {
+  const p = pooledCounts(s);
+  const untested =
+    p.outside === 0
+      ? ' No agent in the test aimed at the attacker, so the evaluation does not test this.'
+      : '';
+  return (
+    `**Money paid to an attacker: ${usd(s.metrics.attackerMoneyCentsG4)}, by design.** The gateway` +
+    ' sets price and payee itself and checks the signed rules before any PayPal call, so a' +
+    ` proposal to a store outside the rules never gets a PayPal order.${untested}`
+  );
+}
+
+/** README first screen: the honest-purchase result, the three-gate table, the payee guarantee. */
+function headlineBlock(s: Sources): string {
+  return [
     ...draftBanner(s),
-    `**What we found** (${n(p.attacked)} attacked runs, ${k} models, ${setLabel(s)}).`,
+    leadSentence(s),
     '',
-    '**The guarantee is the payee rule.** Two-Key pays only stores the person signed for; a' +
-      ' proposal to any other store is blocked before a PayPal order exists. Money paid to an' +
-      ` attacker under Two-Key: **${paid}**. Hijacked agents followed` +
-      ` ${p.outside === 0 ? '**none**' : `**${p.outside}**`} of the attacks that pointed` +
-      ' outside the rules.',
+    gateTable(s),
     '',
-    `**Second layer, measured: the anomaly hold.** Agents followed **${p.inside}** attacks` +
-      ` that stayed inside the signed rules. Two-Key held **${p.held} of ${p.inside}**` +
-      `${p.inside === 0 ? '' : ` (${pct(p.held / p.inside)})`} for the human; the rest fit` +
-      ' every rule and went through ([what Two-Key does not stop](#what-two-key-does-not-stop)).',
+    `${payeeSentence(s)} Details, the anomaly hold and caveats: [Results](#results).`,
+  ].join('\n');
+}
+
+/** Results section: the static-cap comparison in full and the anomaly hold as a second layer. */
+function capSection(s: Sources): string[] {
+  const p = pooledCounts(s);
+  return [
+    '### Static cap vs Two-Key',
     '',
     capSentences(s),
+    '',
+    `**The anomaly hold is a measured second layer.** Agents followed ${p.inside} attacks that` +
+      ` stayed inside the signed rules; Two-Key held ${p.held} of ${p.inside}` +
+      `${p.inside === 0 ? '' : ` (${pct(p.held / p.inside)})`} for the human and the rest fit every` +
+      ' rule and went through ([what Two-Key does not stop](#what-two-key-does-not-stop)).',
+    '',
   ];
-  if (notes(s)) lines.push('', notes(s));
-  return lines.join('\n');
 }
 
 function actualFor(m: ModelMetrics | undefined, p: Prediction): number | null {
@@ -306,6 +355,7 @@ function resultsBlock(s: Sources): string {
       ' Every attacked run replays the same agent proposals through five gates: G0 prompt guard' +
       ` only, G1 per-task cap, G2 static cap (${cap}), G3 approve everything, G4 Two-Key.`,
     '',
+    ...capSection(s),
     '### Where the attacks pointed',
     '',
     '| Model | Attacked runs | Followed, target outside the rules | Followed, target inside the rules | Inside follows held by Two-Key | Paid to an attacker payee under Two-Key |',
@@ -426,29 +476,27 @@ function resultsBlock(s: Sources): string {
   return out.join('\n');
 }
 
-/** Devpost "What it does" closing sentences. */
+/** Devpost "What it does" opening: the same lead as the README, as bullets (no tables). */
 function devpostWhatBlock(s: Sources): string {
+  const c = capComparison(s);
   const p = pooledCounts(s);
-  const runs = `In ${n(s.metrics.totals.runs)} evaluation runs (${setLabel(s)})`;
-  const paid = usd(s.metrics.attackerMoneyCentsG4);
-  const first =
-    p.outside === 0
-      ? `${runs}, Two-Key paid an attacker ${paid}. No followed attack in that split aimed at an` +
-        " attacker's store, so this does not test the hard-rule block."
-      : `${runs}, Two-Key paid an attacker ${paid}, counting the ${p.outside} followed` +
-        ` ${p.outside === 1 ? 'attack' : 'attacks'} aimed at an attacker's store.`;
-  const guarantee =
-    'The guarantee is the payee rule: Two-Key pays only stores the person signed for, and a' +
-    ' proposal to any other store is blocked before a PayPal order exists.';
-  const second =
-    `The anomaly hold is a measured second layer: it held ${p.held} of the ${p.inside}` +
-    ' followed attacks that stayed inside the rules.';
-  const dev = devNote(s);
+  const cap = usd(s.staticCapCents);
+  const k = Object.keys(s.metrics.models).length;
   return [
     ...draftBanner(s),
-    [guarantee, first, second, dev].filter(Boolean).join(' '),
+    leadSentence(s),
     '',
-    capSentences(s),
+    `Same agent proposals, ${setLabel(s)}, ${k} models, ${n(c.attacked)} attacked runs and ${c.honest} honest purchases:`,
+    '',
+    `- Prompt guard only: ${c.g0Through} attacks let through, ${c.g0Refused} honest purchases refused.`,
+    `- Static ${cap} cap: ${c.staticThrough} attacks let through, ${c.staticRefused} honest purchases refused.`,
+    `- Two-Key: ${c.g4Through} attacks let through, ${c.g4Refused} honest purchases refused, ${c.g4Held} held for a one-tap approval.`,
+    '',
+    payeeSentence(s),
+    '',
+    `The anomaly hold is a measured second layer: it held ${p.held} of the ${p.inside} followed` +
+      ' attacks that stayed inside the rules.' +
+      (devNote(s) ? ` ${devNote(s)}` : ''),
   ].join('\n');
 }
 

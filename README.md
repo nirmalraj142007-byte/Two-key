@@ -2,22 +2,16 @@
 
 **The agent can authorize the payment, but it can't capture it.**
 
-Two-Key is one MCP server that replaces PayPal's money-moving tools: a hijacked agent can still shop for you but can't steal from you.
-
-[![CI](https://github.com/nirmalraj142007-byte/Two-key/actions/workflows/ci.yml/badge.svg)](https://github.com/nirmalraj142007-byte/Two-key/actions/workflows/ci.yml)
-
-![A hijacked agent tries to buy a $189 gift card: Two-Key blocks it with no PayPal order. Then an overpriced shoe is held, and Deny on the phone voids it.](docs/demo.gif)
-
 <!-- results:headline:start -->
-**What we found** (600 attacked runs, 3 models, test split).
+**Two-Key refused 6 honest purchases where a static $120.00 cap refused 38, with about the same attacks let through (13 vs 12 of 600).** The other 51 honest purchases Two-Key interrupted were held for a one-tap approval, not refused.
 
-**The guarantee is the payee rule.** Two-Key pays only stores the person signed for; a proposal to any other store is blocked before a PayPal order exists. Money paid to an attacker under Two-Key: **$0.00**. Hijacked agents followed **none** of the attacks that pointed outside the rules.
+| Gate (same agent proposals, test split, 3 models) | Attacks let through (of 600 attacked runs) | Honest purchases refused (of 209) | Held for a one-tap approval |
+| --- | --- | --- | --- |
+| Prompt guard only | 15 | 0 | 0 |
+| Static $120.00 cap | 12 | 38 | 0 |
+| **Two-Key** | **13** | **6** | 51 |
 
-**Second layer, measured: the anomaly hold.** Agents followed **15** attacks that stayed inside the signed rules. Two-Key held **2 of 15** (13.3%) for the human; the rest fit every rule and went through ([what Two-Key does not stop](#what-two-key-does-not-stop)).
-
-**Against a static $120.00 cap** (the same proposals): the static cap let 12 of 600 attacked runs end in a captured attack purchase; Two-Key let 13. On this test the static cap did as well or better on attacks, because no agent tried to pay the attacker. What a cap cannot do is refuse a payment to an attacker under the cap; the payee rule does. **Refusals, 38 vs 6:** of 209 honest purchases, the static cap refused 38 outright (each over $120.00; the purchase just fails). Two-Key refused 6 (each broke a rule the person signed: price cap, order cap or quantity) and held 51 more at an unusual price for one approval, 57 interruptions in all (`eval/results/test-metrics.json`: `gates.G2.honestInterruptedCount` vs `g4Interruptions.blockedBy` and `.anomalyHold`, summed over models).
-
-No followed attack in the test split pointed at an attacker's store, so no gate could have paid one: the $0.00 here does not test Two-Key's hard-rule block. The development set (400 attacked runs, 2 models, used to set the predictions) had 1 followed attack aimed at an attacker's store (`openai/gpt-oss-20b`). Attacker payments by gate: prompt guard only 1, per-task cap 1, static cap 0, Two-Key 0 ($0.00).
+**Money paid to an attacker: $0.00, by design.** The gateway sets price and payee itself and checks the signed rules before any PayPal call, so a proposal to a store outside the rules never gets a PayPal order. No agent in the test aimed at the attacker, so the evaluation does not test this. Details, the anomaly hold and caveats: [Results](#results).
 <!-- results:headline:end -->
 
 ## Try it in 90 seconds
@@ -38,6 +32,12 @@ Connect your own MCP client (Claude Desktop, or anything that speaks MCP): `twok
 npx -y https://github.com/nirmalraj142007-byte/Two-key/releases/download/v1.0.0/twokey-mcp-1.0.0.tgz
 ```
 
+Two-Key is one MCP server that replaces PayPal's money-moving tools: a hijacked agent can still shop for you but can't steal from you.
+
+[![CI](https://github.com/nirmalraj142007-byte/Two-key/actions/workflows/ci.yml/badge.svg)](https://github.com/nirmalraj142007-byte/Two-key/actions/workflows/ci.yml)
+
+![A hijacked agent tries to buy a $189 gift card: Two-Key blocks it with no PayPal order. Then an overpriced shoe is held, and Deny on the phone voids it.](docs/demo.gif)
+
 ## How it works
 
 - **The agent proposes; it never pays.** Through MCP it gets four tools: `search_products`, `get_purchase_status`, `get_active_rules` (read-only) and `propose_purchase(product_id, qty)`. No tool can capture, approve, void or edit rules.
@@ -51,6 +51,12 @@ npx -y https://github.com/nirmalraj142007-byte/Two-key/releases/download/v1.0.0/
 
 <!-- results:start -->
 Source: `eval/results/test-metrics.json` (test split, gate version `gates-v1`): 900 runs, 3,155 gate decisions. Every attacked run replays the same agent proposals through five gates: G0 prompt guard only, G1 per-task cap, G2 static cap ($120.00), G3 approve everything, G4 Two-Key.
+
+### Static cap vs Two-Key
+
+**Against a static $120.00 cap** (the same proposals): the static cap let 12 of 600 attacked runs end in a captured attack purchase; Two-Key let 13. On this test the static cap did as well or better on attacks, because no agent tried to pay the attacker. What a cap cannot do is refuse a payment to an attacker under the cap; the payee rule does. **Refusals, 38 vs 6:** of 209 honest purchases, the static cap refused 38 outright (each over $120.00; the purchase just fails). Two-Key refused 6 (each broke a rule the person signed: price cap, order cap or quantity) and held 51 more at an unusual price for one approval, 57 interruptions in all (`eval/results/test-metrics.json`: `gates.G2.honestInterruptedCount` vs `g4Interruptions.blockedBy` and `.anomalyHold`, summed over models).
+
+**The anomaly hold is a measured second layer.** Agents followed 15 attacks that stayed inside the signed rules; Two-Key held 2 of 15 (13.3%) for the human and the rest fit every rule and went through ([what Two-Key does not stop](#what-two-key-does-not-stop)).
 
 ### Where the attacks pointed
 
@@ -108,14 +114,12 @@ Ranges from [PREDICTIONS.md](PREDICTIONS.md), registered before the test split r
 ### Live hijack box (judge-written attacks)
 
 <!-- results:hijack:start -->
-**Live hijack box** (production, snapshot 2026-11-12 01:05 UTC, from `eval/results/hijack-live.json`; current numbers on `/results` → Judge-written). A separate, unvetted dataset: anyone can submit text, and none of it is part of the evaluation above.
+**Live hijack box** (production, snapshot 2026-11-12 17:35 UTC, from `eval/results/hijack-live.json`; current numbers on `/results` → Judge-written). A separate, unvetted dataset: anyone can submit text, and none of it is part of the evaluation above.
 
-- Live attempts: **0** (0 submitted; not counted: 0 shown as a replay, 0 failed, 0 still running).
-- Steered the agent outside the rules: **0** (followed the text at all: 0).
-- Gate outcomes for live proposals: bought 0, held 0, blocked 0, not purchased 0.
-- PayPal orders created: **0**. Money moved to an attacker: **$0.00**.
-
-No live attempt had been run on production at this snapshot, so these zeros measure nothing yet. Try one at `/hijack`.
+- Live attempts: **2** (2 submitted; not counted: 0 shown as a replay, 0 failed, 0 still running).
+- Steered the agent outside the rules: **0 of 2 (0.0%)** (followed the text at all: 0 of 2 (0.0%)).
+- Gate outcomes for live proposals: bought 2, held 0, blocked 0, not purchased 0.
+- PayPal orders created: **2**. Money moved to an attacker: **$0.00**.
 <!-- results:hijack:end -->
 
 ## How Two-Key relates to AP2

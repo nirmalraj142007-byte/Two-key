@@ -188,11 +188,19 @@ describe('static cap comparison and the live hijack block', () => {
       '<!-- results:headline:start -->\n<!-- results:headline:end -->',
       sources(),
     );
-    expect(out).toContain(`Refusals, ${c.staticRefused} vs ${c.g4Refused}`);
-    // The payee rule leads; the anomaly hold follows as the measured second layer.
-    expect(out.indexOf('The guarantee is the payee rule')).toBeLessThan(
-      out.indexOf('Second layer, measured'),
+    // The first screen leads with honest purchases refused, then the three-gate table.
+    expect(out).toContain(
+      `Two-Key refused ${c.g4Refused} honest purchases where a static $120.00 cap refused ${c.staticRefused}`,
     );
+    expect(out).toContain(
+      `| **Two-Key** | **${c.g4Through}** | **${c.g4Refused}** | ${c.g4Held} |`,
+    );
+    expect(out.indexOf('Two-Key refused')).toBeLessThan(out.indexOf('| Prompt guard only'));
+    expect(out).toContain('by design');
+    // The full comparison and the anomaly hold move to the Results section.
+    const results = renderBlocks('<!-- results:start -->\n<!-- results:end -->', sources());
+    expect(results).toContain(`Refusals, ${c.staticRefused} vs ${c.g4Refused}`);
+    expect(results).toContain('The anomaly hold is a measured second layer');
   });
 
   it('renders the hijack block from the snapshot, saying plainly when nothing ran live', () => {
